@@ -1,0 +1,14 @@
+
+Contact: stephen.farrell@cs.tcd.ie
+Copyright (C) 2012 Trinity College Dublin 
+
+Various utility shell scripts for managing a cache of NDOs accessed
+by an Apache web server that can be accessed via the HTML convergence 
+layer and well-known URIs through a conventional HTTP web client.
+
+- LICENSE is an Apache License under which this is
+  all released
+- cleanwku - used to clean out 'published' files periodically to avoid DoS/spam accesses.
+- linkem - creates links from ni named files to files that can be accessed via well-known URLs.
+- nameurl - downloads a file using wget and creates an ni name for it.
+- ni-my-site.sh - builds ni names for all files on an Apache 'site'.

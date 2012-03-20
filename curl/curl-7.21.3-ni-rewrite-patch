@@ -1,0 +1,58 @@
+Index: lib/Makefile.in
+===================================================================
+--- lib/Makefile.in	(.../vendor/7.21.3+FBSD)	(revision 10)
++++ lib/Makefile.in	(.../trunk)	(revision 10)
+@@ -91,7 +91,7 @@
+ 	nonblock.lo curl_memrchr.lo imap.lo pop3.lo smtp.lo \
+ 	pingpong.lo rtsp.lo curl_threads.lo warnless.lo hmac.lo \
+ 	polarssl.lo curl_rtmp.lo openldap.lo curl_gethostname.lo \
+-	gopher.lo
++	gopher.lo ni.lo
+ am__objects_2 =
+ am_libcurl_la_OBJECTS = $(am__objects_1) $(am__objects_2)
+ libcurl_la_OBJECTS = $(am_libcurl_la_OBJECTS)
+@@ -364,6 +364,7 @@
+ @USE_EMBEDDED_ARES_TRUE@           -I$(top_builddir)/ares         \
+ @USE_EMBEDDED_ARES_TRUE@           -I$(top_srcdir)/ares
+ 
++
+ @SONAME_BUMP_FALSE@VERSIONINFO = -version-info 6:0:2
+ 
+ #
+Index: lib/url.c
+===================================================================
+--- lib/url.c	(.../vendor/7.21.3+FBSD)	(revision 10)
++++ lib/url.c	(.../trunk)	(revision 10)
+@@ -147,6 +147,8 @@
+ /* The last #include file should be: */
+ #include "memdebug.h"
+ 
++#include "ni.h"			/* ni: name library */
++
+ /* Local static prototypes */
+ static long ConnectionKillOne(struct SessionHandle *data);
+ static void conn_free(struct connectdata *conn);
+@@ -3630,6 +3632,23 @@
+ 
+   *prot_missing = FALSE;
+ 
++  /* Support for ni: names - rewrite to http .well-known URL */
++  if((1 == sscanf(data->change.url, "%15[^:]:", protobuf)) &&
++     Curl_raw_equal(protobuf, "ni")) {
++      char *wkuname = (char*)malloc(NILEN); /* Buffer for .well-known URL */
++
++      /* Call ni library function to do the rewrite */
++      if (mapnametowku(data->change.url, wkuname) == 0) {
++	  if (data->change.url_alloc)
++	      free(data->change.url);
++
++	  data->change.url = wkuname;
++	  data->change.url_alloc = TRUE;
++      }
++      else
++	  free(wkuname);
++  }
++
+   /*************************************************************
+    * Parse the URL.
+    *

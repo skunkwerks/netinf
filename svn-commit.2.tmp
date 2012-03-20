@@ -1,0 +1,9 @@
+
+--This line, and those below, will be ignored--
+
+M    python/niserver_main.py
+M    python/README
+A    c/LICENSE
+M    c/README
+M    README
+A    samples/README

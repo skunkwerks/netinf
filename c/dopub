@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# set -x
+
+# generate an ni name for a file and PUBLISH it at village.n4c.eu
+
+File=$1
+NextHop=village.n4c.eu
+
+if [ "$File" == "" ]
+then
+	echo "Usage:" 
+	echo "./dopub <file>"
+	exit
+fi
+
+
+NIName=`./nicl -g -n 'ni:///sha-256;' -f $File`
+
+if [ "$NIName" == "" ]
+then
+	echo "Bummer - no name generated"
+	exit
+fi
+
+./put_object $NextHop $NIName $File 
+
+

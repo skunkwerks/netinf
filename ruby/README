@@ -1,0 +1,130 @@
+= NI URI format implementation in Ruby
+
+
+This is the NI URI library developed as
+part of the SAIL project. (http://sail-project.eu)
+
+Specification(s) - note, versions may change::
+* http://tools.ietf.org/html/farrell-decade-ni-00
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+
+Author:: Dirk Kutscher <kutscher@neclab.eu>
+Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+
+License:: http://www.apache.org/licenses/LICENSE-2.0.html
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+== About
+
+This is a Ruby implementation of the NI name format for Named Data
+Objects as developed by the SAIL project, the NetInf protocol and
+corresponding HTTP and UDP convergence layers.
+
+These elements are used by a set of sample programs, including a
+standalone NetInf router, to illustrate the usage. 
+
+
+== Features
+
+* nice extension of Ruby's URI classes
+* can hash memory objects (strings), files, web objects
+* supports hash function pluggability
+
+== Limitations
+
+* params extension not well supported
+* error handling limited
+
+== Dependencies
+
+* ruby-1.9 and rdoc (for source code documentation)
+* Nick Sieger's multipart-post library
+  - https://github.com/nicksieger/multipart-post
+  - or "sudo gem install multipart-post"
+
+
+== Roadmap
+
+The package contains the following executable Ruby programs:
+
+* nid: a standalone NetInf router with caching and routing capabilities
+
+* mkni: creates an NI URI from a file or web object
+
+* chkni: validates an NI URI against a file or web object
+
+* getni: GETs a named data object (using UDP and HTTP convergence layers)
+
+* pubni: PUBLISHes a named data object (using HTTP convergence layer)
+
+* regni: REGISTERs a named data object (using HTTP convergence layer)
+
+* searchni: sends a SEARCH request to a another NetInf node
+
+
+The most important Ruby source files:
+
+* ni.rb: NI URI handling
+
+* httpcl.rb: HTTP convergence layer implementation
+
+* udpcl: UDP convergence layer implementation
+
+=== Configuration files
+
+* map.rb: used to specify mappings from local files or web resources
+  to NI-named NDOs that this router can serve
+
+* routes.rb: used to specify regular expression based routing entries
+  for mapping NI names to next hop nodes
+
+You can create the source code documentation by saying: 'make doc'
+(requires rdoc).
+
+
+== CHANGES
+
+[2012-03-18]
+* added support for Windows file name in mapping directives (mapdsl.rb)
+
+[2012-02-13]
+* added UDP CL and support in getni
+
+[2012-02-09]
+* added mapping and mount mechanisms for file and HTTP resource
+* added simple SEARCH implementation (currently SEARCH returns list of mapped NI names)
+
+[2012-01-31]
+* added routing table support (see routes.rb for an example)
+* added first version of standalone router: nid
+
+[2012-01-30]
+* included multipart-post library -- now depending on Ruby-1.9
+* added support for publish in HTTP CL and cmdline tool pubni
+
+[2012-01-25]
+* added first version of HTTP CL (netinfget.rb and getni cmdline tool)
+
+[2012-01-23]
+* added .wellknown URI generation
+* added nitowellknown command line tool
+
+[2012-01-22]
+* added hash function pluggability
+* added support for sha-384 and sha-512
+* base64 encode and decode now urlsafe
+
+[2012-01-21]
+* added mkni and chkni command line tools
+* added == method for comparing NI URIs

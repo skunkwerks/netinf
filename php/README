@@ -1,0 +1,25 @@
+
+These forme and php scripts go with the ni-my-site.sh web site.
+
+This is currently live on village.n4c.eu with NetInf GET
+working at http://village.n4c.eu/getform.html. Code that
+uses this needs to POST the form to 
+	http://village.n4c.eu/.well-known/netinfproto
+or
+	http://village.n4c.eu/.well-known/netinfproto/get
+(either should work, only tested the 1st so far)
+
+There is a list of NI name well-known URLs at:
+	http://village.n4c.eu/wku-list
+
+You need to add a ScriptAlias in Apache's virtual host stanza to point
+.well-known/netinfproto at fetcher.php etc.  See the apache-cfg-snippet file
+for more.
+
+fetcher.php - do a NetInf GET
+putter.php - do a NetInf PUT
+getform.html - form for triggering a NetInf GET
+getputform.html - form for triggering a NetInf GET or PUT
+	- just starting this, not yet working
+README - this file
+

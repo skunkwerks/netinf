@@ -1,0 +1,49 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>SAIL "ni" name fetcher and putter</title>
+</head>
+<body>
+
+<h1>NetInf GET</h1>
+
+<form name="fetchni" action=".well-known/netinfproto/get" method="post">
+<table border="1">
+<tbody>
+<input type="hidden" name="stage" value="zero"/>
+<tr> <td>NI name:</td> <td><input type="text" name="URI" /></td> </tr>
+<tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
+<tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
+<tr>
+<td/>
+<td><input type="submit" value="Submit"/> </td>
+</tr>
+</tbody>
+</table>
+</form>
+
+<h1>NetInf PUBLISH</h1>
+
+<form name="fetchni" action=".well-known/netinfproto/publish" enctype="multipart/form-data" method="post">
+<table border="1">
+<tbody>
+<tr><td>NI name</td> <td><input type="text" name="URI"/> </tr>
+<tr><td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
+<tr><td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
+<tr><td>File (optional): </td><td><input type="file" name="octets" size="20"/></td></tr>
+<tr><td>Locator1</td> <td><input type="text" name="loc1"/> </tr>
+<tr><td>Locator2</td> <td><input type="text" name="loc2"/> </tr>
+<tr><td>Full PUT?</td><td><input type="checkbox" name="fullPut"/></td></tr>
+<tr><td><input type="submit" value="Submit"/> </tr>
+
+</tbody>
+</table>
+
+</form>
+
+
+</body>
+</html>
+
+

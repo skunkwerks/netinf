@@ -1,0 +1,46 @@
+#  These Java classes that implement NI proxy,
+# 	has been developed as part of the SAIL project. (http://sail-project.eu)
+# 	
+#  Specification(s) - note, versions may change::
+# 	-	http://tools.ietf.org/html/farrell-decade-ni-00
+# 	-	http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+# 
+# 	Authors: 	Petteri Pöyhönen <petteri.poyhonen@nsn.com>
+#				Janne Tuonnonen <janne.tuononen@nsn.com>
+# 
+#  Copyright: 	Copyright 2012 Petteri Pöyhönen <petteri.poyhonen@nsn.com> and 
+				Janne Tuonnonen <janne.tuononen@nsn.com> and, Nokia Siemens Networks
+#	
+#  License: http://www.apache.org/licenses/LICENSE-2.0
+#  
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+# General:
+#
+# This is 1st version of NiProxy. It has been integration tested with Java, Ruby and Python 
+# test tools, i.e., pubni, regni and getni, and it supports current version NetInf NI protocol. 
+#
+# Usage:
+#
+# run niproxy.main/NiProxyLauncher.java
+#
+# Configuration:
+# 
+# Configuration filename is an optional program parameter. Default configuration file is configuration/niproxy.config.
+# 
+# If you have troubles with them, contact 
+# 
+#             petteri.poyhonen@nsn.com or janne.tuononen@nsn.com
+#
+# ----------------------------------------------------------------------------

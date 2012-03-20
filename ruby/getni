@@ -1,0 +1,182 @@
+#!/usr/bin/env ruby
+
+#
+# getni -- get NetInf objects over HTTP
+#
+# This is the NI URI library developed as
+# part of the SAIL project. (http://sail-project.eu)
+#
+# Specification(s) - note, versions may change::
+# * http://tools.ietf.org/html/farrell-decade-ni-00
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+#
+# Author:: Dirk Kutscher <kutscher@neclab.eu>
+# Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+#
+# License:: http://www.apache.org/licenses/LICENSE-2.0.html
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+$: << File.dirname(__FILE__)
+
+require 'getoptlong'
+require 'json'
+require 'httpcl'
+require 'routes'
+require 'udpcl'
+
+loc=nil
+ni=nil
+output=nil
+validate=nil
+udp=nil
+
+def printUsage
+  print "Usage: getni -n <ni-URI> [-l <FQDN>] [-o <output filename>] [-v] [-u] -- get NI over HTTP\n"
+  print "       getni -h -- print usage info\n"
+end
+
+
+opts = GetoptLong.new(
+                      ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+                      ['--ni', '-n', GetoptLong::REQUIRED_ARGUMENT ],
+                      ['--loc', '-l', GetoptLong::REQUIRED_ARGUMENT ],
+                      ['--output', '-o', GetoptLong::REQUIRED_ARGUMENT ],
+                      ['--validate', '-v', GetoptLong::NO_ARGUMENT ],
+                      ['--udp', '-u', GetoptLong::NO_ARGUMENT ]
+)
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--loc"
+    loc=arg
+  when "--ni"
+    ni=arg
+  when "--output"
+    output=arg
+  when "--validate"
+    validate=true
+  when "--udp"
+    udp=true
+  end
+end
+
+
+if(!ni)
+  printUsage
+  exit 1
+end
+
+
+# route=Hash.new
+
+# File.open("routes").each do |line|
+#   uri, locator=line.split()
+#   route[uri]=locator
+# end
+
+msgId=Time.new.strftime("%Y%m%d%H%M%S")
+niUri=URI::parse(ni)
+
+
+
+if udp
+  pit=Hash.new
+  udpResponseMsg=nil
+  udpcl = NetInfUDP.new
+  udpcl.mountProc(NetInfUDP::GETRESP) do |request, response|
+    print "b got GET-RESP request: #{request}\n"
+    if pit[request.msgId]       # matches our previous request
+      udpResponseMsg=request
+    end
+
+  end
+
+  udpcl.get(niUri, msgId)
+  pit[msgId]=niUri
+  sleep 1                       # wait for 1 sec
+  if udpResponseMsg
+    print "received response: #{udpResponseMsg}\n"
+    l=URI(udpResponseMsg.locators[0])
+    if l
+      loc=l.host
+      loc+=":" + l.port.to_s if l.port
+    else
+      exit 1
+    end
+  else
+    exit -1
+  end
+end
+
+if !loc
+  routes=Routes.instance
+  if !((r=routes.find(ni)).empty?) # check for routing info
+    locator=r[0].dest
+    case locator.scheme
+    when "nihttp"               # HTTL CL next-hop
+      loc=locator.host
+    else
+      print "unknown scheme -- doing nothing\n"
+    end
+  end
+end
+
+if !loc
+  printUsage()
+  exit 1
+end
+
+print("Trying to get #{ni} from #{loc}\n")
+
+
+nhttp=NetInfHTTP.new
+
+obj=nhttp.get(niUri, msgId, loc)
+puts "Reponse Code: #{obj.code}\n"
+puts "Headers: #{obj.to_hash.inspect}\n"
+
+if obj.code!="200"
+  exit 1
+end
+
+if obj.content_type=="application/json"
+  locList=JSON.parse(obj.body)
+  print "Received locator list: #{locList}\n"
+  # try first in list for now:
+  loc=URI::parse(locList[0]).host
+  msgId.concat("1")
+  obj=nhttp.get(niUri, msgId, loc)
+  puts "Reponse Code: #{obj.code}\n"
+  puts "Headers: #{obj.to_hash.inspect}\n"
+end
+
+if validate
+  if niUri.isValidName?(obj.body)
+    print("Name-content binding validated.\n")
+  else
+    print("Name-content binding NOT VALID.\n")
+  end
+end
+
+if output
+  File.open(output, 'w') {|f| f.write(obj.body) }
+else
+  print("#{obj.body}\n")
+end
+
+
+

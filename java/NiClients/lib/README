@@ -1,0 +1,12 @@
+# NiClients need following JARs that are not included, so you need to download those
+# and add your project/classpath or use ivy.xml if you have ivy installed to automatically download missing dependencies. Note also that in the list below are the versions 
+# that was used in the SW development and testing, so other versions of the listed 
+# JARs might work as well, but have not been tested.
+#
+# commons-codec-1.6.jar (http://commons.apache.org/codec/)
+# commons-logging-1.1.1.jar (http://commons.apache.org/logging/download_logging.cgi
+# httpclient-4.1.2.jar (http://hc.apache.org/downloads.cgi)
+# httpcore-4.1.4.jar (http://hc.apache.org/downloads.cgi)
+# httpmime-4.1.2.jar (http://grepcode.com/snapshot/repo1.maven.org/maven2/org.apache.httpcomponents/httpmime/4.1.2)
+# json_simple-1.1.jar (http://code.google.com/p/json-simple/)
+

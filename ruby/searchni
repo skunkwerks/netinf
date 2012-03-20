@@ -1,0 +1,90 @@
+#!/usr/bin/env ruby
+
+#
+# searchni -- SEARCH NetInf objects over HTTT
+#
+# This is the NI URI library developed as
+# part of the SAIL project. (http://sail-project.eu)
+#
+# Specification(s) - note, versions may change::
+# * http://tools.ietf.org/html/farrell-decade-ni-00
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+#
+# Author:: Dirk Kutscher <kutscher@neclab.eu>
+# Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+#
+# License:: http://www.apache.org/licenses/LICENSE-2.0.html
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+$: << File.dirname(__FILE__)
+
+require 'json'
+require 'httpcl'
+require 'getoptlong'
+require 'net/http'
+
+loc=nil
+
+
+def printUsage
+  print "Usage: searchnii -l <FQDN> -- search node over HTTP\n"
+  print "       searchni -h -- print usage info\n"
+end
+
+
+opts = GetoptLong.new(
+                      ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+                      ['--loc', '-l', GetoptLong::REQUIRED_ARGUMENT ]
+)
+
+
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--loc"
+    loc=arg
+  end
+end
+
+
+if !loc
+  printUsage()
+  exit 1
+end
+
+nhttp=NetInfHTTP.new
+
+msgId=Time.new.strftime("%Y%m%d%H%M%S")
+res=nhttp.search(loc, msgId)
+if res.code=="200"
+  l=JSON::parse(res.body)
+  if l.class==Array
+    l.each { |n|
+      print "#{n}\n"
+    }
+  else
+    print "parse error"
+  end
+else
+  print "error, got: #{res}\n"
+end
+
+  
+
+
+
+

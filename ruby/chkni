@@ -1,0 +1,96 @@
+#!/usr/bin/env ruby
+
+#
+# chkni -- validate NI URIs for file and web object
+#
+# This is the NI URI library developed as
+# part of the SAIL project. (http://sail-project.eu)
+#
+# Specification(s) - note, versions may change::
+# * http://tools.ietf.org/html/farrell-decade-ni-00
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+#
+# Author:: Dirk Kutscher <kutscher@neclab.eu>
+# Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+#
+# License:: http://www.apache.org/licenses/LICENSE-2.0.html
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+$: << File.dirname(__FILE__)
+
+require 'ni'
+require 'getoptlong'
+
+ni=nil
+file=nil
+web=nil
+
+def printUsage
+  print "Usage: chkni -n <name> -f <filename> -- validate specified name for file\n"
+  print "Usage: chkni -n <name> -w <uri> -- validate specified name for web resource\n"
+  print "       chkni -h -- print usage info\n"
+end
+
+def hashFromFile(file, auth)
+  u = URI::NI.buildFromFile(auth, file)
+  u.to_s
+end
+
+def hashFromWeb(uri, auth)
+  u = URI::NI.buildFromHTTP(auth, URI(uri))
+  u.to_s
+end
+
+
+opts = GetoptLong.new(
+  ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+  ['--ni', '-n', GetoptLong::REQUIRED_ARGUMENT ],
+  ['--file', '-f', GetoptLong::REQUIRED_ARGUMENT ],
+  ['--web', '-w', GetoptLong::REQUIRED_ARGUMENT ]
+)
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--file"
+    file=arg
+  when "--web"
+    web=arg
+  when "--ni"
+    ni=arg
+  end
+end
+
+if (((not file) and (not web)) or (file and web) or (not ni))
+  printUsage
+  exit -1
+else if file
+       u=hashFromFile(file, nil)
+     else
+       u=hashFromWeb(web, nil)
+     end
+  if(u==ni)
+    print "1"
+    exit 1
+  else
+    print "0"
+    exit 0
+  end
+end
+
+
+

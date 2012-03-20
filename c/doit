@@ -1,0 +1,21 @@
+#!/bin/bash
+
+if [ "$1" == "once" ]
+then
+	./nicl -g -n 'ni://tcd.ie/sha-256-16;?c=image%2Fjson' -f ../samples/bar
+	exit
+fi
+
+echo "usage"
+./nicl -h
+echo "generate" 
+./nicl -g -n 'ni://tcd.ie/sha-256;?c=image%2Fjson' -f ../samples/bar
+echo "good verify - res should be 0"
+./nicl -v -n 'ni://tcd.ie/sha-256;fdZ0A_iA9BIw2g_Ve8WaqZfmRS4Af1zy2hGdHOgM-Do?c=image%2Fjson' -f ../samples/bar
+echo "bad verify (wrong file) - res should be 1"
+./nicl -v -n 'ni://tcd.ie/sha-256;fdZ0A_iA9BIw2g_Ve8WaqZfmRS4Af1zy2hGdHOgM-Do?c=image%2Fjson' -f ../samples/foo
+echo "bad verify (wrong hash) - res should be 1"
+./nicl -v -n 'ni://tcd.ie/sha-256;fdZ0A_iA9BIw2g_Ve8WaqZfmRS4Af1Zy2hGdHOgM-Do?c=image%2Fjson' -f ../samples/bar
+echo ".well-known URL"
+./nicl -w -n http://tcd.ie/.well-known/ni/sha-256/foo -f ../samples/foo
+

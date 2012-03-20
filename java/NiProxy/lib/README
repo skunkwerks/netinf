@@ -1,0 +1,11 @@
+NiProxy needs following JARs that are not included, so you need to download those and add to your project/classpath or use ivy.xml if you have ivy installed to automatically download missing dependencies. Note also that in the list below are the versions that was used in the SW development and testing, so other versions of the listed JARs might work as well, but have not been tested.
+1) log4j-1.2.15.jar (http://logging.apache.org/log4j/1.2/download.html)
+2) commons-logging-1.1.1.jar (http://commons.apache.org/logging/download_logging.cgi)
+3) commons-codec-1.6.jar (http://commons.apache.org/codec/)
+4) httpclient-4.1.2.jar (http://hc.apache.org/downloads.cgi)
+5) httpcore-4.1.4.jar (http://hc.apache.org/downloads.cgi)
+6) httpcore-nio-4.1.4.jar (http://hc.apache.org/downloads.cgi)
+7) httpmime-4.1.2.jar (http://grepcode.com/snapshot/repo1.maven.org/maven2/org.apache.httpcomponents/httpmime/4.1.2)
+8) json_simple-1.1.jar (http://code.google.com/p/json-simple/)
+9) apache-mime4j-0.6.jar (http://grepcode.com/snapshot/repo1.maven.org/maven2/org.apache.james/apache-mime4j/0.6)
+10) commons-io-2.0.1.jar (http://commons.apache.org/io/)

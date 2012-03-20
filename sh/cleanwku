@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# A script to clean out files that are not links in $WKURoot 
+# which is probably $DocRoot/.well-known/ni
+# and log when and what's been deleted to $LogFile
+
+# You'll need to run with the right permissions (probably
+# as www-data) and fix up the paths below
+
+# then this could be suitable for a cron job or something
+# like that, I run this hourly for now
+
+DocRoot=/home/dtnuser/data/www/statichtml
+LogFile=/var/log/apache2/wkucleaned
+# if I can't write to the above, then I'll try here
+Me=`whoami`
+TmpLog=/tmp/cleanwku-$Me.log
+
+WKURoot=$DocRoot/.well-known/ni
+LogSepChar=","
+
+files=`find $WKURoot -type f` 
+
+if [ ! -w $LogFile ]
+then
+	# use /tmp instead for logging
+	echo "Can't log to $LogFile, using $TmpLog instead."
+	LogFile=$TmpLog
+fi
+
+ts=`date -u`
+echo "Starting cleanwku at $ts" >>$LogFile
+
+for file in $files
+do
+	ts=`date -u`
+	rm -f $file >/dev/null 2>&1
+	if [ -f $file ]
+	then
+		echo "$ts$LogSepChar$file$LogSepChar" "deletion failed" >>$LogFile
+	else
+		echo "$ts$LogSepChar$file$LogSepChar" "deleted" >>$LogFile
+	fi
+done

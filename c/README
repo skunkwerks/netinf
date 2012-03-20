@@ -1,0 +1,47 @@
+
+Contact: stephen.farrell@cs.tcd.ie
+Copyright (C) 2012 Trinity College Dublin 
+
+This is a starter for a C library and tools for
+ni names.
+
+- LICENSE is an Apache License under which this is
+  all released
+- test.cc is a main() program for adding test cases.
+- doit is a bash script that calls test
+- nicl.cc is a main() program for generating and verifying 
+  the hashes in ni names
+- nameurl is a bash script that uses wget to fetch an HTTP
+  URL and generate a ni name for that URL
+- ni.h is the library header file
+- ni.cc is the implementation
+- Makefile builds stuff, doesn't actually make a .so yet
+- foo and bar (in the samples directory) are files used in tests
+
+
+***********************************************************
+ * These are command line utilities for NetInf developed as
+ * part of the SAIL project. (http://sail-project.eu)
+ *
+ * Author:: Claudio Imbrenda <Claudio.Imbrenda@neclab.eu>
+ * Copyright:: Copyright (c) 2012 Claudio Imbrenda
+ * <Claudio.Imbrenda@neclab.eu>
+ * Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+ *
+ * License:: http://www.apache.org/licenses/LICENSE-2.0.html
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+
+- send_request.cc Send a request to a NetInf node
+- put_object.cc Publish an object
+
+*********************************************************

@@ -1,0 +1,282 @@
+#!/usr/bin/env ruby
+
+#
+# nid -- NetInf router daemon
+#
+# This is the NI URI library developed as
+# part of the SAIL project. (http://sail-project.eu)
+#
+# Specification(s) - note, versions may change::
+# * http://tools.ietf.org/html/farrell-decade-ni-00
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+#
+# Author:: Dirk Kutscher <kutscher@neclab.eu>
+# Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+#
+# License:: http://www.apache.org/licenses/LICENSE-2.0.html
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+$: << File.dirname(__FILE__)
+
+abort_on_exception=true
+
+require 'json'
+require 'webrick'
+include WEBrick
+
+require 'ni'
+require 'httpcl'
+require 'routes'
+require 'map'
+require 'udpcl'
+
+objdir="nid.cache"
+
+PORT=8888
+
+
+# GET algorithm
+
+# IF mapped local resource
+#    return object
+# ELSE IF cached resource
+#    return cached object
+# ELSE IF mapped resource
+#    return mapped resource
+# ELSE IF routing entry
+#    IF 'redirect'
+#       return next hop locator
+#    ELSE
+#       try to fetch object via next hop
+#       return object
+#    END
+# END
+
+
+@directory_name = Dir::pwd + "/" + objdir
+if !FileTest::directory?(@directory_name)
+  Dir::mkdir(@directory_name)
+end
+
+object=Hash.new
+File.open("nimap").each do |line|
+  uri, locator=line.split()
+  object[uri]=locator
+end
+
+
+
+# returns a cache file name for the specified NI URI.
+# file may not exist
+def cacheFileName(ni)
+  @directory_name + "/" + ni.path
+end
+
+# stores the object under the specified NI URI in the object cache
+def cache(uri, obj)
+  filename=cacheFileName(uri)
+  print("Creating #{filename}\n")
+  File.open(filename, 'w') {|f| f.write(obj) }
+end
+
+# tries to access the names resources (obtained from mapping table)
+# :yields: the first found resource or nil
+def findMappedResource(resources)
+  obj=nil
+  resources.each { |uri|
+    if uri
+      case uri.scheme
+      when "file"
+        file=uri.path
+        if File.exists?(file)
+          obj=File.open(file)
+        end
+      when "http"
+        resp=Net::HTTP.get_response(uri)
+        obj=resp.body if resp.code=="200"
+      end
+      if obj
+        print "found mapped resource #{uri}\n"
+        break
+      end
+    end
+  }
+  obj
+end
+
+server = HTTPServer.new(:Port => PORT, :BindAddress => "localhost")
+server.mount_proc("/.well-known/netinfproto/get") do |request, response|
+#  print ("get\n")
+#  puts request
+
+  uri = request.query["URI"]
+  ni = URI(uri)
+  msgId = request.query["msgid"]
+  ext = request.query["extension"]
+
+  foundObj=false
+
+  print("URI: #{uri}\n")
+  print("msgid: #{msgId}\n")
+
+  routes=Routes.instance
+
+  f=nil
+#  resource=object[uri]
+  resource=Mapping.instance.find(ni)
+  cfilename=cacheFileName(ni)
+
+  if resource
+    print("Resource: #{resource}\n")
+    f=File.open(resource.dest.path)
+  elsif File.exists?(cfilename)
+    print("Cache Resource: #{cfilename}\n")
+    f=File.open(cfilename)
+  elsif (mountedDests=MountTab.instance.getRes(ni)).size>0
+    f=findMappedResource(mountedDests) # find one
+  end
+  
+  if f
+    response.body=f
+    response.content_length=f.size
+    response.content_type="application/octet-stream"
+    foundObj=true
+  elsif !((r=routes.find(uri)).empty?) # check for routing info
+    print "found routes: #{r}\n"
+    # try first one only for now:
+    route=r[0]
+    loc=route.dest
+    options=route.options
+    if options[:redirect]       # return locator only
+      response.body=[loc.to_s].to_json
+      response.content_type="application/json"
+      response.content_length=response.body.size
+      foundObj=true
+    else
+      case loc.scheme
+      when "nihttp"               # HTTL CL next-hop
+        nhttp=NetInfHTTP.new
+        msgId=Time.new.strftime("%Y%m%d%H%M%S")
+        niUri=URI::parse(uri)
+        print "trying #{loc}...\n"
+        obj=nhttp.get(niUri, msgId, loc.host) # FIXME: error handling...
+        puts "Received headers: #{obj.to_hash.inspect}\n"
+        puts "response code: #{obj.code}\n"
+        if obj.code=="200"
+          
+          #      print "got #{obj}\n"
+          response.body=obj.body
+          response.content_length=obj.body.size
+          response.content_type="application/octet-stream"
+          foundObj=true
+          cache(uri, obj.body)
+        else
+          print "not found!\n"
+        end
+      else
+        print "unknown scheme -- doing nothing\n"
+      end
+    end
+  end
+  if !foundObj
+    print("Resource not found \n")
+    response.body="#{uri} not found!\n"
+    response.content_type="text/plain"
+    response.status=404
+  end
+
+
+#  response.body = request.query_string
+#  response['Content-Type'] = "text/html"
+end
+
+server.mount_proc("/.well-known/netinfproto/publish") do |request, response|
+  print ("publish\n")
+  puts request
+
+  uri=request.query["URI"]
+  msgId = request.query["msgid"]
+
+  fullPut=request.query["fullPut"]
+
+  if fullPut
+    obj = request.query["octets"]
+    
+    print("URI: #{uri}\n")
+    print("msgid: #{msgId}\n")
+    #  print("obj: #{obj}\n")
+    
+
+    cache(uri, obj)
+  else                          # registering locators only
+    loc=[]
+    loc[0]=request.query["loc1"]
+    loc[1]=request.query["loc2"]
+    print ("Received locators: #{loc[0]}, #{loc[1]}\n")
+    routes=Routes.instance
+    for l in 0..1
+      routes.add(uri.to_s, loc[l].to_s, {:prio => l+1, :redirect => true}) if loc[l]
+    end
+  end
+
+  response.body = "Received PUBLISH(#{uri})\n"
+  response['Content-Type'] = "text/plain"
+end
+
+server.mount_proc("/.well-known/netinfproto/search") do |request, response|
+  allNames=Mapping.instance.allNames.map { |n| n.to_s }
+  response.body=allNames.to_json
+  response.content_type="application/json"
+  response.content_length=response.body.size
+end
+
+
+udp = NetInfUDP.new
+
+udp.mountProc(NetInfUDP::GET) do |request, response|
+  print "got GET request: #{request}\n"
+  uri=request.uri
+  ni=URI(uri)
+  res=[]
+  myHttpUri="nihttp://#{server[:BindAddress]}:#{PORT}" 
+  foundHere=(Mapping.instance.find(ni) || File.exists?(cacheFileName(ni))) # have direct mapping or cache entry
+  
+  if !foundHere
+    if (mountedDests=MountTab.instance.getRes(ni)).size>0
+      foundHere=(findMappedResource(mountedDests)!=nil) # have mounted mapping
+    end
+  end
+
+  if foundHere
+    res=[myHttpUri]             # send back my endpoint addr
+  else
+    if !((r=Routes.instance.find(uri)).empty?) # check for routing info
+      res=r.map {|route| route.dest}
+    end
+  end
+
+  udp.getResp(request.uri, request.msgId, res) # send back list of locators
+  
+  true
+end
+
+udp.mountProc(NetInfUDP::GETRESP) do |request, response|
+  print "b got GET-RESP request: #{request}\n"
+
+
+end
+
+trap("INT") { server.shutdown }
+server.start

@@ -1,0 +1,9 @@
+Grossmutti's advice to those starting to suck the ni URI egg:
+
+- The semi-colon (;) is a meta-character (statement terminator) 
+  in all known species of *nix shell
+- Complete ni URI's contain a semi-colon
+- If you don't quote ni URIs on shell command lines than you will 
+  get some peculiar error messages.
+
+

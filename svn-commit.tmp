@@ -1,0 +1,10 @@
+Various additions and modifications of LICENSE and README files ready
+for release of library on Sourceforge.
+--This line, and those below, will be ignored--
+
+M    python/niserver_main.py
+M    python/README
+A    c/LICENSE
+M    c/README
+M    README
+A    samples/README

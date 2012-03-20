@@ -1,0 +1,158 @@
+diff -r eba5b870c141 -r e6c3486d3e88 src/url.c
+--- a/src/url.c	Wed Jan 25 18:22:56 2012 +0000
++++ b/src/url.c	Wed Jan 25 18:31:55 2012 +0000
+@@ -2,6 +2,7 @@
+    Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
+    2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation,
+    Inc.
++   Copyright (C) 2012 Trinity College Dublin
+ 
+ This file is part of GNU Wget.
+ 
+@@ -29,6 +30,9 @@
+ shall include the source code for the parts of OpenSSL used as well
+ as that of the covered work.  */
+ 
++/* Temporary */
++#define HAVE_NI
++
+ #include "wget.h"
+ 
+ #include <stdio.h>
+@@ -77,7 +81,9 @@
+   { "https",    "https://", DEFAULT_HTTPS_PORT, scm_has_query|scm_has_fragment },
+ #endif
+   { "ftp",      "ftp://",   DEFAULT_FTP_PORT,   scm_has_params|scm_has_fragment },
+-
++#ifdef HAVE_NI
++  { "ni",		"ni://",	DEFAULT_HTTP_PORT,	scm_has_query|scm_has_fragment|scm_has_params },
++#endif
+   /* SCHEME_INVALID */
+   { NULL,       NULL,       -1,                 0 }
+ };
+@@ -652,9 +658,92 @@
+ #define PE_IPV6_NOT_SUPPORTED           7
+   N_("IPv6 addresses not supported"),
+ #define PE_INVALID_IPV6_ADDRESS         8
+-  N_("Invalid IPv6 numeric address")
++  N_("Invalid IPv6 numeric address"),
++#define PE_NO_HASH_ALG					9
++  N_("Empty file field in ni: scheme URL - needs non-empty hash alg specifier"),
++#define PE_EMPTY_PARAMS_IN_NI_SCHEME	10
++  N_("Empty params field in ni: scheme URL - needs non-empty hash digest")
+ };
+ 
++#ifdef HAVE_NI
++/* Convert an ni: scheme URL into an http: scheme URL
++ *
++ * An ni: scheme URL is of the form:
++ * ni://<authority or host part>/<opt bits of path>/<hash alg>;<digest>?<query>#<fragment>
++ *
++ * We want to transform this into
++ * http://<authority or host part>/.well-known/ni/<hash alg>/<opt bits of path>?<query>#<fragment>
++ *
++ * Reconstructs the path and param fields of the supplied decomposed URL
++ * Returns one of the PE_* error  codes above (PE_NO_ERROR if ok)
++ */
++static int
++transform_ni_url(struct url* u)
++{
++	/* Change scheme to SCHEME_HTTP and rearrange ptah and params */
++	/* NB: work from URL quoted versions and regenerate dir/file on completion */
++	char *last_slash, *real_path, *hash_alg, *old_path;
++	int path_len;
++
++	assert(u != NULL);
++	assert(u->scheme == SCHEME_NI);
++	u->scheme = SCHEME_HTTP;
++
++	/* Find last / in (encoded) path */
++	old_path = u->path;
++	last_slash = strrchr(old_path, '/');
++	if (!last_slash)
++	  {
++	    real_path = "";
++	    hash_alg = old_path;
++	    path_len = 0;
++	  }
++	else
++	  {
++	    *last_slash = '\0';
++	    real_path = old_path;
++	    /* allow for trailing slash when concatenated */
++	    path_len = strlen(real_path) + 1;
++	    hash_alg = last_slash + 1;
++	  }
++	if (*hash_alg == '\0')
++	  {
++		/* ni: scheme must have non-empty hash algorithm */
++		return PE_NO_HASH_ALG;
++	  }
++
++	/* Check there are some params - must exist for ni: - hash code */
++	if (u->params == NULL)
++	  {
++		return PE_EMPTY_PARAMS_IN_NI_SCHEME;
++	  }
++
++	/* reconstruct path with added bits */
++#define WELL_KNOWN_PREFIX ".well-known/ni/"
++	u->path = (char *)xnew_array(char, strlen(WELL_KNOWN_PREFIX) + strlen(u->params) +
++							           path_len + strlen(hash_alg) + 1);
++	if (path_len > 0)
++	 {
++		sprintf(u->path, "%s%s/%s/%s", WELL_KNOWN_PREFIX, hash_alg, u->params, real_path);
++	 }
++	else
++	{
++		sprintf(u->path, "%s%s/%s", WELL_KNOWN_PREFIX, hash_alg, u->params);
++	}
++
++	/* Replace fields dir and file fields */
++	xfree(u->dir);
++	xfree(u->file);
++	split_path (u->path, &u->dir, &u->file);
++
++	/* Free old path and params fields */
++	xfree(old_path);
++	xfree(u->params);
++	u->params = NULL;
++
++    return PE_NO_ERROR;
++}
++#endif
+ /* Parse a URL.
+ 
+    Return a new struct url if successful, NULL on error.  In case of
+@@ -904,6 +993,18 @@
+     u->query = strdupdelim (query_b, query_e);
+   if (fragment_b)
+     u->fragment = strdupdelim (fragment_b, fragment_e);
++#ifdef HAVE_NI
++  if (scheme == SCHEME_NI)
++    {
++	  /* Rewrite ni scheme as http scheme with .well-known in path */
++	  error_code = transform_ni_url(u);
++	  if (error_code != PE_NO_ERROR)
++	    {
++		  goto error;
++	    }
++	  path_modified = true;
++    }
++#endif
+ 
+   if (opt.enable_iri || path_modified || u->fragment || host_modified || path_b == path_e)
+     {
+diff -r eba5b870c141 -r e6c3486d3e88 src/url.h
+--- a/src/url.h	Wed Jan 25 18:22:56 2012 +0000
++++ b/src/url.h	Wed Jan 25 18:31:55 2012 +0000
+@@ -54,6 +54,9 @@
+   SCHEME_HTTPS,
+ #endif
+   SCHEME_FTP,
++#ifdef HAVE_NI
++  SCHEME_NI,
++#endif
+   SCHEME_INVALID
+ };
+ 

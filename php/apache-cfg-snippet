@@ -1,0 +1,8 @@
+# put this into the relevant VirtualHost entry or other suitable place
+# replace <path> with what you need
+# note that this is first/shortest match so the default has to go last
+	ScriptAlias /.well-known/netinfproto/get "/<path>/fetcher.php"
+	ScriptAlias /.well-known/netinfproto/publish "/<path>/putter.php"
+	ScriptAlias /.well-known/netinfproto "/<path>/fetcher.php"
+	ScriptAlias /.well-known/netinfproto/list "/<path>/wku-list.php"
+

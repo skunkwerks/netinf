@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+
+	<appender name="ConsoleAppender" class="org.apache.log4j.ConsoleAppender">
+		<param name="Target" value="System.out" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%6r %-5p [%t] %l - %m%n" />
+		</layout>
+	</appender>
+	<!-- Use if you wish to get log4j output to a logging server -->
+	<appender name="SocketAppender" class="org.apache.log4j.net.SocketAppender">
+		<param name="RemoteHost" value="localhost" />
+		<param name="Port" value="4560" />
+		<param name="LocationInfo" value="true" />
+		<param name="Application" value="Demo" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%6r %-5p [%t] %c#%M - %m%n" />
+		</layout>
+	</appender>
+
+	<!-- Level and appenders for NetInf packages -->
+	<logger name="niproxy" additivity="false">
+		<level value="info" />
+		<appender-ref ref="ConsoleAppender" />
+		<appender-ref ref="SocketAppender" />
+	</logger>
+	
+	<root>
+		<priority value="error" />
+		<appender-ref ref="ConsoleAppender" />
+		<appender-ref ref="SocketAppender" />
+	</root>
+
+</log4j:configuration>

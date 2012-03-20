@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# set -x
+
+
+NICL=/home/stephen/code/nilib/c/nicl
+
+file=$1
+Prefix=$2
+Dir=$3
+
+if [ -f $file ]
+then
+	WKU=`$NICL -w -n $Prefix -f $file`
+	echo "linking $file to $Dir/$WKU"
+	ln -s $file $Dir/$WKU
+	mtype=`file --mime-type $file | awk '{print $2}' | sed -s 's/\//%2F/g'`
+	ln -s $file $Dir/$WKU?c=$mtype
+fi
+

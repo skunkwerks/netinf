@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# wget a URL then make an ni name for that
+
+if [ "$1" == "" ]
+then
+	echo "Usage: nameurl <url>, where <url> is an http URL"
+	exit
+fi
+
+url=$1
+wget -o /tmp/nameurl.log -O /tmp/nameurl.content $url
+
+niname=`../c/nicl -g -n "ni:///sha-256;?loc=$url" -f /tmp/nameurl.content`
+
+echo $niname
+
+# that'll look like
+# ni:///sha-256;Ui9dy6UyVYB8x2_ULYCjaIdwkPcBFGgmWtoEQhtqHTw?loc=http://www.rte.ie/
+
+# make a .well-known
+
+# authority=`echo $url | cut -d'//' -f2 | cut -d@ -f2`
+
+
+
+# echo $authority

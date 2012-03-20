@@ -1,0 +1,69 @@
+NI URI creation, parsing and validation in Clojure
+==================================================
+
+This is the NI URI library developed as
+part of the SAIL project. (http://sail-project.eu)
+
+Specification(s) - note, versions may change::
+* http://tools.ietf.org/html/farrell-decade-ni-00
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+
+Author:: Dirk Kutscher <kutscher@neclab.eu>
+Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+
+License:: http://www.apache.org/licenses/LICENSE-2.0.html
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+About
+-----
+
+This is a Clojure implementation of the NI name format for Named Data
+Objects as develop by the SAIL project.
+
+Dependencies
+------------
+
+- org.clojure/data.codec (from clojure.contrib)
+- clj-message-digest
+
+tested with lein and clojure-1.4.0 snapshot
+
+
+Roadmap
+-------
+
+There is currently exactly one source code file:
+
+  - src/ni.clj: the NI URI implementation in Clojure
+
+
+Examples:
+---------
+
+parsing:
+(ni "ni://example.com/sha-256;abcd?ct=image/jpg")
+
+creation:
+(def name1 (mkni "this is the NDO data" "example.com" "sha-256" "ct=text/plain"))
+(def name2 (mkni  file "sha-256" ""))
+
+validation:
+(valid? name2 file)
+(valid? name1 "foo")
+
+string transformation:
+(ni-toString name1)
+
+
+
