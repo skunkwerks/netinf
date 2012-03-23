@@ -95,6 +95,9 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-03-23]
+* bug fixes
+
 [2012-03-18]
 * added support for Windows file name in mapping directives (mapdsl.rb)
 

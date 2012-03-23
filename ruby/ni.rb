@@ -60,7 +60,6 @@ module URI
 
 # setting the hash function to use
     def hashFunc!(hashAlgo)
-      @log.info("hashFunc!(#{hashAlgo})")
       @hashAlgo = hashAlgo.to_sym
       @hashFunc =
         if HASH[@hashAlgo]

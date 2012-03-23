@@ -35,11 +35,11 @@ def hashFromFile(file, auth, algo)
   u = URI::NI.buildFromFile(auth, file, nil, algo)
   type=`file --mime-type #{file}`.split[1]
   u.contentType!(type)
-  yield u
+  u
 end
 
 # create an NI URI for the specified HTTP resource, authority, using the
 # specified hash algorithm
 def hashFromWeb(uri, auth, algo)
-  yield URI::NI.buildFromHTTP(auth, URI(uri), nil, algo)
+  URI::NI.buildFromHTTP(auth, URI(uri), nil, algo)
 end

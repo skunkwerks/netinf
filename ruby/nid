@@ -122,7 +122,11 @@ server.mount_proc("/.well-known/netinfproto/get") do |request, response|
 #  puts request
 
   uri = request.query["URI"]
-  ni = URI(uri)
+  ni = if uri
+         URI(uri)
+       else
+         nil
+       end 
   msgId = request.query["msgid"]
   ext = request.query["extension"]
 
@@ -135,16 +139,24 @@ server.mount_proc("/.well-known/netinfproto/get") do |request, response|
 
   f=nil
 #  resource=object[uri]
-  resource=Mapping.instance.find(ni)
-  cfilename=cacheFileName(ni)
+  resource=if ni
+             Mapping.instance.find(ni)
+           else
+             nil
+           end
+  cfilename=if ni
+              cacheFileName(ni)
+            else
+              nil
+            end
 
   if resource
     print("Resource: #{resource}\n")
     f=File.open(resource.dest.path)
-  elsif File.exists?(cfilename)
+  elsif cfilename && File.exists?(cfilename)
     print("Cache Resource: #{cfilename}\n")
     f=File.open(cfilename)
-  elsif (mountedDests=MountTab.instance.getRes(ni)).size>0
+  elsif ni && (mountedDests=MountTab.instance.getRes(ni)).size>0
     f=findMappedResource(mountedDests) # find one
   end
   
