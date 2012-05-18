@@ -8,8 +8,8 @@
 	part of the SAIL project. (http://sail-project.eu)
 
 	Specification(s) - note, versions may change
-		http://tools.ietf.org/html/farrell-decade-ni-00
-		http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+		http://tools.ietf.org/html/dratft-farrell-decade-ni-06
+		http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-02
  */
 /* 
    Copyright 2012 Trinity College Dublin
@@ -41,13 +41,16 @@ typedef char niname[NILEN];
 /// for now and this is how we recognise that's wanted
 /// The URI maker will put the right hash value after the alg.
 /// string (incl. ";") and leaves the rest of the input URI alone
-#define SHA256STR "sha-256"
 
-/// We only support sha256 and a 16-bit truncated version of that
-/// for now and this is how we recognise that's wanted
+/// Supported hash functions 
 /// The URI maker will put the right hash value after the alg.
 /// string (incl. ";") and leaves the rest of the input URI alone
-#define SHA256T16STR "sha-256-16"
+#define SHA256STR "sha-256"
+#define SHA256T32STR "sha-256-32"
+#define SHA256T64STR "sha-256-64"
+#define SHA256T96STR "sha-256-96"
+#define SHA256T120STR "sha-256-120"
+#define SHA256T128STR "sha-256-128"
 
 /*!
  * @brief make an NI URI for a filename
@@ -146,12 +149,14 @@ int checknib(niname name, long blen, unsigned char *buf, int *res);
 /*!
  * @brief return a ptr to a string for the hash alg or NULL if we don't know
  * @param ni is the URI (in)
+ * @param olen (out) is the length of those hashes in bits
+ * @param basefnc (out) is the local id of the hash alg (0==sha256 only one for now)
  * @param pointer to a const char * string or null 
  * 
  * Scan the input name for a known hash alg and return our standard form
  * of that. If we can't find one, return null.
  */
-const char *whichhash(niname name);
+const char *whichhash(niname name, int *olen, int *basefnc);
 
 /*!
  * @brief map an niname to a .well-known URL
@@ -200,6 +205,8 @@ int ni_ic_get_file_compt(const char *url,  char *ni_alg_name);
  * update the digest value before reading of final digest.
  * Returns error if name is in wrong form or OpenSSL doesn't support
  * algorithm.
+ * 
+ * not sure there - sha3 maybe wouldn't have names like that (SF)
  */
 int ni_ic_set_alg(const char *ni_alg_name);
 
@@ -228,15 +235,17 @@ int ni_ic_finalize(long *digest_len);
 
 /*!
  * @brief retrieve previously calculated digest
- * @param digest string (null terminated) (out)
+ * @param digest string (null terminated) (out) as a base64url encoded string
  * @param digest string length (excluding null termination) (out)
  * @return zero for success, non-zero for error
+ *
+ * Note caller allocated space for digest, error returned if not enough
  */
 int ni_ic_get_digest(char *digest, long *digest_len);
 
 /*!
  * @brief compare digest string with previously calculated digest
- * @param digest to be compared (in)
+ * @param digest to be compared (in) as a base64url encoded string
  * @param length of digest to be compared (in)
  * @return zero if strings compare equal, non-zero otherwise.
  */

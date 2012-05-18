@@ -40,6 +40,26 @@
 #include <openssl/evp.h>
 #include "ni.h"
 
+/* ---------------- table of hash function ---------------*/
+/// hash function table
+typedef struct {
+	const char *str; /// string form of hash name (case insensitive here)
+	int olen; /// number of output bits to use 
+	int basefnc; /// hash function on which this is based
+} ht_str;
+
+#define NUMHASHES 6
+
+ht_str hashalgtab[NUMHASHES] = {
+	{ SHA256T32STR,32,0}, 
+	{ SHA256T64STR,64,0},
+	{ SHA256T96STR,96,0},
+	{ SHA256T120STR,120,0},
+	{ SHA256T128STR,128,0},
+	{ SHA256STR,256,0} /* NOTE: THIS NEEDS TO BE LAST, see whichhash() code */
+};
+
+
 /* ---------------- local stuff, utilities ---------------*/
 
 #undef DEBUG
@@ -235,7 +255,8 @@ int checknif(niname name, char *fname, int *res)
 int makenib(niname name,long blen, unsigned char *buf)
 {
 
-	const char *hashalg=whichhash(name);
+	int olen,basefnc;
+	const char *hashalg=whichhash(name,&olen,&basefnc);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
@@ -254,9 +275,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 	// check if its a truncated hash or not
 	unsigned char b64hashbuf[MAXHASHLEN];
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
-	if (hashalg==SHA256T16STR) {
-		hashlen=2;
-	} 
+	hashlen=olen/8;
 	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 	if (rv) {
 		RETURN(rv);
@@ -310,7 +329,8 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	if (!res) RETURN(-1);
 	*res=1;
 
-	const char *hashalg=whichhash(name);
+	int olen,basefnc;
+	const char *hashalg=whichhash(name,&olen,&basefnc);
 
 	long hashlen=SHA256_DIGEST_LENGTH;
 	unsigned char hashbuf[MAXHASHLEN];
@@ -322,6 +342,7 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	// leave the rest of the input URI alone
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
 	unsigned char b64hashbuf[MAXHASHLEN];
+	hashlen=olen/8;
 	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 	if (rv) {
 		RETURN(rv);
@@ -329,12 +350,11 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 #ifdef DEBUG
 	printf("Hash: %s %ld\n",b64hashbuf,b64hashlen);
 #endif
-	const char *delim=SHA256STR;
-	char *ptr1=strstr(name,delim);
+	char *ptr1=strstr(name,hashalg);
 	if (!ptr1) {
 		RETURN(-1);
 	}
-	ptr1+=strlen(delim)+1;
+	ptr1+=strlen(hashalg)+1;
 
 #ifdef DEBUG
 	printf("T=%s, H=%s\n",ptr1,b64hashbuf);
@@ -349,29 +369,31 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 /*!
  * @brief return a ptr to a string for the hash alg or NULL if we don't know
  * @param ni is the URI (in)
+ * @param olen (out) is the length of those hashes in bits
+ * @param basefnc (out) is the local id of the hash alg (0==sha256 only one for now)
  * @param pointer to a const char * string or null 
  * 
  * Scan the input name for a known hash alg and return our standard form
  * of that. If we can't find one, return null.
  */
-const char *whichhash(niname name)
+const char *whichhash(niname name, int *olen, int *basefnc)
 {
-	// find out which hash its to be. we'll got for the first one we
+	// find out which hash its to be. we'll go for the first one we
 	// find
-	const char *hashalg; // this'll point at a const char string
 
-	hashalg=SHA256T16STR;
-	char *ptr1=strstr(name,hashalg);
-	if (ptr1) {
-		return(hashalg);
+	if (!name || !olen || !basefnc) return (NULL); 
+
+	const char *hashalg=NULL; // this'll point at a const char string
+	int i; // counter
+
+	for (i=0;i!=NUMHASHES;i++) {
+		hashalg=strstr(name,hashalgtab[i].str);
+		if (hashalg) {
+			*olen=hashalgtab[i].olen; 
+			*basefnc=hashalgtab[i].basefnc; 
+			return(hashalgtab[i].str);
+		}
 	}
-
-	hashalg=SHA256STR;
-	ptr1=strstr(name,hashalg);
-	if (ptr1) {
-		return(hashalg);
-	}
-
 	return(NULL);
 
 }
@@ -422,7 +444,8 @@ int makewkuf(niname wku,char *fname)
 int makewkub(niname wku, long blen, unsigned char *buf)
 {
 
-	const char *hashalg=whichhash(wku);
+	int olen,basefnc;
+	const char *hashalg=whichhash(wku,&olen,&basefnc);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
@@ -441,7 +464,7 @@ int makewkub(niname wku, long blen, unsigned char *buf)
 	// check if its a truncated hash or not
 	unsigned char b64hashbuf[MAXHASHLEN];
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
-	if (hashalg==SHA256T16STR) {
+	if (hashalg==SHA256T32STR) {
 		hashlen=2;
 	} 
 	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
@@ -483,7 +506,8 @@ int makewkub(niname wku, long blen, unsigned char *buf)
  */
 int mapnametowku(niname name, niname wku)
 {
-	const char *hashalg=whichhash(name);
+	int olen,basefnc;
+	const char *hashalg=whichhash(name,&olen,&basefnc);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
