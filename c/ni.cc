@@ -731,7 +731,7 @@ int ni_ic_set_alg(const char *ni_alg_name)
 int ni_ic_update(unsigned char * buf, long buflen)
 {
 	assert(ni_ic_ready && !ni_ic_finalized);
-	return ((EVP_DigestUpdate(&mdctx, buf, buflen) == 1) ? 0 : 1);
+	return ((int)((EVP_DigestUpdate(&mdctx, buf, buflen) == 1) ? 0 : 1));
 }
 
 /*!

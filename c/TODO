@@ -1,0 +1,6 @@
+
+- Support all and only the hash alg variants from the draft
+- Add nih: support
+- Add binary format support
+- (maybe) add SubjectPublicKeyInfo support, the ability to extract that from
+  a DER encoded cert (possibly base64/armor too)

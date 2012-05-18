@@ -213,12 +213,12 @@ main(int argc, char *argv[])
 		}
 		rv = ni_ic_update(rb, (long)g_out);
 		if (rv != 0) {
-			printf("\tError: ni_ic_update failed digesting %d octets. Returned %d\n", g_out, rv);
+			printf("\tError: ni_ic_update failed digesting %ld octets. Returned %d\n", g_out, rv);
 			exit(-1);
 			}
 		g_total += g_out;
 		g_in = MAXFILE;
-		printf("\tSucceeded... loop reading %d octet chunks and feeding to ni_ic_update until end of file.\n", g_in);
+		printf("\tSucceeded... loop reading %ld octet chunks and feeding to ni_ic_update until end of file.\n", g_in);
 		printf("\tProcessing chunks: ");
 		while (!feof(f)) {
 			g_out = fread(rb, sizeof(*rb), g_in, f);
@@ -229,7 +229,7 @@ main(int argc, char *argv[])
 			if (g_out > 0) {
 				rv = ni_ic_update(rb, (long)g_out);
 				if (rv != 0) {
-					printf("\n\tError: ni_ic_update failed digesting %d octets. Returned %d\n", g_out, rv);
+					printf("\n\tError: ni_ic_update failed digesting %ld octets. Returned %d\n", g_out, rv);
 					exit(-1);
 					}
 				}
@@ -264,7 +264,7 @@ main(int argc, char *argv[])
 			exit(-1);
 			}
 		if (g_in != g_out) {
-			printf("\tError: Recalling ni_ic_finalize generated a different digest length %d.", g_out);
+			printf("\tError: Recalling ni_ic_finalize generated a different digest length %ld.", g_out);
 			exit(-1);
 			}
 		printf("\tSuccess.. same digest length returned\n");
