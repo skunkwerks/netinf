@@ -1,6 +1,6 @@
 /*!
  * @file ni.h
- * @brief This is the external interface for the NI URI handling library
+ * @brief This is the external interface for 'C' implementation of the ni/nih URI handling library
  * @version $Revision: 1.32$ $Author: stephen$
  * @version Copyright (C) 2012 Trinity College Dublin
 
@@ -37,11 +37,6 @@
 /// For now, just a buffer on the stack, probably change in a bit
 typedef char niname[NILEN];
 
-/// We only support sha256 and a 16-bit truncated version of that
-/// for now and this is how we recognise that's wanted
-/// The URI maker will put the right hash value after the alg.
-/// string (incl. ";") and leaves the rest of the input URI alone
-
 /// Supported hash functions 
 /// The URI maker will put the right hash value after the alg.
 /// string (incl. ";") and leaves the rest of the input URI alone
@@ -53,15 +48,18 @@ typedef char niname[NILEN];
 #define SHA256T128STR "sha-256-128"
 
 /*!
- * @brief make an NI URI for a filename
- * @param ni is the URI (in/out)
+ * @brief make an ni/nih URI for a filename
+ * @param ni/nih is the URI (in/out)
  * @param fname is a file name (in)
  * @return zero on success, non-zero for error
  *
- * Given an ni name, open a file, hash it and add the hash to
+ * Given an ni/nih name, open a file, hash it and add the hash to
  * the URI after the hashalg string.
  * 
  * The input name should be like: ni://tcd.ie/sha-256;?query-stuff
+ * or nih:sha-256-32;
+ * 
+ * The ";" after the hash alg is optional
  */
 int makenif(niname name,char *fname);
 
@@ -72,10 +70,7 @@ int makenif(niname name,char *fname);
  * @param buf is the buffer 
  * @return zero on success, non-zero for error
  *
- * Given an ni name, hash a buffer and add the hash to
- * the URI after the hashalg string.
- * 
- * The input name should be like: ni://tcd.ie/sha-256;?query-stuff
+ * See makenif for more details
  */
 int makenib(niname name,long blen, unsigned char *buf);
 
@@ -110,7 +105,7 @@ int makewkub(niname wku, long blen, unsigned char *buf);
 
 
 /*!
- * @brief check if an NI URI matches a file's content
+ * @brief check if an ni/nih URI matches a file's content
  * @param ni is the URI (in)
  * @param fname is a file name (in)
  * @param res is the result (out)
@@ -128,7 +123,7 @@ int makewkub(niname wku, long blen, unsigned char *buf);
 int checknif(niname name, char *fname, int *res);
 
 /*!
- * @brief check if an NI URI matches a buffer
+ * @brief check if an ni/nih URI matches a buffer
  * @param ni is the URI (in)
  * @param blen is the buffer length
  * @param buf is the buffer 
@@ -159,7 +154,7 @@ int checknib(niname name, long blen, unsigned char *buf, int *res);
 const char *whichhash(niname name, int *olen, int *basefnc);
 
 /*!
- * @brief map an niname to a .well-known URL
+ * @brief map an ni/nih name to a .well-known URL
  * @param name is the URI (in)
  * @param wku is the .well-known URL (out)
  * @return zero for success, non-zero for error

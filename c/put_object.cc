@@ -123,13 +123,14 @@ void send_request(char*next_hop,char*ni_uri,FILE*f,char*loc){
   char*separator=NULL,*filebuf=NULL;
   long filesize;
   char*port;
+  char fixed80[3]={'8','0',0};
 
   postbuf[0]='\0';
   if(next_hop==NULL)next_hop=getauthority(ni_uri);
   if(next_hop==NULL)return;
   
   port=strchr(next_hop,':');
-  if(port==NULL)port="80";
+  if(port==NULL) port=fixed80;
   else *port++='\0';
   fprintf(stderr,"attempting connection to %s:%s.\n",next_hop,port);
   /* SET UP THE SOCKET */

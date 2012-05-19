@@ -177,6 +177,32 @@ static int b64url_enc(long ilen, const unsigned char *ibuf, long *olen, unsigned
   RETURN(0) ;
 }
 
+/// LEFT Nibble of an octet as an ASCII hex digit
+#define LNIB(x) ((((x)/16)>=10)?('A'-10+((x)/16)):('0'+((x)/16)))
+
+/// RIGHT Nibble of an octet as an ASCII hex digit
+#define RNIB(x) ((((x)%16)>=10)?('A'-10+((x)%16)):('0'+((x)%16)))
+
+/*!
+ * @brief base 16 (ascii hex) encode a value
+ * @param ilen is the input length
+ * @param ibuf is the input buffer
+ * @param olen is the output length (in/out)
+ * @param obuf is the output buffer (allocated by calle)
+ * @return zero on success, non-zero for error
+ *
+ */
+static int b16_enc(long ilen, const unsigned char *ibuf, long *olen, unsigned char *obuf)
+{
+	long i;
+	if (*olen < 2*ilen) RETURN(-1);
+	for (i=0;i!=ilen;i++) {
+		obuf[2*i]=LNIB(ibuf[i]);
+		obuf[(2*i)+1]=RNIB(ibuf[i]);
+	}
+	RETURN(0);
+}
+
 /*-------------- external API ---------------- */
 
 /*!
@@ -255,6 +281,13 @@ int checknif(niname name, char *fname, int *res)
 int makenib(niname name,long blen, unsigned char *buf)
 {
 
+	bool nischeme=false;
+	bool nihscheme=false;
+	if (strlen(name)<4) RETURN(-1);
+	if (!strncmp(name,"ni:",3)) { nischeme=true; }
+	if (!strncmp(name,"nih:",4)) { nihscheme=true; }
+	if (!nischeme && !nihscheme) RETURN(-1);
+
 	int olen,basefnc;
 	const char *hashalg=whichhash(name,&olen,&basefnc);
 	if (hashalg==NULL) {
@@ -274,12 +307,22 @@ int makenib(niname name,long blen, unsigned char *buf)
 
 	// check if its a truncated hash or not
 	unsigned char b64hashbuf[MAXHASHLEN];
+	// b64 foo can be b16 foo 
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
 	hashlen=olen/8;
-	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
-	if (rv) {
-		RETURN(rv);
+	if (nischeme) {
+		int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
+		if (rv) {
+			RETURN(rv);
+		}
 	}
+	if (nihscheme) {
+		int rv=b16_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
+		if (rv) {
+			RETURN(rv);
+		}
+	}
+
 #ifdef DEBUG
 	printf("Hash: %s %ld\n",b64hashbuf,b64hashlen);
 #endif
@@ -305,6 +348,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 	memcpy(name,newname,NILEN);
 
 	RETURN(0);
+
 }
 
 /*!
@@ -329,6 +373,13 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	if (!res) RETURN(-1);
 	*res=1;
 
+	bool nischeme=false;
+	bool nihscheme=false;
+	if (strlen(name)<4) RETURN(-1);
+	if (!strncmp(name,"ni:",3)) { nischeme=true; }
+	if (!strncmp(name,"nih:",4)) { nihscheme=true; }
+	if (!nischeme && !nihscheme) RETURN(-1);
+
 	int olen,basefnc;
 	const char *hashalg=whichhash(name,&olen,&basefnc);
 
@@ -343,9 +394,17 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
 	unsigned char b64hashbuf[MAXHASHLEN];
 	hashlen=olen/8;
-	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
-	if (rv) {
-		RETURN(rv);
+	if (nischeme) {
+		int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
+		if (rv) {
+			RETURN(rv);
+		}
+	}
+	if (nihscheme) {
+		int rv=b16_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
+		if (rv) {
+			RETURN(rv);
+		}
 	}
 #ifdef DEBUG
 	printf("Hash: %s %ld\n",b64hashbuf,b64hashlen);

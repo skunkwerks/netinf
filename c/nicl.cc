@@ -43,6 +43,7 @@ static void usage(int line, int argc, char *argv[])
 	fprintf(stderr,"\t\tg: means generate a hash based on the file, and put it in the name after the hashalg string\n");
 	fprintf(stderr,"\t\tw: means generate a hash based on the file, and put it in the .well_known URL after the hashalg string\n");
 	fprintf(stderr,"\t\tv: means verify a hash based on the name and file\n");
+	fprintf(stderr,"\tname here can be an ni: or nih: scheme URI\n");
 	fprintf(stderr,"%s: -m -n <name> maps from an ni name to a .well-known URL\n",argv[0]);
 	exit(-1);
 }
