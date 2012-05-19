@@ -204,6 +204,43 @@ static int b16_enc(long ilen, const unsigned char *ibuf, long *olen, unsigned ch
 	RETURN(0);
 }
 
+/*!
+ * @brief generate a lower-case ascii-hex Luhn check digit mod 16
+ * @param ilen is the input length
+ * @param ibuf is the input buffer
+ * @param cdig (out) is the check digit calculated
+ * @return zero on success, non-zero on error
+ *
+ */
+static int makecd(long ilen, const unsigned char *ibuf, char *cdig)
+{
+
+	int factor = 2;
+	int sum = 0;
+	int n = 16;
+	int i;
+	// Starting from the right and working leftwards is easier since 
+	// the initial "factor" will always be "2" 
+	for (i = ilen - 1; i >= 0; i--) {
+		int codePoint = (ibuf[i]>='a' && ibuf[i]<='f'?ibuf[i]-'a'+10:ibuf[i]-'0');
+		int addend = factor * codePoint;
+
+		// Alternate the "factor" that each "codePoint" is multiplied by
+		factor = (factor == 2) ? 1 : 2;
+
+		// Sum the digits of the "addend" as expressed in base "n"
+		addend = (addend / n) + (addend % n);
+		sum += addend;
+	}
+	// Calculate the number that must be added to the "sum" 
+	// to make it divisible by "n"
+	int remainder = sum % n;
+	int checkCodePoint = (n - remainder) % n;
+	*cdig=RNIB(checkCodePoint);
+	RETURN(0);
+
+}
+
 /*-------------- external API ---------------- */
 
 /*!
@@ -309,19 +346,22 @@ int makenib(niname name,long blen, unsigned char *buf)
 	// check if its a truncated hash or not
 	unsigned char b64hashbuf[MAXHASHLEN];
 	// b64 foo can be b16 foo 
-	long b64hashlen=2*SHA256_DIGEST_LENGTH;
+	long b64hashlen=MAXHASHLEN;
 	hashlen=olen/8;
 	if (nischeme) {
 		int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
-		if (rv) {
-			RETURN(rv);
-		}
+		if (rv) { RETURN(rv); }
 	}
 	if (nihscheme) {
 		int rv=b16_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
-		if (rv) {
-			RETURN(rv);
-		}
+		if (rv) { RETURN(rv); }
+		// add checkdigit
+		char cdig;
+		rv=makecd(b64hashlen,b64hashbuf,&cdig);
+		if (rv) { RETURN(rv); }
+		if (b64hashlen+2>MAXHASHLEN) RETURN(-1);
+		b64hashbuf[b64hashlen]=';'; b64hashlen++;
+		b64hashbuf[b64hashlen]=cdig; b64hashlen++;
 	}
 
 #ifdef DEBUG
@@ -371,8 +411,9 @@ int makenib(niname name,long blen, unsigned char *buf)
  */
 int checknib(niname name, long blen, unsigned char *buf, int *res)
 {
+	char cdig;
 	if (!res) RETURN(-1);
-	*res=1;
+	*res=NI_BAD;
 
 	bool nischeme=false;
 	bool nihscheme=false;
@@ -406,6 +447,12 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 		if (rv) {
 			RETURN(rv);
 		}
+		// add checkdigit
+		rv=makecd(b64hashlen,b64hashbuf,&cdig);
+		if (rv) { RETURN(rv); }
+		if (b64hashlen+2>MAXHASHLEN) RETURN(-1);
+		b64hashbuf[b64hashlen]=';'; b64hashlen++;
+		b64hashbuf[b64hashlen]=cdig; b64hashlen++;
 	}
 #ifdef DEBUG
 	printf("Hash: %s %ld\n",b64hashbuf,b64hashlen);
@@ -420,7 +467,33 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	printf("T=%s, H=%s\n",ptr1,b64hashbuf);
 #endif
 	
-	if (!memcmp(ptr1,b64hashbuf,b64hashlen)) *res=0;
+	if (nischeme) {
+		if ((strlen(ptr1) >= b64hashlen) && !memcmp(ptr1,b64hashbuf,b64hashlen)) *res=NI_OK;
+	}
+	if (nihscheme) {
+		// checkdigit is optional
+		if ((strlen(ptr1) >= b64hashlen) && !memcmp(ptr1,b64hashbuf,b64hashlen)) {
+			*res=NI_OK; // supplied nih hash matches and so does cdig
+		} else {
+			if ((strlen(ptr1) >= (b64hashlen-2)) && !memcmp(ptr1,b64hashbuf,b64hashlen-2)) {
+				*res=NI_CDBAD; // hash matches but cdig doesn't - oddity
+			} else { // check if the input nih CD is wrong
+				if (strlen(ptr1)==(hashlen*2)) { // no CD supplied at all
+					*res=NI_BAD; // no more info
+				} else if (strlen(ptr1)>=((hashlen*2)+2)) { // CD supplied, no other crap
+					if (ptr1[(hashlen*2)]==';')  {
+						char cdig2;
+						int rv=makecd(hashlen*2,(const unsigned char*) ptr1,&cdig2);
+						if (rv) RETURN(rv);
+						if (cdig2!=ptr1[(2*hashlen)+1]) { // aha! - bad CD for supplied hash
+							*res=NI_CDINBAD;
+						}
+					}
+				}
+			} 
+		}
+	}
+		
 
 	RETURN(0);
 }

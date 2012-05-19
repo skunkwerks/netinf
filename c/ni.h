@@ -47,6 +47,14 @@ typedef char niname[NILEN];
 #define SHA256T120STR "sha-256-120"
 #define SHA256T128STR "sha-256-128"
 
+/// matching status from checknif/checknib
+#define NI_OK 0 /// success - good match
+#define NI_BAD 1 /// fair - bad match
+#define NI_CDBAD 2 /// weirdo - hash matches but check digit doesn't (nih: only)
+#define NI_CDINBAD 3 /// input checkdigit doesn't match input name, probaby typo
+
+
+
 /*!
  * @brief make an ni/nih URI for a filename
  * @param ni/nih is the URI (in/out)

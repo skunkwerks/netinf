@@ -140,7 +140,10 @@ main(int argc, char *argv[])
 			printf("\tError: %d, at %s: %d\n",rv,__FILE__,__LINE__);
 			exit(-1);
 		} else {
-			printf("%s\n",(res==0?"good":"bad"));
+			if (res==NI_OK) printf("good\n");
+			if (res==NI_BAD) printf("bad\n");
+			if (res==NI_CDBAD) printf("weirdo - good hash bad check digit\n");
+			if (res==NI_CDINBAD) printf("input check digit and name don't match, probable typo?\n");
 		}
 	}
 	exit(0);

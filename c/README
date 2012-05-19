@@ -17,6 +17,8 @@ ni names.
 - ni.cc is the implementation
 - Makefile builds stuff, doesn't actually make a .so yet
 - foo and bar (in the samples directory) are files used in tests
+- tcd.spki is the SubjectPublicKeyInfo example from the 
+  Internet-Draft
 
 
 ***********************************************************
