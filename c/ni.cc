@@ -178,10 +178,10 @@ static int b64url_enc(long ilen, const unsigned char *ibuf, long *olen, unsigned
 }
 
 /// LEFT Nibble of an octet as an ASCII hex digit
-#define LNIB(x) ((((x)/16)>=10)?('A'-10+((x)/16)):('0'+((x)/16)))
+#define LNIB(x) ((((x)/16)>=10)?('a'-10+((x)/16)):('0'+((x)/16)))
 
 /// RIGHT Nibble of an octet as an ASCII hex digit
-#define RNIB(x) ((((x)%16)>=10)?('A'-10+((x)%16)):('0'+((x)%16)))
+#define RNIB(x) ((((x)%16)>=10)?('a'-10+((x)%16)):('0'+((x)%16)))
 
 /*!
  * @brief base 16 (ascii hex) encode a value
@@ -200,6 +200,7 @@ static int b16_enc(long ilen, const unsigned char *ibuf, long *olen, unsigned ch
 		obuf[2*i]=LNIB(ibuf[i]);
 		obuf[(2*i)+1]=RNIB(ibuf[i]);
 	}
+	*olen=2*ilen;
 	RETURN(0);
 }
 
