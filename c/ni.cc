@@ -41,22 +41,16 @@
 #include "ni.h"
 
 /* ---------------- table of hash function ---------------*/
-/// hash function table
-typedef struct {
-	const char *str; /// string form of hash name (case insensitive here)
-	int olen; /// number of output bits to use 
-	int basefnc; /// hash function on which this is based
-} ht_str;
 
 #define NUMHASHES 6
 
 ht_str hashalgtab[NUMHASHES] = {
-	{ SHA256T32STR,32,0}, 
-	{ SHA256T64STR,64,0},
-	{ SHA256T96STR,96,0},
-	{ SHA256T120STR,120,0},
-	{ SHA256T128STR,128,0},
-	{ SHA256STR,256,0} /* NOTE: THIS NEEDS TO BE LAST, see whichhash() code */
+	{ true, SHA256T32STR,6,32,0}, 
+	{ true, SHA256T64STR,5,64,0},
+	{ true, SHA256T96STR,4,96,0},
+	{ true, SHA256T120STR,3,120,0},
+	{ true, SHA256T128STR,2,128,0},
+	{ true, SHA256STR,1,256,0} /* NOTE: THIS NEEDS TO BE LAST, see whichhash() code */
 };
 
 
@@ -326,8 +320,8 @@ int makenib(niname name,long blen, unsigned char *buf)
 	if (!strncmp(name,"nih:",4)) { nihscheme=true; }
 	if (!nischeme && !nihscheme) RETURN(-1);
 
-	int olen,basefnc;
-	const char *hashalg=whichhash(name,&olen,&basefnc);
+	ht_str	hte;
+	const char *hashalg=whichhash(name,&hte);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
@@ -347,7 +341,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 	unsigned char b64hashbuf[MAXHASHLEN];
 	// b64 foo can be b16 foo 
 	long b64hashlen=MAXHASHLEN;
-	hashlen=olen/8;
+	hashlen=hte.olen/8;
 	if (nischeme) {
 		int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 		if (rv) { RETURN(rv); }
@@ -369,11 +363,20 @@ int makenib(niname name,long blen, unsigned char *buf)
 #endif
 
 	long nameinlen=strlen(name);
-	long hashalgnamelen=strlen(hashalg);
-	char *ptr1=strstr(name,hashalg);
-	if (!ptr1) {
-		RETURN(-1);
+	long hashalgnamelen=strlen(hte.str);
+
+	char *ptr1;
+	if (hte.strused) {
+		ptr1=strstr(name,hte.str);
+		if (!ptr1) {
+			RETURN(-1);
+		}
+	} else {
+		if (nischeme) ptr1=name+3;
+		if (nihscheme) ptr1=name+4;
+		hashalgnamelen=1;
 	}
+
 	long prefixlen=(ptr1-name);
 	long postfixoffset=prefixlen+hashalgnamelen;
 	if (name[postfixoffset]==';') {
@@ -382,7 +385,11 @@ int makenib(niname name,long blen, unsigned char *buf)
 	niname newname;
 	memset(newname,0,NILEN);
 	memcpy(newname,name,prefixlen);
-	memcpy(newname+strlen(newname),hashalg,hashalgnamelen+1);
+	if (hte.strused) {
+		memcpy(newname+strlen(newname),hte.str,hashalgnamelen+1);
+	} else {
+		newname[strlen(newname)]='0'+hte.suite;
+	}
 	newname[strlen(newname)]=';';
 	memcpy(newname+strlen(newname),b64hashbuf,b64hashlen);
 	memcpy(newname+strlen(newname),name+postfixoffset,nameinlen-postfixoffset);
@@ -411,10 +418,9 @@ int makenib(niname name,long blen, unsigned char *buf)
  */
 int checknib(niname name, long blen, unsigned char *buf, int *res)
 {
-	char cdig;
 	if (!res) RETURN(-1);
 	*res=NI_BAD;
-
+	char cdig;
 	bool nischeme=false;
 	bool nihscheme=false;
 	if (strlen(name)<4) RETURN(-1);
@@ -422,8 +428,11 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	if (!strncmp(name,"nih:",4)) { nihscheme=true; }
 	if (!nischeme && !nihscheme) RETURN(-1);
 
-	int olen,basefnc;
-	const char *hashalg=whichhash(name,&olen,&basefnc);
+	ht_str hte;
+	const char *hashalg=whichhash(name,&hte);
+	if (hashalg==NULL) {
+		RETURN(-1);
+	}
 
 	long hashlen=SHA256_DIGEST_LENGTH;
 	unsigned char hashbuf[MAXHASHLEN];
@@ -435,7 +444,7 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	// leave the rest of the input URI alone
 	long b64hashlen=2*SHA256_DIGEST_LENGTH;
 	unsigned char b64hashbuf[MAXHASHLEN];
-	hashlen=olen/8;
+	hashlen=hte.olen/8;
 	if (nischeme) {
 		int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 		if (rv) {
@@ -457,16 +466,23 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 #ifdef DEBUG
 	printf("Hash: %s %ld\n",b64hashbuf,b64hashlen);
 #endif
-	char *ptr1=strstr(name,hashalg);
-	if (!ptr1) {
-		RETURN(-1);
+
+	char *ptr1;
+	if (hte.strused) {
+		ptr1=strstr(name,hte.str);
+		if (!ptr1) {
+			RETURN(-1);
+		}
+		ptr1+=strlen(hte.str)+1;
+	} else {
+		if (nischeme) ptr1=name+5;
+		if (nihscheme) ptr1=name+6;
 	}
-	ptr1+=strlen(hashalg)+1;
 
 #ifdef DEBUG
 	printf("T=%s, H=%s\n",ptr1,b64hashbuf);
 #endif
-	
+
 	if (nischeme) {
 		if ((strlen(ptr1) >= b64hashlen) && !memcmp(ptr1,b64hashbuf,b64hashlen)) *res=NI_OK;
 	}
@@ -502,19 +518,18 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 /*!
  * @brief return a ptr to a string for the hash alg or NULL if we don't know
  * @param ni is the URI (in)
- * @param olen (out) is the length of those hashes in bits
- * @param basefnc (out) is the local id of the hash alg (0==sha256 only one for now)
+ * @param hte (out) is NULL (if name's hash unknown) or pointer to hash table entry
  * @param pointer to a const char * string or null 
  * 
  * Scan the input name for a known hash alg and return our standard form
  * of that. If we can't find one, return null.
  */
-const char *whichhash(niname name, int *olen, int *basefnc)
+const char *whichhash(niname name, ht_str *hte)
 {
 	// find out which hash its to be. we'll go for the first one we
 	// find
 
-	if (!name || !olen || !basefnc) return (NULL); 
+	if (!name || !hte) return (NULL); 
 
 	const char *hashalg=NULL; // this'll point at a const char string
 	int i; // counter
@@ -522,8 +537,26 @@ const char *whichhash(niname name, int *olen, int *basefnc)
 	for (i=0;i!=NUMHASHES;i++) {
 		hashalg=strstr(name,hashalgtab[i].str);
 		if (hashalg) {
-			*olen=hashalgtab[i].olen; 
-			*basefnc=hashalgtab[i].basefnc; 
+			*hte=hashalgtab[i]; // struct copy
+			return(hashalgtab[i].str);
+		}
+	}
+	// bugger, maybe the numeric form's there?
+	char niguess[100]="ni:x";
+	char nihguess[100]="nih:x";
+	for (i=0;i!=NUMHASHES;i++) {
+		niguess[3]=hashalgtab[i].suite+'0';
+		nihguess[4]=hashalgtab[i].suite+'0';
+		hashalg=strstr(name,niguess);
+		if (hashalg) {
+			*hte=hashalgtab[i]; // struct copy
+			hte->strused=false;
+			return(hashalgtab[i].str);
+		}
+		hashalg=strstr(name,nihguess);
+		if (hashalg) {
+			*hte=hashalgtab[i]; // struct copy
+			hte->strused=false;
 			return(hashalgtab[i].str);
 		}
 	}
@@ -577,8 +610,8 @@ int makewkuf(niname wku,char *fname)
 int makewkub(niname wku, long blen, unsigned char *buf)
 {
 
-	int olen,basefnc;
-	const char *hashalg=whichhash(wku,&olen,&basefnc);
+	ht_str hte;
+	const char *hashalg=whichhash(wku,&hte);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
@@ -639,8 +672,8 @@ int makewkub(niname wku, long blen, unsigned char *buf)
  */
 int mapnametowku(niname name, niname wku)
 {
-	int olen,basefnc;
-	const char *hashalg=whichhash(name,&olen,&basefnc);
+	ht_str hte;
+	const char *hashalg=whichhash(name,&hte);
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}

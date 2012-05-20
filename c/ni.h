@@ -37,6 +37,15 @@
 /// For now, just a buffer on the stack, probably change in a bit
 typedef char niname[NILEN];
 
+/// hash function table type
+typedef struct {
+	bool strused; /// true if the name originally presented used the strin form
+	const char *str; /// string form of hash name (case insensitive here)
+	int suite; /// numeric form of alg id from IANA reg
+	int olen; /// number of output bits to use 
+	int basefnc; /// hash function on which this is based
+} ht_str;
+
 /// Supported hash functions 
 /// The URI maker will put the right hash value after the alg.
 /// string (incl. ";") and leaves the rest of the input URI alone
@@ -152,14 +161,13 @@ int checknib(niname name, long blen, unsigned char *buf, int *res);
 /*!
  * @brief return a ptr to a string for the hash alg or NULL if we don't know
  * @param ni is the URI (in)
- * @param olen (out) is the length of those hashes in bits
- * @param basefnc (out) is the local id of the hash alg (0==sha256 only one for now)
+ * @param hte (out) is NULL (if name's hash unknown) or pointer to hash table entry
  * @param pointer to a const char * string or null 
  * 
  * Scan the input name for a known hash alg and return our standard form
  * of that. If we can't find one, return null.
  */
-const char *whichhash(niname name, int *olen, int *basefnc);
+const char *whichhash(niname name, ht_str *hte);
 
 /*!
  * @brief map an ni/nih name to a .well-known URL
