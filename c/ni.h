@@ -31,11 +31,14 @@
 /*
 */
 
-/// The length of an ni URI
+/// The max length of an ni or nih URI or binary equivalent
 #define NILEN 4096
 
-/// For now, just a buffer on the stack, probably change in a bit
+/// For now, just a buffer on the stack, this can be for ni: or nih: URI schemes
 typedef char niname[NILEN];
+
+/// Binary format 
+typedef unsigned char bin_niname[NILEN];
 
 /// hash function table type
 typedef struct {
@@ -45,6 +48,12 @@ typedef struct {
 	int olen; /// number of output bits to use 
 	int basefnc; /// hash function on which this is based
 } ht_str;
+
+/// number of hash variants supported
+#define NUMHASHES 6
+
+/// table of details
+extern ht_str hashalgtab[NUMHASHES];
 
 /// Supported hash functions 
 /// The URI maker will put the right hash value after the alg.
@@ -61,7 +70,6 @@ typedef struct {
 #define NI_BAD 1 /// fair - bad match
 #define NI_CDBAD 2 /// weirdo - hash matches but check digit doesn't (nih: only)
 #define NI_CDINBAD 3 /// input checkdigit doesn't match input name, probaby typo
-
 
 
 /*!
@@ -170,7 +178,7 @@ int checknib(niname name, long blen, unsigned char *buf, int *res);
 const char *whichhash(niname name, ht_str *hte);
 
 /*!
- * @brief map an ni/nih name to a .well-known URL
+ * @brief map an ni or nih URI to a .well-known URL
  * @param name is the URI (in)
  * @param wku is the .well-known URL (out)
  * @return zero for success, non-zero for error
@@ -179,6 +187,27 @@ const char *whichhash(niname name, ht_str *hte);
  * of that. If we can't find one, return null.
  */
 int mapnametowku(niname name, niname wku);
+
+/*!
+ * @brief make a binary format equivalent to an ni or nih URI from a file
+ * @param bn is the name (in/out)
+ * @param suite is the suite to use (in)
+ * @param fname is a file name (in)
+ * @return zero on success, non-zero for error
+ *
+ */
+int makebnf(bin_niname bn, int suite, char *fname);
+
+/*!
+ * @brief make a binary format equivalent to an ni or nih URI from a buffer
+ * @param bn is the name (in/out)
+ * @param suite is the suite to use (in)
+ * @param blen is the buffer length
+ * @param buf is the buffer 
+ * @return zero on success, non-zero for error
+ *
+ */
+int makebnb(bin_niname bn, int suite, int blen, unsigned char *buf);
 
 /*============== Lower Level Interface ==================================*/
 

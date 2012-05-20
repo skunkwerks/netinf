@@ -2,3 +2,5 @@
 - Add binary format support
 - (maybe) add SubjectPublicKeyInfo support, the ability to extract that from
   a DER encoded cert (possibly base64/armor too)
+- check if changes work for ED's lower layer i/f
+- add some kind of versioning (per-language or overall?)

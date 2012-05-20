@@ -45,6 +45,7 @@ static void usage(int line, int argc, char *argv[])
 	fprintf(stderr,"\t\tv: means verify a hash based on the name and file\n");
 	fprintf(stderr,"\tname here can be an ni: or nih: scheme URI\n");
 	fprintf(stderr,"%s: -m -n <name> maps from an ni name to a .well-known URL\n",argv[0]);
+	fprintf(stderr,"%s: -b -s <suite> -f <file> outputs a binary format name\n",argv[0]);
 	exit(-1);
 }
 
@@ -60,21 +61,27 @@ main(int argc, char *argv[])
 	bool gen=true;
 	bool gotfile=false;
 	bool gotname=false;
+	bool gotsuite=false;
 	bool wku=false; // well-known URL
 	bool map=false; 
+	bool bin=false;
 
 #define MAXFILE 1024
 	niname x;
 	char file[MAXFILE];
 	int rv;
 	int res;
+	int suite;
 
 	memset(x,0,NILEN);
 	memset(file,0,MAXFILE);
 
 	if (!(argc==6 || argc==4)) usage(__LINE__,argc,argv);
-	while ((c=getopt(argc,argv,"gf:hmn:vw?"))!=EOF) {
+	while ((c=getopt(argc,argv,"bgf:hmn:s:vw?"))!=EOF) {
 		switch (c) {
+			case 'b': 
+					bin=true; 
+					break;
 			case 'g': 
 					gen=true; 
 					break;
@@ -91,6 +98,10 @@ main(int argc, char *argv[])
 			case 'n': 
 					gotname=true;
 					snprintf(x,NILEN,"%s",optarg); 
+					break; 
+			case 's': 
+					gotsuite=true;
+					suite=atoi(optarg);
 					break; 
 			case 'f': 
 					gotfile=true;
@@ -114,10 +125,40 @@ main(int argc, char *argv[])
 		exit(rv);
 	}
 
+	if (bin) {
+		if (!gotsuite || !gotfile) usage(__LINE__,argc,argv);
+		bin_niname bn;
+		rv=makebnf(bn,suite,file);
+		if (rv) {
+			printf("oops - failed to generrate binary\n");
+		} else {
+			int line=0;
+			ht_str hte;
+			bool sfound=false;
+			int i;
+			for (i=0;!sfound && i!=NUMHASHES;i++) {
+				if (hashalgtab[i].suite==suite) {
+					hte=hashalgtab[i]; // struct copy
+					sfound=true;
+				}
+			}
+			if (!sfound) exit(-1);
+			int bytes=1+hte.olen/8;
+			for(i=0;i!=bytes;i++) {
+				if ((i%8)==0) printf("%02x    ",line*8);
+				printf("%02x ",bn[i]);
+				if ((i%8)==7) {
+					printf("\n");
+					line++;
+				}
+			}
+			if (bytes%8) printf("\n");
+		}
+		exit(0);
+	}
+
 	if (!gotname || !gotfile) usage(__LINE__,argc,argv);
 
-	// printf("\tHello NI world\n");
-	
 	if (gen) {
 		// printf("\tfile(in): %s\n",file);
 		// printf("\tname(in): %s\n",x);

@@ -40,10 +40,10 @@
 #include <openssl/evp.h>
 #include "ni.h"
 
+
 /* ---------------- table of hash function ---------------*/
 
-#define NUMHASHES 6
-
+/// table of hash variant information
 ht_str hashalgtab[NUMHASHES] = {
 	{ true, SHA256T32STR,6,32,0}, 
 	{ true, SHA256T64STR,5,64,0},
@@ -52,7 +52,6 @@ ht_str hashalgtab[NUMHASHES] = {
 	{ true, SHA256T128STR,2,128,0},
 	{ true, SHA256STR,1,256,0} /* NOTE: THIS NEEDS TO BE LAST, see whichhash() code */
 };
-
 
 /* ---------------- local stuff, utilities ---------------*/
 
@@ -327,6 +326,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 	}
 
 #define MAXHASHLEN 1024 
+
 	long hashlen=SHA256_DIGEST_LENGTH;
 	unsigned char hashbuf[MAXHASHLEN];
 	SHA256_CTX c;
@@ -662,7 +662,7 @@ int makewkub(niname wku, long blen, unsigned char *buf)
 }
 
 /*!
- * @brief map an niname to a .well-known URL
+ * @brief map an ni or nih URI to a .well-known URL
  * @param name is the URI (in)
  * @param wku is the .well-known URL (out)
  * @return zero for success, non-zero for error
@@ -677,21 +677,105 @@ int mapnametowku(niname name, niname wku)
 	if (hashalg==NULL) {
 		RETURN(-1);
 	}
-	const char *startofni="ni://";
-	if (memcmp(name,startofni,4)) {
-		RETURN(-1);
-	}
+	bool nischeme=false;
+	bool nihscheme=false;
+	if (strlen(name)<4) RETURN(-1);
+	if (!strncmp(name,"ni:",3)) { nischeme=true; }
+	if (!strncmp(name,"nih:",4)) { nihscheme=true; }
+	if (!nischeme && !nihscheme) RETURN(-1);
+
 	size_t nlen=strlen(name);
+
+	// authority
 	niname soa;
-	snprintf(soa,NILEN,"%s",name+5);
-	size_t alen=strcspn(soa,"/");
-	soa[alen]='\0';
-	niname newname;
+	if (nischeme) {
+		snprintf(soa,NILEN,"%s",name+5);
+		size_t alen=strcspn(soa,"/");
+		soa[alen]='\0';
+	} else {
+		soa[0]='\0';
+	} 
+	// hash length in input string
 	int hlen=strlen(hashalg);
+
+	// where's the hash value (and querysttring) then?
+	int hoffset=0;
+	if (hte.strused) {
+		if (nischeme) hoffset=hlen+strlen(soa)+7;
+		if (nihscheme) hoffset=hlen+5;
+	} else {
+		if (nischeme) hoffset=1+strlen(soa)+7;
+		if (nihscheme) hoffset=1+5;
+	}
+ 
+	niname newname;
 	snprintf(newname,NILEN,"http://%s/.well-known/ni/%s/",soa,hashalg);
-	snprintf(newname+strlen(newname),NILEN-strlen(newname),"%s",soa+(alen+hlen+2));
+	snprintf(newname+strlen(newname),NILEN-strlen(newname),"%s",name+hoffset);
 	memcpy(wku,newname,NILEN);
 	
+	RETURN(0);
+}
+
+/*!
+ * @brief make a binary format equivalent to an ni or nih URI from a file
+ * @param bn is the name (in/out)
+ * @param suite is the suite to use (in)
+ * @param fname is a file name (in)
+ * @return zero on success, non-zero for error
+ *
+ */
+int makebnf(bin_niname bn, int suite, char *fname)
+{
+
+	long blen;
+	unsigned char *buf;
+	int rv=fname2buf(fname,&blen,&buf);
+	if (rv) {
+		RETURN(rv);
+	}
+	rv=makebnb(bn,suite,blen,buf);
+	if (rv) {
+		free(buf);
+		RETURN(rv);
+	}
+	free(buf);
+	RETURN(0);
+}
+
+/*!
+ * @brief make a binary format equivalent to an ni or nih URI from a buffer
+ * @param bn is the name (in/out)
+ * @param suite is the suite to use (in)
+ * @param blen is the buffer length
+ * @param buf is the buffer 
+ * @return zero on success, non-zero for error
+ *
+ */
+int makebnb(bin_niname bn, int suite, int blen, unsigned char *buf)
+{
+
+	if (!buf || blen<=0) RETURN(-1);
+
+	ht_str hte;
+	bool sfound=false;
+	int i;
+	for (i=0;!sfound && i!=NUMHASHES;i++) {
+		if (hashalgtab[i].suite==suite) {
+			hte=hashalgtab[i]; // struct copy
+			sfound=true;
+		}
+	}
+	if (!sfound) RETURN(-1);
+
+	bn[0]=suite;
+	unsigned char *hashbuf=bn+1;
+	SHA256_CTX c;
+	SHA256_Init(&c);
+	SHA256_Update(&c,buf,blen);
+	SHA256_Final(hashbuf,&c);
+	// set unused bits to zero, for no particularly good reason;-)
+	int usedlen=1+hte.olen/8;
+	memset(bn+usedlen,0,NILEN-usedlen);
 	RETURN(0);
 }
 

@@ -23,7 +23,7 @@ PROJECT_NAME           =  NILIB
 # This could be handy for archiving the generated documentation or 
 # if some version control system is used.
 
-PROJECT_NUMBER         = $Version: $
+PROJECT_NUMBER         = 0.1a
 
 # The OUTPUT_DIRECTORY tag is used to specify the (relative or absolute)  
 # base path where the generated documentation will be put. 
@@ -403,7 +403,7 @@ IMAGE_PATH             =
 # input file. Doxygen will then use the output that the filter program writes 
 # to standard output.
 
-INPUT_FILTER           = "doxypy.py"
+INPUT_FILTER           = "doxypy"
 
 # If the FILTER_SOURCE_FILES tag is set to YES, the input filter (if set using 
 # INPUT_FILTER) will be used to filter the input files when producing source 
