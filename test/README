@@ -1,0 +1,8 @@
+
+Some tests for NI libraries.
+
+- tcd.spki is a SubjectPublicKeyInfo value from an X.509 public key
+certificate, this is used in the examples from the I-D
+- hw.txt is a file containing the string "Hellow World!" (with no
+CR), this is also used in the examples from the I-D
+- doit is a bash script that calls other things to test 'em

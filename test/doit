@@ -1,0 +1,57 @@
+#!/bin/bash
+
+#   Copyright 2012 Trinity College Dublin
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
+#   Contact: stephen.farrell@cs.tcd.ie
+
+# Test cases for draft-farrell-decade-ni-06 
+
+
+# the ni name for hw.txt according to the I-D
+HWNAME1='ni:///sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk'
+# the ni name for tcd.spki
+PNAME1='ni:///sha-256;UyaQV-Ev4rdLoHyJJWCi11OHfrYv9E1aGQAlMO2X_-Q'
+# the binary suite 3 name for tcd.spki
+PNAME2='0353269057e12fe2b74ba07c892560a2'
+
+# 'C' language library tests
+
+CHWNAME=`../c/nicl -g -n 'ni:///sha-256' -f hw.txt`
+CPNAME1=`../c/nicl -g -n 'ni:///sha-256' -f tcd.spki`
+CPNAME2=`../c/nicl -b -s 3 -f tcd.spki`
+
+
+if [ "$HWNAME1" != "$CHWNAME" ]
+then
+	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "(1): $HWNAME1"
+	echo "(2): $CHWNAME"
+fi
+
+if [ "$PNAME1" != "$CPNAME1" ]
+then
+	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "(1): $PNAME1"
+	echo "(2): $CPNAME1"
+fi
+
+if [ "$PNAME2" != "$CPNAME2" ]
+then
+	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "(1): $PNAME2"
+	echo "(2): $CPNAME2"
+fi
+
+

@@ -145,14 +145,22 @@ main(int argc, char *argv[])
 			if (!sfound) exit(-1);
 			int bytes=1+hte.olen/8;
 			for(i=0;i!=bytes;i++) {
+#ifdef ODLIKE
 				if ((i%8)==0) printf("%02x    ",line*8);
 				printf("%02x ",bn[i]);
 				if ((i%8)==7) {
 					printf("\n");
 					line++;
 				}
+#else
+				printf("%02x",bn[i]);
+#endif
 			}
+#ifdef ODLIKE
 			if (bytes%8) printf("\n");
+#else
+			printf("\n");
+#endif
 		}
 		exit(0);
 	}
