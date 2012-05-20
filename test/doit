@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# set -x
+
 #   Copyright 2012 Trinity College Dublin
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,26 +20,45 @@
 
 # Test cases for draft-farrell-decade-ni-06 
 
+echo Starting tests
 
 # the ni name for hw.txt according to the I-D
 HWNAME1='ni:///sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk'
+# same as above but s/f/e/ in 1st character of hash
+BADNAME1='ni:///sha-256;e4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk'
+# same as above but deleted a character of hash
+BADNAME2='ni:///sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkG'
 # the ni name for tcd.spki
 PNAME1='ni:///sha-256;UyaQV-Ev4rdLoHyJJWCi11OHfrYv9E1aGQAlMO2X_-Q'
 # the binary suite 3 name for tcd.spki
-PNAME2='0353269057e12fe2b74ba07c892560a2'
+BNAME1='0353269057e12fe2b74ba07c892560a2'
+# human form 96 bit truncated hash of hw.txt
+NIHNAME1='nih:4;7f83b1657ff1fc53b92dc181;2'
+# human form 120 bit truncated hash of hw.txt, with string form name
+NIHNAME2='nih:sha-256-120;7f83b1657ff1fc53b92dc18148a1d6;8'
+# ni URI for tcd.spki truncated to 32 bits with a query string
+HWNAME2='ni://tcd.ie/sha-256-32;UyaQVw?foo=bar'
 
 # 'C' language library tests
 
 CHWNAME=`../c/nicl -g -n 'ni:///sha-256' -f hw.txt`
 CPNAME1=`../c/nicl -g -n 'ni:///sha-256' -f tcd.spki`
-CPNAME2=`../c/nicl -b -s 3 -f tcd.spki`
+BADRES1=`../c/nicl -v -n $BADNAME1 -f hw.txt`
+BADRES2=`../c/nicl -v -n $BADNAME2 -f hw.txt`
+GOODRES1=`../c/nicl -v -n $HWNAME1 -f hw.txt`
+GOODRES2=`../c/nicl -v -n $HWNAME2 -f tcd.spki`
+BINNAME=`../c/nicl -b -s 3 -f tcd.spki`
+NIHOUT1=`../c/nicl -g -n 'nih:4' -f hw.txt`
+NIHOUT2=`../c/nicl -g -n 'nih:sha-256-120' -f hw.txt`
 
+PROBLEM=false
 
 if [ "$HWNAME1" != "$CHWNAME" ]
 then
 	echo "ERROR in c, spec example (1) != calculated value (2)"
 	echo "(1): $HWNAME1"
 	echo "(2): $CHWNAME"
+	PROBLEM=true
 fi
 
 if [ "$PNAME1" != "$CPNAME1" ]
@@ -45,13 +66,101 @@ then
 	echo "ERROR in c, spec example (1) != calculated value (2)"
 	echo "(1): $PNAME1"
 	echo "(2): $CPNAME1"
+	PROBLEM=true
 fi
 
-if [ "$PNAME2" != "$CPNAME2" ]
+if [ "$BADRES1" != "bad" ]
+then
+	echo "ERROR in c, bad spec example (1) verify didn't fail!"
+	echo "(1): $BADNAME1"
+	echo $BADRES1
+	PROBLEM=true
+fi
+
+if [ "$BADRES2" != "bad" ]
+then
+	echo "ERROR in c, bad spec example (1) verify didn't fail!"
+	echo "(1): $BADNAME2"
+	echo $BADRES2
+	PROBLEM=true
+fi
+
+if [ "$GOODRES1" != "good" ]
+then
+	echo "ERROR in c, good spec example (1) verify shouldn't fail!"
+	echo "(1): $HWNAME1"
+	echo $GOODRES1
+	PROBLEM=true
+fi
+
+if [ "$GOODRES2" != "good" ]
+then
+	echo "ERROR in c, good spec example (1) verify shouldn't fail!"
+	echo "(1): $HWNAME2"
+	echo $GOODRES2
+	PROBLEM=true
+fi
+
+if [ "$BINNAME" != "$BNAME1" ]
+then
+	echo "ERROR in c, binary format example (1) not producted - got (2)"
+	echo "(1): $BNAME1"
+	echo "(2): $BINNAME"
+	PROBLEM=true
+fi
+
+if [ "$NIHOUT1" != "$NIHNAME1" ] 
+then
+	echo "ERROR in c, nih URI example (1) not producted - got (2)"
+	echo "(1): $NIHNAME1"
+	echo "(2): $NIHOUT1"
+	PROBLEM=true
+fi
+
+if [ "$NIHOUT2" != "$NIHNAME2" ] 
+then
+	echo "ERROR in c, nih URI example (1) not producted - got (2)"
+	echo "(1): $NIHNAME2"
+	echo "(2): $NIHOUT2"
+	PROBLEM=true
+fi
+
+
+# Python tests - a start at least 
+
+PYHWNAME=`../python/nicl.py -g -n 'ni:///sha-256' -f hw.txt | tail -1`
+BADRES=`../python/nicl.py -v -n $BADNAME1 -f hw.txt | grep failed`
+GOODRES=`../python/nicl.py -v -n $HWNAME1 -f hw.txt | grep matches`
+
+if [ "$HWNAME1" != "$PYHWNAME" ]
 then
 	echo "ERROR in c, spec example (1) != calculated value (2)"
-	echo "(1): $PNAME2"
-	echo "(2): $CPNAME2"
+	echo "(1): $HWNAME1"
+	echo "(2): $PYHWNAME"
+	PROBLEM=true
 fi
 
+if [ "$BADRES" != "Check of name against content failed." ]
+then
+	echo "ERROR in python, bad spec example (1) verify didn't fail!"
+	echo "(1): $BADNAME1"
+	echo $BADRES
+	PROBLEM=true
+fi
 
+if [ "$GOODRES" != "Name matches content file." ]
+then
+	echo "ERROR in python, good spec example (1) verify shouldn't fail!"
+	echo "(1): $HWNAME1"
+	echo $GOODRES
+	PROBLEM=true
+fi
+
+# other language tests TBD
+
+if [ "$PROBLEM" == "false" ] 
+then
+	echo All tests passed!
+else
+	echo "There's a problem"
+fi
