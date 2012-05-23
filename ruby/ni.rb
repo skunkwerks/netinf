@@ -6,12 +6,11 @@
 # part of the SAIL project. (http://sail-project.eu)
 #
 # Specification(s) - note, versions may change::
-# * http://tools.ietf.org/html/farrell-decade-ni-00
-# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+# * http://tools.ietf.org/html/farrell-decade-ni
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
 #
 # Author:: Dirk Kutscher <kutscher@neclab.eu>
 # Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
-# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
 #
 # License:: http://www.apache.org/licenses/LICENSE-2.0.html
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,45 +28,128 @@
 
 require 'uri'
 require 'base64'
+require 'utils'
 require 'digest'
+require 'digest-trunc'
 require 'net/http'
 
 # Extending Ruby's URI classes
 
 module URI
 
-# NI is implementing NI URI construction, parsing etc.
-
-  class NI < Generic
-
-    HASH = {
+# common functions for NI and NIH URIs
+  module NICOMMON
+    @@HASH = {
       :"sha-256" => Digest::SHA256,
       :"sha-384" => Digest::SHA384,
-      :"sha-512" => Digest::SHA512}
-
+      :"sha-512" => Digest::SHA512,
+      :"sha-256-128" => DigestTruncated::SHA256_128,
+      :"sha-256-120" => DigestTruncated::SHA256_120,
+      :"sha-256-96" => DigestTruncated::SHA256_96,
+      :"sha-256-64" => DigestTruncated::SHA256_64,
+      :"sha-256-32" => DigestTruncated::SHA256_32}
     
-    COMPONENT = [
-      :scheme, :host, :path, :query
-    ].freeze
+    @@HASHSUITEID = {
+      :"reserved" => 0,
+      :"sha-256" => 1,
+      :"sha-256-128" => 2,
+      :"sha-256-120" => 3,
+      :"sha-256-96" => 4,
+      :"sha-256-64" => 5,
+      :"sha-256-32" => 6,
+      :"reserved2" => 32}
+    
+    @@HASHNAME = @@HASHSUITEID.invert
 
     # The hash algorithm of the NI URI
     attr_reader :hashAlgo
 
 
     # The hash value of the NI URI
-    attr_reader :hash
+    attr_accessor :hash
 
 
-# setting the hash function to use
-    def hashFunc!(hashAlgo)
-      @hashAlgo = hashAlgo.to_sym
+# setting the hash function
+    def hashFunc!(hashAlgo) 
+#      print ("hashAlgo: #{hashAlgo} (Class: #{hashAlgo.class})\n")
+      hashAlgo=hashAlgo.to_s
+      ha=hashAlgo.to_i
+      if ha!=0
+        @hashAlgo = @@HASHNAME[ha]
+      else
+        @hashAlgo = hashAlgo.to_sym
+      end
       @hashFunc =
-        if HASH[@hashAlgo]
-          HASH[@hashAlgo].new      
+        if @@HASH[@hashAlgo]
+          @@HASH[@hashAlgo].new      
         else
           nil
         end
     end
+
+
+# calculate the hash for obj and update the member    
+    def setHash(obj)
+      @hash = @hashFunc.digest(obj)
+    end
+
+# returns true if the hash of obj matches this NI URI
+    def isValidName?(obj)                  # check name-data integrity for obj
+      @hash == @hashFunc.digest(obj)
+    end
+
+
+# returns string representation of hash algorithm
+    def algo
+      @hashAlgo.to_s
+    end
+
+# Base64 decoding (using URI encoding) of the hash
+    def b64tohash(b64)
+      Base64.decode64(b64.tr("-_", "+/")+"=");           # FIXME: check for correctness
+    end
+    
+
+
+# return the Base64-encoded hash value
+    def hashAsBase64
+      b=Base64.encode64(@hash)
+      b.tr_s!("+/", "-_")
+      b.delete!('=')
+      b.strip!
+      b
+    end
+
+# return NI URI representation
+    def to_ni
+      URI::parse("ni:///#{@hashAlgo.to_s + ';' + hashAsBase64}")
+    end
+
+# transform to NIH URI
+    def to_nih
+      hexhash=Base16::encode(@hash)
+      URI::parse("nih:" + @hashAlgo.to_s + ';' + hexhash + ';' + Base16::luhn(hexhash))
+    end
+
+
+
+
+  end # NICOMMON
+
+
+
+# NI is implementing NI URI construction, parsing etc.
+
+  class NI < Generic
+
+    
+    
+    COMPONENT = [
+      :scheme, :host, :path, :query
+    ].freeze
+
+
+    include NICOMMON
 
 # constructing (see URI::HTTP)
     def self.build(args)
@@ -82,10 +164,6 @@ module URI
       uri
     end
 
-# Base64 decoding (using URI encoding) of the hash
-    def b64tohash(b64)
-      Base64.decode64(b64.tr("-_", "+/")+"=");           # FIXME: check for correctness
-    end
 
 # the actual constructor
     def initialize(*arg)
@@ -109,17 +187,20 @@ module URI
           @hash=b64tohash(h[1])           # FIXME: check for correctness
         end
       end
+#      print "NI hash val: #{@hash}\n"
     end
 
 
-# return the Base64-encoded hash value
-    def hashAsBase64
-      b=Base64.encode64(@hash)
-      b.tr_s!("+/", "-_")
-      b.delete!('=')
-      b.strip!
-      b
+# compares two NI URIs by comparing the hash values
+    def ==(other)
+      res=(@hashAlgo==other.hashAlgo) && (@hash==other.hash)
+      #if(!res)
+#         print ("algos: #{@hashAlgo}, #{other.hashAlgo}\n")
+#         print ("hashes: #{Base16::encode(@hash)}, #{Base16::encode(other.hash)}\n")
+      # end
+      res
     end
+
 
 # return o (string) or empty string (if o is nil)
     def getUnlessNil(o)
@@ -130,9 +211,17 @@ module URI
       end
     end
 
+
+# return URL segment representation of NI URI
+    def to_urlSegment
+      @hashAlgo.to_s + ';' + hashAsBase64
+    end
+
+
 # return string representation of NI URI
     def to_s
-      tmp=@scheme + '://' + getUnlessNil(@host) + '/' + @hashAlgo.to_s + ';' + hashAsBase64 + queryPart
+#      tmp=@scheme + '://' + getUnlessNil(@host) + '/' + @hashAlgo.to_s + ';' + hashAsBase64 + queryPart
+      @scheme + '://' + getUnlessNil(@host) + '/' + to_urlSegment + queryPart
     end
 
 # constuct .well-known URI from NI URI and return it as string
@@ -141,25 +230,6 @@ module URI
     end
 
     
-# calculate the hash for obj and update the member    
-    def setHash(obj)
-      @hash = @hashFunc.digest(obj)
-    end
-
-# returns true if the hash of obj matches this NI URI
-    def isValidName?(obj)                  # check name-data integrity for obj
-      @hash == @hashFunc.digest(obj)
-    end
-
-# compares two NI URIs by comparing the hash values
-    def ==(other)
-      (@hashAlgo==other.hashAlgo) and (@hash==other.hash)
-    end
-
-# returns string representation of hash algorithm
-    def algo
-      @hashAlgo.to_s
-    end
 
 # add a query parameter to this NI URI
     def addQuery(q)
@@ -248,10 +318,98 @@ module URI
       eval(expr,binding)
     end
 
+# create binary format
+    def to_bin
+      suiteID=@@HASHSUITEID[@hashAlgo] & 63 # nullify two most-sigificant bits
+      niData=[suiteID, @hash]
+      niData.pack("Ca*")
+    end
+
+# create NI from binary format
+    def self.buildFromBin(nibits)
+      niData=nibits.unpack("Ca*")
+      suiteID=niData[0]
+      h=niData[1]
+      algo=@@HASHNAME[suiteID]
+
+      uri=build2([nil, "", nil], algo)
+      uri.hash=niData[1]
+      uri
+    end
+
 
   end                           # NI class
 
+# Human Readable NI URIs
+  class NIH < Generic
+
+    @checkSumError
+    
+    COMPONENT = [
+      :scheme, :host, :path, :query
+    ].freeze
+
+
+    include NICOMMON
+
+
+
+# constructing (see URI::HTTP)
+    def self.build(args)
+      tmp = Util::make_components_hash(self, args)
+      return super(tmp)
+    end
+
+
+# the actual constructor
+    def initialize(*arg)
+
+      super(*arg)
+
+      @checkSumError=false
+      fields=@opaque.split(";")
+#      print fields
+      algo=fields[0]
+      h=Base16::decode(fields[1])
+      check=fields[2]
+      if check && (Base16::luhn(fields[1])!=check)
+        @checkSumError=true
+        print "nih checksum error: expected '#{Base16::luhn(fields[1])}', got '#{check}'\n"
+      end
+#      print "NIH hash algo string: #{algo}\n"
+      hashFunc!(algo)
+#      print "NIH hash algo: #{@hashAlgo}\n"
+#      print "NIH hash val: #{h}\n"
+      @hash=h
+    end
+
+# compares two NI URIs by comparing the hash values
+    def ==(other)
+      (@hashAlgo==other.hashAlgo) and (@hash==other.hash)
+    end
+
+
+# return string representation of NIH URI
+    def to_s
+      algo=@@HASHSUITEID[@hashAlgo]
+      if algo>0 && algo <=6
+        algoString=algo.to_s
+        else
+        algoString=@hashAlgo.to_s
+      end
+      hexhash=Base16::encode(@hash)
+      @scheme + ':' + algoString + ';' + hexhash + ';' + Base16::luhn(hexhash)
+    end
+
+
+  end
+
   @@schemes['NI'] = NI
 
-end
+  @@schemes['NIH'] = NIH
+
+
+
+
+end # module URI
 

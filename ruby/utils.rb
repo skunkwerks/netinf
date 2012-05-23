@@ -1,5 +1,5 @@
 #
-# NI routing/mapping table entries
+# utils -- some useful functions 
 #
 # This is the NI URI library developed as
 # part of the SAIL project. (http://sail-project.eu)
@@ -24,17 +24,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+module Base16
+      def self.decode(s)
+      hexStringList=s.scan(/[0-9a-f]{2}/)
+      hexlist=hexStringList.map {|hx| hx.to_i(base=16)}
+      hexlist.pack("C*")
+    end
 
-# Module for a mixin to be used for routing and mapping tables
+    def self.encode(s)
+      hexlist=s.unpack("C*")
+      hexStringList=hexlist.map { |c| 
+        t=c.to_s(base=16)
+        if(t.length==1)
+          "0" + t
+          else
+          t
+        end
+      }
+      hexStringList.join
+    end
 
-module Entry
-  @dest
-  @options
-  attr_accessor :dest, :options
+    def self.luhn(s)
+      factor=2
+      sum=0
+      n=16
 
-  def initialize(d,o)
-    @dest=d
-    @options=o
-  end
+      s.reverse!
+
+      s.each_char {|c|
+        codePoint=c.to_i(base=n)
+        addend=factor*codePoint
+        factor=(factor==2)?1:2
+        addend=(addend / n) + (addend % n)
+        sum+=addend
+      }
+      remainder=sum %n
+      checkCodePoint=(n-remainder)%n
+      checkCodePoint.to_s(base=n)
+    end
+
 end
-

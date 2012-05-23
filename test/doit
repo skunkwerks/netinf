@@ -156,6 +156,99 @@ then
 	PROBLEM=true
 fi
 
+
+
+CHWNAME=`../ruby/mkni -f hw.txt`
+CPNAME1=`../ruby/mkni -f tcd.spki`
+BADRES1=`../ruby/chkni -n $BADNAME1 -f hw.txt`
+BADRES2=`../ruby/chkni -n $BADNAME2 -f hw.txt`
+GOODRES1=`../ruby/chkni -n $HWNAME1 -f hw.txt`
+GOODRES2=`../ruby/chkni -n $HWNAME2 -f tcd.spki`
+NINAME=`../ruby/mkni  -d 3 -f tcd.spki`
+BINNAME=`../ruby/ni2bin -n "$NINAME"`
+NIHOUT1_TMP=`../ruby/mkni  -d 4 -f hw.txt`
+NIHOUT1=`../ruby/ni2nih  -n $NIHOUT1_TMP`
+NIHOUT2_TMP=`../ruby/mkni -d sha-256-120 -f hw.txt`
+NIHOUT2=`../ruby/ni2nih  -n $NIHOUT2_TMP`
+
+PROBLEM=false
+
+if [ "$HWNAME1?ct=text/plain" != "$CHWNAME" ]
+then
+	echo "ERROR in Ruby, spec example (1) != calculated value (2)"
+	echo "(1): $HWNAME1"
+	echo "(2): $CHWNAME"
+	PROBLEM=true
+fi
+
+if [ "$PNAME1?ct=application/octet-stream" != "$CPNAME1" ]
+then
+	echo "ERROR in Ruby, spec example (1) != calculated value (2)"
+	echo "(1): $PNAME1"
+	echo "(2): $CPNAME1"
+	PROBLEM=true
+fi
+
+if [ "$BADRES1" != "bad" ]
+then
+	echo "ERROR in Ruby, bad spec example (1) verify didn't fail!"
+	echo "(1): $BADNAME1"
+	echo $BADRES1
+	PROBLEM=true
+fi
+
+if [ "$BADRES2" != "bad" ]
+then
+	echo "ERROR in Ruby, bad spec example (1) verify didn't fail!"
+	echo "(1): $BADNAME2"
+	echo $BADRES2
+	PROBLEM=true
+fi
+
+if [ "$GOODRES1" != "good" ]
+then
+	echo "ERROR in Ruby, good spec example (1) verify shouldn't fail!"
+	echo "(1): $HWNAME1"
+	echo $GOODRES1
+	PROBLEM=true
+fi
+
+if [ "$GOODRES2" != "good" ]
+then
+	echo "ERROR in Ruby, good spec example (1) verify shouldn't fail!"
+	echo "(1): $HWNAME2"
+	echo $GOODRES2
+	PROBLEM=true
+fi
+
+if [ "$BINNAME" != "$BNAME1" ]
+then
+	echo "ERROR in Ruby, binary format example (1) not producted - got (2)"
+	echo "(1): $BNAME1"
+	echo "(2): $BINNAME"
+	PROBLEM=true
+fi
+
+if [ "$NIHOUT1" != "$NIHNAME1" ] 
+then
+	echo "ERROR in Ruby, nih URI example (1) not producted - got (2)"
+	echo "(1): $NIHNAME1"
+	echo "(2): $NIHOUT1"
+	PROBLEM=true
+fi
+
+NIH2_SHORT=`echo $NIHNAME2 | sed -e 's/sha-256-120/3/'`
+
+if [ "$NIHOUT2" != "$NIH2_SHORT" ] 
+then
+	echo "ERROR in Ruby, nih URI example (1) not producted - got (2)"
+	echo "(1): $NIH2_SHORT"
+	echo "(2): $NIHOUT2"
+	PROBLEM=true
+fi
+
+
+
 # other language tests TBD
 
 if [ "$PROBLEM" == "false" ] 

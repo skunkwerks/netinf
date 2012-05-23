@@ -7,12 +7,11 @@
 # part of the SAIL project. (http://sail-project.eu)
 #
 # Specification(s) - note, versions may change::
-# * http://tools.ietf.org/html/farrell-decade-ni-00
-# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+# * http://tools.ietf.org/html/farrell-decade-ni
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
 #
 # Author:: Dirk Kutscher <kutscher@neclab.eu>
 # Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
-# Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
 #
 # License:: http://www.apache.org/licenses/LICENSE-2.0.html
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,14 +42,16 @@ def printUsage
   print "       chkni -h -- print usage info\n"
 end
 
-def hashFromFile(file, auth)
-  u = URI::NI.buildFromFile(auth, file)
-  u.to_s
+def hashFromFile(file, auth, algo)
+  u = URI::NI.buildFromFile(auth, file, nil, algo)
+#  u.to_s
+  u
 end
 
-def hashFromWeb(uri, auth)
-  u = URI::NI.buildFromHTTP(auth, URI(uri))
-  u.to_s
+def hashFromWeb(uri, auth, algo)
+  u = URI::NI.buildFromHTTP(auth, URI(uri), nil, algo)
+#  u.to_s
+  u
 end
 
 
@@ -71,7 +72,7 @@ opts.each do |opt, arg|
   when "--web"
     web=arg
   when "--ni"
-    ni=arg
+    ni=URI::parse(arg)
   end
 end
 
@@ -79,15 +80,17 @@ if (((not file) and (not web)) or (file and web) or (not ni))
   printUsage
   exit -1
 else if file
-       u=hashFromFile(file, nil)
+       u=hashFromFile(file, nil, ni.hashAlgo)
      else
-       u=hashFromWeb(web, nil)
+       u=hashFromWeb(web, nil, ni.hashAlgo)
      end
   if(u==ni)
-    print "1"
+    print "good"
     exit 1
   else
-    print "0"
+    print "bad"
+    # print "\ncalculated\n#{u.to_s}, but expected\n#{ni.to_s}\n"
+    # print "classes: #{u.class}, #{ni.class}\n"
     exit 0
   end
 end

@@ -123,3 +123,19 @@ lazy sequence containing the array of the URI components"
         pp (if p p "")
         paras (if (.equals pp "") "" (str "?" pp))]
     (str "ni://" (:auth ni-uri) "/" (:hash-algo ni-uri) ";" (b64urlencode (:hash-digest ni-uri)) paras)))
+
+
+(def get-path "/.well-known/netinfproto/get")
+(def pub-path "/.well-known/netinfproto/publish")
+
+
+(defn ni-get [uri msgid & loc]
+  (let [http-uri (str "http://" (first loc) get-path)]
+    (
+     (println http-uri)
+     (client/post http-uri
+                  {:form-params {:URI uri,
+                                 :msgid msgid,
+                                 :ext "no extension"}}) :body)))
+
+

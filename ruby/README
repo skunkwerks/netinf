@@ -5,12 +5,11 @@ This is the NI URI library developed as
 part of the SAIL project. (http://sail-project.eu)
 
 Specification(s) - note, versions may change::
-* http://tools.ietf.org/html/farrell-decade-ni-00
-* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+* http://tools.ietf.org/html/farrell-decade-ni
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
 
 Author:: Dirk Kutscher <kutscher@neclab.eu>
 Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
-Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
 
 License:: http://www.apache.org/licenses/LICENSE-2.0.html
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,6 +63,14 @@ The package contains the following executable Ruby programs:
 
 * chkni: validates an NI URI against a file or web object
 
+* ni2nih: converts an NI URI to the NIH (human readable) format
+
+* nih2ni: converts an NIH URI to an NI URI
+
+* ni2bin: converts an NI URI to the binary format
+
+* ni2qr: creates QR code for an NI URI
+
 * getni: GETs a named data object (using UDP and HTTP convergence layers)
 
 * pubni: PUBLISHes a named data object (using HTTP convergence layer)
@@ -71,6 +78,7 @@ The package contains the following executable Ruby programs:
 * regni: REGISTERs a named data object (using HTTP convergence layer)
 
 * searchni: sends a SEARCH request to a another NetInf node
+
 
 
 The most important Ruby source files:
@@ -94,6 +102,15 @@ You can create the source code documentation by saying: 'make doc'
 
 
 == CHANGES
+
+[2012-05-23]
+* added support for truncated hashes
+* added support for binary representation
+* added support for URL segment representation
+* added support for nih (human readable) format
+* fixed a bug in chkni (was using string comparison -- now using NI URI comparison)
+* new cmdline tools: ni2bin (output binary format, in hex), ni2nih (convert NI to NIH URI), nih2nin (convert NIH to NI URI) 
+* new cmdline tool ni2qr for creating a QR code for an NI URI
 
 [2012-03-23]
 * bug fixes

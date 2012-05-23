@@ -1,5 +1,7 @@
+#!/usr/bin/env ruby
+
 #
-# NI routing/mapping table entries
+# nih2ni -- transform NIH URI to NI representation
 #
 # This is the NI URI library developed as
 # part of the SAIL project. (http://sail-project.eu)
@@ -24,17 +26,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+$: << File.dirname(__FILE__)
 
-# Module for a mixin to be used for routing and mapping tables
+require 'ni'
+require 'getoptlong'
 
-module Entry
-  @dest
-  @options
-  attr_accessor :dest, :options
+ni=nil
+file=nil
+web=nil
 
-  def initialize(d,o)
-    @dest=d
-    @options=o
+def printUsage
+  print "Usage: nih2ni -n <name>\n"
+  print "       nih2ni -h -- print usage info\n"
+end
+
+
+
+opts = GetoptLong.new(
+  ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+  ['--ni', '-n', GetoptLong::REQUIRED_ARGUMENT ]
+)
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--ni"
+    ni=arg
   end
 end
+
+u=URI::parse(ni)
+print ("#{u.to_ni}\n")
+
+
+
 

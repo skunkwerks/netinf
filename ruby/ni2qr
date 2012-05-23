@@ -1,5 +1,7 @@
+#!/usr/bin/env ruby
+
 #
-# NI routing/mapping table entries
+# ni2qr -- generate QR code from NI URI
 #
 # This is the NI URI library developed as
 # part of the SAIL project. (http://sail-project.eu)
@@ -24,17 +26,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+$: << File.dirname(__FILE__)
 
-# Module for a mixin to be used for routing and mapping tables
+require 'ni'
+require 'getoptlong'
+#require 'net/http'
+require 'open-uri'
 
-module Entry
-  @dest
-  @options
-  attr_accessor :dest, :options
+ni=nil
+file=nil
+web=nil
 
-  def initialize(d,o)
-    @dest=d
-    @options=o
+def printUsage
+  print "Usage: ni2qr -n <name> >qr.png\n"
+  print "       ni2qr -h -- print usage info\n"
+end
+
+
+
+opts = GetoptLong.new(
+  ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+  ['--ni', '-n', GetoptLong::REQUIRED_ARGUMENT ]
+)
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--ni"
+    ni=arg
   end
 end
+
+u=URI::parse(ni)
+
+chartUri="https://chart.googleapis.com/chart"
+#httpUri=URI("https://chart.googleapis.com/chart")
+
+url="#{chartUri}?chs=300x300&cht=qr&chl=#{u.to_s}"
+
+open(url){ |f| print f.read }
 
