@@ -869,6 +869,7 @@ int ni_ic_get_file_compt(const char *url,  char *ni_alg_name)
 	if (b == NULL)
 		{
 		b = url;
+		if (strlen(b)>4 && !strncmp(url,"nih:",4)) b+=4;
 		}
 	else
 		{
@@ -895,6 +896,10 @@ int ni_ic_get_file_compt(const char *url,  char *ni_alg_name)
  */
 int ni_ic_set_alg(const char *ni_alg_name)
 {
+
+// Changing this to use the hashalgtab rather than parse the 
+// alg string, which isn't really right in general
+#ifdef OLDWAY
 	/* digest algorithm id in OpeenSSL EVP */
 	 const EVP_MD *md;
 
@@ -903,7 +908,7 @@ int ni_ic_set_alg(const char *ni_alg_name)
 	char temp_alg_name[100];
 	char *sep1=NULL, *sep2 = NULL;
 	int compt_len;
-	
+
 	/* Clear down context if it didn't get cleared up properly */
 	if (ni_ic_ready)
 	{
@@ -969,16 +974,14 @@ int ni_ic_set_alg(const char *ni_alg_name)
 	{
 		truncated_length = alg_length;
 	}
-	
-	/* Finally we can look up the al;gorithm name */
-	md = EVP_get_digestbyname(alg_name);
 
+	/* Finally we can look up the algorithm name */
+	md = EVP_get_digestbyname(alg_name);
 	if (!md)
 	{
 		/* Unknown message digest name */
 		return(-6);
 	}
-
 	/* The DigestInit function returns 1 for success, 0 for failure
 	 * where faikures are primarily memory allocation problems.
 	 */
@@ -986,10 +989,57 @@ int ni_ic_set_alg(const char *ni_alg_name)
 	{
 		return (-7);
 	}
+	ni_ic_ready = true;
+
+	return (0);
+#else
+	// check if alg in hashalgtab and set things up if so
+	ht_str hte;
+	int i;
+	bool algfound=false;
+
+	for (i=0;!algfound && i!=NUMHASHES;i++) {
+		if (strlen(hashalgtab[i].str)==strlen(ni_alg_name) &&
+				!strncmp(hashalgtab[i].str,ni_alg_name,strlen(ni_alg_name))) {
+			algfound=true;
+			hte=hashalgtab[i]; // struct copy
+		}
+	}
+	if (!algfound) RETURN(-1);
 	
+	int algid=hte.basefnc; // just one for now but maybe more later
+
+	if (algid!=0) { // not sha-256 - yikes!
+		RETURN(-2);
+	}
+	truncated_length = hte.olen;
+	alg_length=256;
+
+	const EVP_MD *md;
+
+	/* Clear down context if it didn't get cleared up properly */
+	if (ni_ic_ready) {
+		EVP_MD_CTX_cleanup(&mdctx);
+		ni_ic_ready = false;
+		ni_ic_finalized = false;
+	}
+
+
+	/* Finally we can look up the algorithm name */
+	md = EVP_get_digestbyname("sha256");
+	if (!md) {
+		/* Unknown message digest name */
+		return(-6);
+	}
+	/* The DigestInit function returns 1 for success, 0 for failure
+	 * where faikures are primarily memory allocation problems.
+	 */
+	if (!EVP_DigestInit_ex(&mdctx, md, NULL)) {
+		return (-7);
+	}
 	ni_ic_ready = true;
 	
-	return (0);
+#endif
 }
 
 /*!

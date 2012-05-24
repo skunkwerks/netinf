@@ -4,13 +4,13 @@
 
 # This script will crawl an Apache DocRoot and for each 
 # file found, will generate an ni name, report on that
-# and general a .well-known URL for which it will 
+# and generate a .well-known URL for which it will 
 # create a sym link pointing at the original file.
 
 # TBD - guess the MIME type of the file and also create
 # a sym link with the c= query string element
 
-# You need to run this will relevant permissions, 
+# You need to run this with relevant permissions, 
 # e.g. as root or as www-user
 
 LINKEM=/home/stephen/code/nilib/sh/linkem
