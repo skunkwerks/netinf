@@ -55,6 +55,10 @@ ht_str hashalgtab[NUMHASHES] = {
 
 /* ---------------- local stuff, utilities ---------------*/
 
+
+/// longest ever hash in bytes
+#define MAXHASHLEN 1024 
+
 #undef DEBUG
 #ifdef DEBUG
 #define RETURN(xXx) {fprintf(stderr,"Return %d at %s:%d\n",xXx,__FILE__,__LINE__);return(xXx);}
@@ -325,8 +329,6 @@ int makenib(niname name,long blen, unsigned char *buf)
 		RETURN(-1);
 	}
 
-#define MAXHASHLEN 1024 
-
 	long hashlen=SHA256_DIGEST_LENGTH;
 	unsigned char hashbuf[MAXHASHLEN];
 	SHA256_CTX c;
@@ -347,6 +349,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 		if (rv) { RETURN(rv); }
 	}
 	if (nihscheme) {
+
 		int rv=b16_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 		if (rv) { RETURN(rv); }
 		// add checkdigit
@@ -356,6 +359,7 @@ int makenib(niname name,long blen, unsigned char *buf)
 		if (b64hashlen+2>MAXHASHLEN) RETURN(-1);
 		b64hashbuf[b64hashlen]=';'; b64hashlen++;
 		b64hashbuf[b64hashlen]=cdig; b64hashlen++;
+
 	}
 
 #ifdef DEBUG
@@ -808,7 +812,7 @@ static bool ni_ic_finalized = false;
 static EVP_MD_CTX mdctx;
 
 /** @brief Buffer to hold generated digest - allow for base64 encoding */
-static unsigned char digest_buf[2*EVP_MAX_MD_SIZE];
+static unsigned char digest_buf[MAXHASHLEN];
 
 /** @brief Algorithm bit length */
 static long alg_length = 0;
@@ -818,6 +822,9 @@ static long truncated_length = 0;
 
 /** @brief Actual digest length */
 static long digest_length;
+
+/** @brief remember the scheme type as ni (true) or nih (false) */
+static bool ni_ic_scheme=true;
 
 /*!
  * @brief initialise hash digest mechanism of OpenSSL
@@ -869,7 +876,10 @@ int ni_ic_get_file_compt(const char *url,  char *ni_alg_name)
 	if (b == NULL)
 		{
 		b = url;
-		if (strlen(b)>4 && !strncmp(url,"nih:",4)) b+=4;
+		if (strlen(b)>4 && !strncmp(url,"nih:",4)) {
+			b+=4;
+			ni_ic_scheme=false;
+		}
 		}
 	else
 		{
@@ -1103,14 +1113,33 @@ int ni_ic_finalize(long *digest_len)
 
 	EVP_MD_CTX_cleanup(&mdctx);
 
+	// for ni name use base64url, for nih use ascii hex with luhn
+
 	/* base64 encode digest */
-	rv = b64url_enc((long)(truncated_length>>3), bin_digest_buf,
+	if (ni_ic_scheme) {
+
+		digest_length=MAXHASHLEN;
+		rv = b64url_enc((long)(truncated_length>>3), bin_digest_buf,
 			&digest_length, digest_buf);
-	/* Make it into a null-terminated string */
-	digest_buf[digest_length] ='\0';
-	if (rv != 0)
-	{
-		return (rv);
+		/* Make it into a null-terminated string */
+		digest_buf[digest_length] ='\0';
+		if (rv != 0) {
+			return (rv);
+		}
+
+	} else { // nih: scheme
+
+		digest_length=MAXHASHLEN;
+		rv=b16_enc((long)truncated_length>>3,bin_digest_buf,&digest_length,digest_buf);
+		if (rv) { RETURN(rv); }
+		// add checkdigit
+		char cdig;
+		rv=makecd(digest_length,digest_buf,&cdig);
+		if (rv) { RETURN(rv); }
+		if (digest_length+3>MAXHASHLEN) RETURN(-1);
+		digest_buf[digest_length]=';'; digest_length++;
+		digest_buf[digest_length]=cdig; digest_length++;
+		digest_buf[digest_length] ='\0';
 	}
 	
 	if (digest_len != NULL)
