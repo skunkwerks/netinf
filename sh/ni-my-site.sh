@@ -13,7 +13,7 @@
 # You need to run this with relevant permissions, 
 # e.g. as root or as www-user
 
-LINKEM=/home/stephen/code/nilib/sh/linkem
+LINKEM=/home/stephen/code/netinf-code/sh/linkem
 DocRoot=/home/stephen/code/statichtml
 # bit of a hack here, nicl -w with the prefix below gives us
 # what we need so go with it

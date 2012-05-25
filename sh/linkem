@@ -3,7 +3,7 @@
 # set -x
 
 
-NICL=/home/stephen/code/nilib/c/nicl
+NICL=/home/stephen/code/netinf-code/c/nicl
 
 file=$1
 Prefix=$2

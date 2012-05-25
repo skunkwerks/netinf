@@ -10,7 +10,7 @@
 # then this could be suitable for a cron job or something
 # like that, I run this hourly for now
 
-DocRoot=/home/dtnuser/data/www/statichtml
+DocRoot=/home/stephen/code/statichtml
 LogFile=/var/log/apache2/wkucleaned
 # if I can't write to the above, then I'll try here
 Me=`whoami`
