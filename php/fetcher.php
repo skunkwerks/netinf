@@ -30,9 +30,9 @@ for ($i=0;!$algfound && $i<count($alglist);$i++) {
 	$hstr=$alglist[$i];
 	$hashalg = strstr($urival, $hstr, false);
 	if ($hashalg===false) {
-		print "it's not $hstr \n";
+		// print "it's not $hstr \n";
 	} else {
-		print "it *IS* $hstr \n";
+		// print "it *IS* $hstr \n";
 		$algfound=true;
 	}
 }
@@ -46,14 +46,14 @@ if (!$algfound) {
 	$hashend = strpos($hashalg,"?");
 	if ($hashend === false ) {
 		$hashval = substr($hashalg,strlen($hstr) + 1);
-		print "no ?\n";
+		// print "no ?\n";
 	} else {
 		$hashval = substr($hashalg,strlen($hstr) + 1, $hashend -(strlen($hstr)+1));
-		print "hashend $hashend got ?\n";
+		// print "hashend $hashend got ?\n";
 	}
 
 	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
-	print "Checking $filename";
+	// print "Checking $filename";
 	if (file_exists($filename)) {
 		header('Content-Description: File Transfer');
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
