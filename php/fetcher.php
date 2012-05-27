@@ -1,8 +1,9 @@
 <?php
 
 $wkd = "/home/dtnuser/data/www/statichtml/.well-known/ni";
-$sha256str = "sha-256";
-$sha256t16str = "sha-256-16";
+// sha-256 better be last here, or we'll get an error'd first match
+$alglist=array("sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32","sha-256");
+
 
 // $urival = $_REQUEST['URI'];
 // $urival = filter_input(INPUT_POST, 'URI', FILTER_SANITIZE_ENCODED);
@@ -24,35 +25,35 @@ $extval = $_REQUEST['ext'];
 
 // extract hashalg and hash and check for file, if it exists print it, otherwise 404
 $hstr = "";
-$badalg=false;
-$hashalg = strstr($urival, $sha256t16str, false);
-if ($hashalg===false) {
-	// print "it's not $sha256t16str \n";
-	$hashalg = strstr($urival, $sha256str, false);
+$algfound=false;
+for ($i=0;!$algfound && $i<count($alglist);$i++) {
+	$hstr=$alglist[$i];
+	$hashalg = strstr($urival, $hstr, false);
 	if ($hashalg===false) {
-		// print "it's unknown \n";
-		$badalg=true;
+		print "it's not $hstr \n";
 	} else {
-		// print "it is $sha256str \n";
-		$hstr = $sha256str;
+		print "it *IS* $hstr \n";
+		$algfound=true;
 	}
-} else {
-	// print "it is $sha256t16str \n";
-	$hstr = $sha256t16str;
 }
 
-$hashend = strpos($hashalg,"?");
-if (!$badalg && $hashend === false ) {
-	$hashval = substr($hashalg,strlen($hstr) + 1);
-	// print "no ?\n";
+if (!$algfound) {
+	header('HTTP/1.0 404 Not Found');
+	print "I don't have $urival \n";
+	print "Bad algorithm, no good alg found.";
 } else {
-	$hashval = substr($hashalg,strlen($hstr) + 1, $hashend -(strlen($hstr)+1));
-	// print "hashend $hashend got ?\n";
-}
 
-if (!$badalg) {
+	$hashend = strpos($hashalg,"?");
+	if ($hashend === false ) {
+		$hashval = substr($hashalg,strlen($hstr) + 1);
+		print "no ?\n";
+	} else {
+		$hashval = substr($hashalg,strlen($hstr) + 1, $hashend -(strlen($hstr)+1));
+		print "hashend $hashend got ?\n";
+	}
 
 	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
+	print "Checking $filename";
 	if (file_exists($filename)) {
 		header('Content-Description: File Transfer');
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
@@ -69,10 +70,6 @@ if (!$badalg) {
 		print "I don't have $urival \n";
 		// print "File; $filename\n";
 	} 
-
-} else {
-	header('HTTP/1.0 404 Not Found');
-	print "I don't have $urival \n";
 }
 
 
