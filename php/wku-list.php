@@ -3,7 +3,6 @@
 $urlprefix="http://village.n4c.eu/.well-known/ni/";
 $wkd = "/home/dtnuser/data/www/statichtml/.well-known/ni";
 $sha256str = "sha-256";
-$sha256t16str = "sha-256-16";
 
 function getDirectoryList ($directory) {
     // create an array to hold directory list

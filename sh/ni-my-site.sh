@@ -14,10 +14,8 @@
 # e.g. as root or as www-user
 
 LINKEM=/home/stephen/code/netinf-code/sh/linkem
-DocRoot=/home/stephen/code/statichtml
+DocRoot=/home/dtnuser/data/www/statichtml
 # bit of a hack here, nicl -w with the prefix below gives us
-# what we need so go with it
-Prefix=sha-256
 
 # ancilliary variables
 WKD=$DocRoot/.well-known
@@ -32,15 +30,27 @@ then
 else
 	rm -rf $TNID/*
 fi
-if [ ! -d $TNID/$Prefix ]
-then
-	# need a prefix/hash specific dir too
-	mkdir $TNID/$Prefix
-fi
 
-# now trawl and do stuff
-# omit .hg from the find
-find $DocRoot -path $DocRoot/.hg -prune -o -type f -exec $LINKEM {} $Prefix $TNID \;
+alglist="sha-256 sha-256-128 sha-256-120 sha-256-96 sha-256-64 sha-256-32"
+
+# do each alg variant we want
+for Prefix in $alglist
+do
+
+	echo "Doing $Prefix"
+
+	if [ ! -d $TNID/$Prefix ]
+	then
+		# need a prefix/hash specific dir too
+		mkdir $TNID/$Prefix
+	fi
+
+	# now trawl and do stuff
+	# omit .hg from the find
+	find $DocRoot -path $DocRoot/.hg -prune -o -type f -exec $LINKEM {} $Prefix $TNID \;
+
+# finished per alg
+done
 
 # Is there a .well-known directory to start with?
 # If not make it.

@@ -5,7 +5,7 @@ $sha256str = "sha-256";
 $sha256t16str = "sha-256-16";
 
 // hackety hack
-$nicl = "/home/stephen/code/nilib/c/nicl";
+$nicl = "/home/stephen/code/netinf-code/c/nicl";
 
 $urival = filter_input(INPUT_POST, 'URI');
 $msgidval = $_REQUEST['msgid'];

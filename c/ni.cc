@@ -621,7 +621,6 @@ int makewkub(niname wku, long blen, unsigned char *buf)
 	}
 
 #define MAXHASHLEN 1024 
-	long hashlen=SHA256_DIGEST_LENGTH;
 	unsigned char hashbuf[MAXHASHLEN];
 	SHA256_CTX c;
 	SHA256_Init(&c);
@@ -632,11 +631,9 @@ int makewkub(niname wku, long blen, unsigned char *buf)
 	// leave the rest of the input URI alone
 
 	// check if its a truncated hash or not
+	long hashlen=hte.olen/8;
 	unsigned char b64hashbuf[MAXHASHLEN];
-	long b64hashlen=2*SHA256_DIGEST_LENGTH;
-	if (hashalg==SHA256T32STR) {
-		hashlen=2;
-	} 
+	long b64hashlen=MAXHASHLEN;
 	int rv=b64url_enc(hashlen,hashbuf,&b64hashlen,b64hashbuf);
 	if (rv) {
 		RETURN(rv);
