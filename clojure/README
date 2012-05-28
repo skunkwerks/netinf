@@ -1,6 +1,8 @@
 NI URI creation, parsing and validation in Clojure
 ==================================================
 
+VERSION: 0.2
+
 This is the NI URI library developed as
 part of the SAIL project. (http://sail-project.eu)
 
