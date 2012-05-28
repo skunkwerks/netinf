@@ -39,7 +39,7 @@
 ;; string transformation:
 ;; (ni-toString name1)
 
-(ns ni
+(ns ni.core
 
 (:require [clojure.data.codec.base64 :as b64]
            [clojure.java.io :as io]

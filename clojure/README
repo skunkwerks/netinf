@@ -54,9 +54,10 @@ Preparing
 I am using the leinigen tool
 (https://github.com/technomancy/leiningen) for automating dependencies
 management. If you have leinigen installed, you can just install the
-dependencies with calling 'make' (or 'lein deps' directly) on the
+dependencies with calling 'make deps' (or 'lein deps' directly) on the
 command line.
 
+'make' performs "lein clean; lein deps; lein test".
 
 
 Examples:
@@ -86,6 +87,12 @@ Changes:
 * added basic support for transformation into nih URI format
 * added basic support for creating NI URI from NIH URI
 * added support for URL fragment representation
+
+[2012-05-28]
+* added support for truncated hash suite
+* added support for binary representation
+* added support for NIH format
+* added test cases
 
 [2012-05-24]
 * updated to clojure-1.4.0

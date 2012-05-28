@@ -24,6 +24,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+.PHONY : clean deps test
 
-deps:
-	lein deps
+all:
+	$(MAKE) clean	
+	$(MAKE) deps
+	$(MAKE) test
+
+clean deps test:
+	lein $@
