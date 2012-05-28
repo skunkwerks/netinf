@@ -43,7 +43,8 @@ tested with lein and clojure-1.4.0
 Roadmap
 -------
 
-  - src/ni.clj: the NI URI implementation in Clojure
+  - src/ni/core.clj: the NI URI implementation in Clojure
+  - test/ni/test/core.clj: test drivers
   - project.clj: dependencies list for leiningen (see below)
   - Makefile: for installing dependencies (see below)
 
