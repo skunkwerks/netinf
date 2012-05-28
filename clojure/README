@@ -5,12 +5,11 @@ This is the NI URI library developed as
 part of the SAIL project. (http://sail-project.eu)
 
 Specification(s) - note, versions may change::
-* http://tools.ietf.org/html/farrell-decade-ni-00
-* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+* http://tools.ietf.org/html/farrell-decade-ni
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
 
 Author:: Dirk Kutscher <kutscher@neclab.eu>
 Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
-Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
 
 License:: http://www.apache.org/licenses/LICENSE-2.0.html
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,21 +30,33 @@ About
 This is a Clojure implementation of the NI name format for Named Data
 Objects as develop by the SAIL project.
 
+
 Dependencies
 ------------
 
 - org.clojure/data.codec (from clojure.contrib)
 - clj-message-digest
 
-tested with lein and clojure-1.4.0 snapshot
+tested with lein and clojure-1.4.0
 
 
 Roadmap
 -------
 
-There is currently exactly one source code file:
-
   - src/ni.clj: the NI URI implementation in Clojure
+  - project.clj: dependencies list for leiningen (see below)
+  - Makefile: for installing dependencies (see below)
+
+
+Preparing
+---------
+
+I am using the leinigen tool
+(https://github.com/technomancy/leiningen) for automating dependencies
+management. If you have leinigen installed, you can just install the
+dependencies with calling 'make' (or 'lein deps' directly) on the
+command line.
+
 
 
 Examples:
@@ -56,7 +67,7 @@ parsing:
 
 creation:
 (def name1 (mkni "this is the NDO data" "example.com" "sha-256" "ct=text/plain"))
-(def name2 (mkni  file "sha-256" ""))
+(def name2 (mkni  file "example.com" "sha-256" ""))
 
 validation:
 (valid? name2 file)
@@ -66,4 +77,24 @@ string transformation:
 (ni-toString name1)
 
 
+Changes:
+--------
 
+[2012-05-25]
+* fixed a bug in urldecode (added padding)
+* fixed a bug in b64urlencode and b64urldecode (string by ByteArray...)
+* added basic support for transformation into nih URI format
+* added basic support for creating NI URI from NIH URI
+* added support for URL fragment representation
+
+[2012-05-24]
+* updated to clojure-1.4.0
+
+
+Thanks:
+-------
+
+- Rich Hickey -- for inventing Clojure
+
+- User 'sw1nn' on stackoverflow.com for his hexify/unhexify functions
+  (http://stackoverflow.com/questions/10062967/clojures-equivalent-to-pythons-encodehex-and-decodehex)

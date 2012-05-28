@@ -4,12 +4,11 @@
 ;; part of the SAIL project. (http://sail-project.eu)
 
 ;; Specification(s) - note, versions may change::
-;; * http://tools.ietf.org/html/farrell-decade-ni-00
-;; * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+;; * http://tools.ietf.org/html/farrell-decade-ni
+;; * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
 
 ;; Author:: Dirk Kutscher <kutscher@neclab.eu>
 ;; Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
-;; Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
 
 ;; License:: http://www.apache.org/licenses/LICENSE-2.0.html
 ;; Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,23 +50,118 @@
 
 
 
-(defn urlencode [str]
-  (string/escape str {\+ \- \/ \_ \= ""}))
+(defn urlencode [s]
+  (string/escape s {\+ \- \/ \_ \= ""}))
 
-(defn urldecode [str]
-  (string/escape str {\- \+ \_ \/}))
+(defn urldecode [s]
+  (let [res  (string/escape s {\- \+ \_ \/})
+        padcount (- 4 (mod (count res) 4))
+        pad (reduce str (take padcount (repeat "=")))]
+    (str res pad)))
+    
+    
 
 
-(defn b64urlencode [str]
-  (let [base64 (String. (b64/encode str))]
+(defn b64urlencode [s]
+  ;;  (let [base64 (String. (b64/encode (.getBytes s)))]
+    (let [base64 (String. (b64/encode s))]
     (urlencode base64)
   ))
 
 
-(defn b64urldecode [str]
-  (let [base64 (urldecode str)]
-    (String. (b64/decode (.getBytes base64)))
+(defn b64urldecode [s]
+  (let [base64 (urldecode s)]
+    ;;    (String. (b64/decode (.getBytes base64)))
+    (b64/decode (.getBytes base64))
   ))
+
+
+
+(defn hexify-bytes [bytes]
+  (apply str (map #(format "%02x" %) bytes)))
+
+(defn hexify [s]
+  (hexify-bytes (.getBytes s "UTF-8")))
+
+
+(defn unhexify-bytes [s]
+  (into-array Byte/TYPE
+              (map (fn [[x y]]
+                    (unchecked-byte (Integer/parseInt (str x y) 16)))
+                       (partition 2 s))))
+
+
+(defn unhexify [s]
+  (let [bytes (unhexify-bytes s)]
+    (String. bytes "UTF-8")))
+
+
+(defn luhn-calc-addend [c base factor]
+  (let [codepoint  (Integer/parseInt (str c) base)
+        addend (* factor codepoint)]
+    (+ (quot addend base) (mod addend base))))
+
+
+(defn luhn16 [s]
+  "Luhn's algorithm (http://en.wikipedia.org/wiki/Luhn_mod_N_algorithm)"
+  (let [
+        base 16
+        sum (reduce + (map #(luhn-calc-addend %1 base %2) (reverse s) (cycle [2 1])))
+        remainder (mod sum base)
+        check-code-point (mod (- base remainder) base)
+        ]
+    (Integer/toHexString check-code-point)
+))
+
+
+(defn truncate-hash [hash nrbits]
+  "truncate the specified hash value to nrbits length"
+  (into-array Byte/TYPE (take (/ nrbits 8) hash))
+)
+
+
+;; this is how you would define it by hand -- but we generate it below
+;; (defn sha256-32 [input]
+;;   (truncate-hash (msg/digest "sha-256" input) 32))
+
+
+(defn make-trunc-hash-fn [base nrbits]
+  (fn [input] (truncate-hash (msg/digest base input) nrbits)))
+
+
+(defn mk-hash-funcs [base trunc-specs]
+  "create a map {hash-algo-name hash-trunc-func}"
+  (let [
+        funcs (map #(make-trunc-hash-fn base %) trunc-specs)
+        names (map #(str base "-" %) trunc-specs)
+        ]
+    (zipmap names funcs)))
+
+
+(def sha-256
+  (fn [input] (msg/digest "sha-256" input)))
+
+(def hash-funcs
+  "define truncated and the non-truncated versions of sha-256"
+  (assoc
+      (mk-hash-funcs "sha-256" [128 120 96 64 32])
+    "sha-256" sha-256))
+
+
+(def hash-names
+  "the list of supported hash algorithms"
+  {0 "Reserved"
+   1 "sha-256"
+   2 "sha-256-128"
+   3  "sha-256-120"
+   4  "sha-256-96"
+   5  "sha-256-64"
+   6  "sha-256-32"
+   32 "Reserved"})
+
+(def hash-ids
+  "the mapping from hash algo name to number"
+  (zipmap (vals hash-names) (keys hash-names)))
 
 
 (defrecord Uri [scheme host local paras])
@@ -95,26 +189,29 @@ lazy sequence containing the array of the URI components"
   "Creates an NI URI from the string argument"
   (let [u (uri str)
         [hash-algo hash-digest] (hash-data (:local u))]
-    (->NiUri (:scheme u) (:host u) (rest (.split hash-algo "/")) (b64urldecode hash-digest) (:paras u))
+    (->NiUri (:scheme u) (:host u) (first (rest (.split hash-algo "/"))) (b64urldecode hash-digest) (:paras u))
     ))
 
 
-(defn hash-algo [ni-uri]
-  "get the hash algorithm of the NI URI in upper case"
-  (.toUpperCase (:hash-algo ni-uri)))
-  
+(defn mkhash [algo input]
+  ((get hash-funcs algo sha-256) input))
+
+(defn dohash [ni-uri input]
+  (mkhash (:hash-algo ni-uri) input))
+
 
 (defn valid? [ni-uri input]
   "return true if the specified NI URI is bound to the input data"
-  (let [hash (msg/digest (hash-algo ni-uri) input)]
-    (java.util.Arrays/equals hash (:hash-digest ni-uri))))
+    (java.util.Arrays/equals (dohash ni-uri input) (:hash-digest ni-uri)))
 
 (defn mkni [input auth algo paras]
   "create NI URI for specified input data"
-  (let [hash (msg/digest (.toUpperCase algo) input)]
-    (->NiUri "ni" auth algo hash paras)
-    ))
+  (->NiUri "ni" auth algo (mkhash algo input) paras))
 
+
+(defn ni-urlSegment [ni-uri]
+  "return urlSegment representation"
+    (str (:hash-algo ni-uri) ";" (b64urlencode (:hash-digest ni-uri))))
 
 (defn ni-toString [ni-uri]
   "return string representation"
@@ -122,20 +219,61 @@ lazy sequence containing the array of the URI components"
         p (:paras ni-uri)
         pp (if p p "")
         paras (if (.equals pp "") "" (str "?" pp))]
-    (str "ni://" (:auth ni-uri) "/" (:hash-algo ni-uri) ";" (b64urlencode (:hash-digest ni-uri)) paras)))
+    (str "ni://" (:auth ni-uri) "/" (ni-urlSegment ni-uri) paras)))
 
 
-(def get-path "/.well-known/netinfproto/get")
-(def pub-path "/.well-known/netinfproto/publish")
+(defn ni-toNih [ni-uri]
+  "transform to nih format"
+  (let [hexhash (hexify-bytes (:hash-digest ni-uri))]
+    (str "nih:" (get hash-ids (:hash-algo ni-uri) 0) ";" hexhash ";" (luhn16 hexhash))
+    ))
 
 
-(defn ni-get [uri msgid & loc]
-  (let [http-uri (str "http://" (first loc) get-path)]
-    (
-     (println http-uri)
-     (client/post http-uri
-                  {:form-params {:URI uri,
-                                 :msgid msgid,
-                                 :ext "no extension"}}) :body)))
+(defn nih-components [s]
+  "return NIH URI components in string s"
+  (let [[scheme data] (clojure.string/split s #"\:")]
+    (clojure.string/split data #"\;")
+    ))
+
+(defn nih [s]
+  "create NI URI from NIH URI in string representation"
+  (let [[algo hash checksum] (nih-components s)]
+    (->NiUri "ni" nil algo (unhexify-bytes hash) nil)
+  ))
+
+(defn nih-ckecksum-valid? [s]
+  "check the checksum"
+  (let [[algo hash checksum] (nih-components s)]
+    (== 0 (compare checksum (luhn16 hash)))
+  ))
+
+
+(defn ni-toBin [ni]
+  "transform NI URI to binary representation"
+  (let [hash-id (get hash-ids (:hash-algo ni) 0)]
+    (byte-array (map byte (cons hash-id (:hash-digest ni))))
+  ))
+
+(defn niBin [data]
+  "create NI URI from binary representation (byteArray)"
+  (let [algo (first data)
+        hash (byte-array (rest data))]
+    (->NiUri "ni" nil (get hash-names algo "Reserved") hash nil)
+  ))
+
+
+
+;;(def get-path "/.well-known/netinfproto/get")
+;;(def pub-path "/.well-known/netinfproto/publish")
+
+
+;; (defn ni-get [uri msgid & loc]
+;;   (let [http-uri (str "http://" (first loc) get-path)]
+;;     (
+;;      (println http-uri)
+;;      (client/post http-uri
+;;                   {:form-params {:URI uri,
+;;                                  :msgid msgid,
+;;                                  :ext "no extension"}}) :body)))
 
 
