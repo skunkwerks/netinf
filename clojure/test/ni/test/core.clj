@@ -5,6 +5,8 @@
   )
 
 
+(def hwtxt "test/ni/test/hw.txt")
+(def tcd-spki "test/ni/test/tcd.spki")
 
 
 ;; the ni name for hw.txt according to the I-D
@@ -36,25 +38,17 @@
 
 
 
-;(.read (input-stream "filename.bin") buffer)
-
-(def hwtxt (input-stream "test/hw.txt"))
-
-;(def tcd-spki (into-array Byte/TYPE (input-stream "test/tcd.spki")))
-
-(def tcd-spki (input-stream "test/tcd.spki"))
-
 
 (defn mkni-string [input auth algo paras]
   (ni-toString (mkni input auth algo paras)))
 
 
 (def name-hw
-  (mkni-string hwtxt "" "sha-256" ""))
+  (mkni-string (input-stream hwtxt) "" "sha-256" ""))
 
 
 (def name-tcd-spki
-  (mkni-string tcd-spki "" "sha-256" ""))
+  (mkni-string (input-stream tcd-spki) "" "sha-256" ""))
 
 
 
@@ -68,35 +62,35 @@
 
 (deftest test-badres1
   (let [badni1 (ni badname1)]
-    (is (not (valid? badni1 (input-stream "test/hw.txt"))))))
+    (is (not (valid? badni1 (input-stream hwtxt))))))
 
 
 (deftest test-badres2
   (let [badni2 (ni badname2)]
-    (is (not (valid? badni2 (input-stream "test/hw.txt"))))))
+    (is (not (valid? badni2 (input-stream hwtxt))))))
 
 
 (deftest test-goodres1
   (let [goodni1 (ni hwname1)]
-    (is (valid? goodni1 (input-stream "test/hw.txt")))))
+    (is (valid? goodni1 (input-stream hwtxt)))))
 
 (deftest test-goodres2
   (let [goodni2 (ni hwname2)]
-    (is (valid? goodni2 (input-stream "test/tcd.spki")))))
+    (is (valid? goodni2 (input-stream tcd-spki)))))
 
 (deftest test-binname
   (let [binname
         (hexify-bytes (ni-toBin
-                 (mkni (input-stream "test/tcd.spki") "" "sha-256-120" "")))]
+                 (mkni (input-stream tcd-spki) "" "sha-256-120" "")))]
     (is (= binname bname1))))
 
 (deftest test-nihout1
-  (let [nihout1 (mkni (input-stream "test/hw.txt") "" "sha-256-96" "")]
+  (let [nihout1 (mkni (input-stream hwtxt) "" "sha-256-96" "")]
     (is (= nihname1 (ni-toNih nihout1)))))
 
 
 (deftest test-nihout2
-  (let [nihout2 (mkni (input-stream "test/hw.txt") "" "sha-256-120" "")]
+  (let [nihout2 (mkni (input-stream hwtxt) "" "sha-256-120" "")]
     (is (= nihname3 (ni-toNih nihout2)))))
 
 
