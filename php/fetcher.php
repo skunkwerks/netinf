@@ -17,8 +17,6 @@ $extval = $_REQUEST['ext'];
 // $msgidval = "123";
 // $extval =  "";
 // $hashalg = "bar";
-
-
 // print $urival;
 
 // print "\n";
@@ -52,19 +50,59 @@ if (!$algfound) {
 		// print "hashend $hashend got ?\n";
 	}
 
+	// the name of the .well-known file for this name
 	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
 	// print "Checking $filename";
 	if (file_exists($filename)) {
-		header('Content-Description: File Transfer');
-		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
-    	$mime = finfo_file($finfo, $filename);
-		finfo_close($finfo);
-		// header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
-		header('Content-Type: ' . $mime);
-		header('Content-Length: ' . filesize($filename));
-		header('Content-Disposition: inline; filename=' . basename($filename));
-		readfile($filename);
-		// print $filename;
+
+		// new plan - if its a link then return a 307 for the file, if 
+		// the file lives in the .wku directory then just return it
+		if (!is_link($filename)) {
+			header('Content-Description: File Transfer');
+			$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
+    		$mime = finfo_file($finfo, $filename);
+			finfo_close($finfo);
+			// header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
+			header('Content-Type: ' . $mime);
+			header('Content-Length: ' . filesize($filename));
+			header('Content-Disposition: inline; filename=' . basename($filename));
+			readfile($filename);
+			// print $filename;
+		} else {
+			// return 307 for that
+ 			$docRoot = getenv("DOCUMENT_ROOT");
+			$realfilename=readlink($filename);
+			// realfilename needs to be below docRoot or else
+			if (substr($realfilename,0,strlen($docRoot))!=$docRoot) {
+				header('HTTP/1.0 404 Not Found');
+				print "I don't have $urival \n";
+				print "I know the link, but its to a bad place";
+			} else {
+				print $realfilename;
+				print $docRoot;
+				print $top;
+				print "<br/>";
+				$top = $_SERVER['SERVER_NAME'];
+				$reluri=substr($realfilename,strlen($docRoot));
+				$location="http://" . $top .  $reluri;
+				print $location;
+    			$hs = headers_sent();
+				// bits here inspired by http://edoceo.com/creo/php-redirect
+				if ($hs) {
+					header( "HTTP/1.1 307 Temporary Redirect HTTP/1.1",true,307);
+					header("Location: " . $location);
+        			header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0');
+				} else {
+       				$cover_div_style = 'background-color: #ccc; height: 100%; left: 0px; position: absolute; top: 0px; width: 100%;';
+        				echo "<div style='$cover_div_style'>\n";
+        				$link_div_style = 'background-color: #fff; border: 2px solid #f00; left: 0px; margin: 5px; padding: 3px; ';
+        				$link_div_style.= 'position: absolute; text-align: center; top: 0px; width: 95%; z-index: 99;';
+        				echo "<div style='$link_div_style'>\n";
+        				echo "<p>Please See: <a href='$location'>".htmlspecialchars($location)."</a></p>\n";
+        				echo "</div>\n</div>\n";
+				}
+			}
+		}
 	} else {
 		header('HTTP/1.0 404 Not Found');
 		print "I don't have $urival \n";
