@@ -63,7 +63,6 @@
 
 
 (defn b64urlencode [s]
-  ;;  (let [base64 (String. (b64/encode (.getBytes s)))]
     (let [base64 (String. (b64/encode s))]
     (urlencode base64)
   ))
@@ -71,7 +70,6 @@
 
 (defn b64urldecode [s]
   (let [base64 (urldecode s)]
-    ;;    (String. (b64/decode (.getBytes base64)))
     (b64/decode (.getBytes base64))
   ))
 
@@ -263,8 +261,8 @@ lazy sequence containing the array of the URI components"
 
 
 
-;;(def get-path "/.well-known/netinfproto/get")
-;;(def pub-path "/.well-known/netinfproto/publish")
+;;(def get-path "/netinfproto/get")
+;;(def pub-path "/netinfproto/publish")
 
 
 ;; (defn ni-get [uri msgid & loc]

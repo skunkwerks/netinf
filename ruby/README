@@ -103,6 +103,9 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-05-29]
+* changed path for HTTP CL from ".well-known/netinfproto/" to "/netinfproto/"
+
 [2012-05-23]
 * added support for truncated hashes
 * added support for binary representation

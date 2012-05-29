@@ -84,18 +84,19 @@ string transformation:
 Changes:
 --------
 
+[2012-05-28]
+* added support for truncated hash suite
+* added support for binary representation
+* added support for NIH format
+* added test cases
+
+
 [2012-05-25]
 * fixed a bug in urldecode (added padding)
 * fixed a bug in b64urlencode and b64urldecode (string by ByteArray...)
 * added basic support for transformation into nih URI format
 * added basic support for creating NI URI from NIH URI
 * added support for URL fragment representation
-
-[2012-05-28]
-* added support for truncated hash suite
-* added support for binary representation
-* added support for NIH format
-* added test cases
 
 [2012-05-24]
 * updated to clojure-1.4.0

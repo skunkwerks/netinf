@@ -116,7 +116,7 @@ def findMappedResource(resources)
 end
 
 server = HTTPServer.new(:Port => PORT, :BindAddress => "localhost")
-server.mount_proc("/.well-known/netinfproto/get") do |request, response|
+server.mount_proc("/netinfproto/get") do |request, response|
 #  print ("get\n")
 #  puts request
 
@@ -213,7 +213,7 @@ server.mount_proc("/.well-known/netinfproto/get") do |request, response|
 #  response['Content-Type'] = "text/html"
 end
 
-server.mount_proc("/.well-known/netinfproto/publish") do |request, response|
+server.mount_proc("/netinfproto/publish") do |request, response|
   print ("publish\n")
   puts request
 
@@ -246,7 +246,7 @@ server.mount_proc("/.well-known/netinfproto/publish") do |request, response|
   response['Content-Type'] = "text/plain"
 end
 
-server.mount_proc("/.well-known/netinfproto/search") do |request, response|
+server.mount_proc("/netinfproto/search") do |request, response|
   allNames=Mapping.instance.allNames.map { |n| n.to_s }
   response.body=allNames.to_json
   response.content_type="application/json"

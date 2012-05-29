@@ -59,7 +59,7 @@ class NetInfHTTP < NetInf
   def get(niUri, msgId, loc=nil) # for now: loc=FQDN
     
     httpuri= if loc
-               URI::parse("http://#{loc}/.well-known/netinfproto/get")
+               URI::parse("http://#{loc}/netinfproto/get")
              else
                URI::parse(niUri.to_wellknownURI)
              end
@@ -74,7 +74,7 @@ class NetInfHTTP < NetInf
 # loc can specify a next hop (HTTP URI)
   def publishObj(niUri, file, destHost, msgId)
 #    print ("publish: #{niUri}, #{file}, #{destHost}, #{msgId}\n")
-    url=URI::parse("http://#{destHost}/.well-known/netinfproto/publish")
+    url=URI::parse("http://#{destHost}/netinfproto/publish")
     
     res=nil
 
@@ -99,7 +99,7 @@ class NetInfHTTP < NetInf
 # publish the specified object (registering it's location)
 # loc can specify a next hop (HTTP URI)
   def publishLoc(niUri, locList, destHost, msgId)
-    url=URI::parse("http://#{destHost}/.well-known/netinfproto/publish")
+    url=URI::parse("http://#{destHost}/netinfproto/publish")
 
     res=nil
     req=nil
@@ -134,7 +134,7 @@ class NetInfHTTP < NetInf
 # send a SEARCH request to the specified next hop
   def search(loc, msgId)
 
-    httpuri=URI::parse("http://#{loc}/.well-known/netinfproto/search")
+    httpuri=URI::parse("http://#{loc}/netinfproto/search")
     Net::HTTP.post_form(httpuri, 'msgid' => msgId, 'ext' => "no extension")
   end
   
