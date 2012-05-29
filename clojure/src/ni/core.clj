@@ -38,6 +38,19 @@
 ;;
 ;; string transformation:
 ;; (ni-toString name1)
+;;
+;; transforming to NIH format:
+;; (ni-toNih name1)
+;;
+;; creating NI URI from NIH in string representation:
+;; (nih "nih:sha-256-120;7f83b1657ff1fc53b92dc18148a1d6;8")
+;;
+;; transforming NI URI to binary format:
+;; (ni-toBin name1)
+;;
+;; create NI URI from binary representation (byteArray):
+;; (niBin bits)
+
 
 (ns ni.core
 

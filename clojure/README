@@ -33,13 +33,14 @@ This is a Clojure implementation of the NI name format for Named Data
 Objects as develop by the SAIL project.
 
 
-Dependencies
-------------
+Clojure Dependencies
+---------------------
 
 - org.clojure/data.codec (from clojure.contrib)
 - clj-message-digest
 
-tested with lein and clojure-1.4.0
+tested with lein and clojure-1.4.0 (see 'Preparing' below for how to
+install that)
 
 
 Roadmap
@@ -54,9 +55,23 @@ Roadmap
 Preparing
 ---------
 
+You need a recent JDK version. Check with your OS vendor or consult http://www.oracle.com/technetwork/java/javase/downloads/index.html .
+
 I am using the leinigen tool
 (https://github.com/technomancy/leiningen) for automating dependencies
-management. If you have leinigen installed, you can just install the
+management.
+
+If you don't have leiningen installed, you have different options,
+depending on your OK. On a UNIX-based system, including Cygwin, the
+least invasive approach seems to be:
+
+curl https://raw.github.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
+chmod +x ~/bin/lein
+lein self-install
+
+(see http://stackoverflow.com/questions/5983427/how-to-install-clojure-on-ubuntu-10-04-from-github-repo-with-no-clojure-jar for a detailed discussion)
+
+If you have leinigen installed, you can just install the
 dependencies with calling 'make deps' (or 'lein deps' directly) on the
 command line.
 
@@ -71,7 +86,7 @@ parsing:
 
 creation:
 (def name1 (mkni "this is the NDO data" "example.com" "sha-256" "ct=text/plain"))
-(def name2 (mkni  file "example.com" "sha-256" ""))
+(def name2 (mkni  (slurp "file.txt") "example.com" "sha-256" ""))
 
 validation:
 (valid? name2 file)
@@ -79,6 +94,19 @@ validation:
 
 string transformation:
 (ni-toString name1)
+
+transforming to NIH format:
+(ni-toNih name1)
+
+creating NI URI from NIH in string representation:
+(nih "nih:sha-256-120;7f83b1657ff1fc53b92dc18148a1d6;8")
+
+transforming NI URI to binary format:
+(ni-toBin name1)
+
+create NI URI from binary representation (byteArray):
+(niBin bits)
+
 
 
 Changes:
@@ -89,7 +117,6 @@ Changes:
 * added support for binary representation
 * added support for NIH format
 * added test cases
-
 
 [2012-05-25]
 * fixed a bug in urldecode (added padding)
