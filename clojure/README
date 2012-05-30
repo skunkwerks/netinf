@@ -114,7 +114,7 @@ Changes:
 
 [2012-05-30]
 * updated to clj-http-0.4.1
-* added support for initial HTTP CL support (GET client functionality)
+* added support for initial HTTP CL support (GET and PUBLISH client functionality)
 
 [2012-05-28]
 * added support for truncated hash suite
