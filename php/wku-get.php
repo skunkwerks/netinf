@@ -12,7 +12,7 @@ $alglist=array("sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32
 $urival = $_SERVER['REQUEST_URI'];
 // $urival = filter_input(INPUT_GET, 'URI');
 
-print "Asked for -- $urival --";
+// print "Asked for -- $urival --";
 
 $testy=true;
 
