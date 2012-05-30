@@ -6,4 +6,5 @@
 	ScriptAlias /netinfproto/put "/<path>/putter.php"
 	ScriptAlias /netinfproto/list "/<path>/wku-list.php"
 	ScriptAlias /netinfproto "/<path>/fetcher.php"
+	ScriptAlias /.well-known/ni "/<path>/wku-get.php"
 
