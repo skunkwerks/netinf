@@ -57,7 +57,6 @@ if (!$algfound) {
 
 		// new plan - if its a link then return a 307 for the file, if 
 		// the file lives in the .wku directory then just return it
-		if (!is_link($filename)) {
 			header('Content-Description: File Transfer');
 			$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
     		$mime = finfo_file($finfo, $filename);
@@ -68,7 +67,7 @@ if (!$algfound) {
 			header('Content-Disposition: inline; filename=' . basename($filename));
 			readfile($filename);
 			// print $filename;
-		} else {
+		if (false && is_link($filename)) {
 			// return 307 for that
  			$docRoot = getenv("DOCUMENT_ROOT");
 			$realfilename=readlink($filename);
