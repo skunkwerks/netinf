@@ -217,10 +217,10 @@ server.mount_proc("/netinfproto/publish") do |request, response|
   print ("publish\n")
   puts request
 
-  uri=request.query["URI"]
-  msgId = request.query["msgid"]
+  uri=URI::parse(request.query["URI"].to_s)
+  msgId = request.query["msgid"].to_s
 
-  fullPut=request.query["fullPut"]
+  fullPut=request.query["fullPut"].to_s
 
   if fullPut
     obj = request.query["octets"]

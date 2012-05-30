@@ -58,7 +58,9 @@
            [clojure.java.io :as io]
            [clojure.string :as string]
            [clj-message-digest.core]
-           [clj-message-digest.core :as msg])
+           [clj-message-digest.core :as msg]
+           [clj-http.client :as client]
+           )
 )
 
 
@@ -274,17 +276,30 @@ lazy sequence containing the array of the URI components"
 
 
 
-;;(def get-path "/netinfproto/get")
-;;(def pub-path "/netinfproto/publish")
+(def get-path "/netinfproto/get")
+(def pub-path "/netinfproto/publish")
 
 
-;; (defn ni-get [uri msgid & loc]
-;;   (let [http-uri (str "http://" (first loc) get-path)]
-;;     (
-;;      (println http-uri)
-;;      (client/post http-uri
-;;                   {:form-params {:URI uri,
-;;                                  :msgid msgid,
-;;                                  :ext "no extension"}}) :body)))
+(defn ni-get [uri msgid & loc]
+  (let [http-uri (str "http://" (first loc) get-path)]
+    (
+     (client/post http-uri
+                  {:form-params {:URI uri,
+                                 :msgid msgid,
+                                 :ext "no extension"}}) :body)))
+
+
+
+(defn ni-pub [uri data msgid & loc]
+  (let [http-uri (str "http://" (first loc) pub-path)]
+
+    (client/post http-uri {:multipart [["URI" uri]
+                                       ["msgid" msgid]
+                                       ["octets" data]
+                                       ["fullPut" "yes"]]
+                           :retry-handler (fn [ex try-count http-context]
+                                            (println "Got:" ex)
+                                            (if (> try-count 4) false true))})))
+
 
 
