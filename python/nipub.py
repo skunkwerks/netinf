@@ -149,7 +149,7 @@ def main():
     # Make dictionary that will dynamically retrieve ni URI when it has been made
     uri_dict = { "generator": octet_param.get_url,
                  "length": (len(ni_digester.get_url()) + len(";") +
-                            ni_digester.get_encoded_length())}
+                            ni_digester.get_b64_encoded_length())}
 
     param_list = [octet_param,
                   ("URI",       uri_dict),

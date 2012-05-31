@@ -11,6 +11,13 @@ UC Irvine, June 1995.
 
 20120130 Updated to add ni: scheme:  Only required adding 'ni' scheme name to
 uses_relative, uses_netloc, uses_params, uses_query, and uses_fragment.
+
+20120529 Updated to add nih: scheme: Requires adding 'nih' scheme name to
+uses_relative, non_hierarchical, and uses_params.  We also add 'nih' to
+uses_query and uses_fragment although these are not allowed in nih.
+Verification weeds them out later.  Also had to actually use non_hierarchical
+(which wasn't done before) to suppress the /// in front of the path when
+rebuilding (in uelunsplit).
 """
 
 __all__ = ["urlparse", "urlunparse", "urljoin", "urldefrag",
@@ -20,21 +27,21 @@ __all__ = ["urlparse", "urlunparse", "urljoin", "urldefrag",
 uses_relative = ['ftp', 'http', 'gopher', 'nntp', 'imap',
                  'wais', 'file', 'https', 'shttp', 'mms',
                  'prospero', 'rtsp', 'rtspu', '', 'sftp',
-                 'ni']
+                 'ni', 'nih']
 uses_netloc = ['ftp', 'http', 'gopher', 'nntp', 'telnet',
                'imap', 'wais', 'file', 'mms', 'https', 'shttp',
                'snews', 'prospero', 'rtsp', 'rtspu', 'rsync', '',
                'svn', 'svn+ssh', 'sftp', 'ni']
 non_hierarchical = ['gopher', 'hdl', 'mailto', 'news',
-                    'telnet', 'wais', 'imap', 'snews', 'sip', 'sips']
+                    'telnet', 'wais', 'imap', 'snews', 'sip', 'sips', 'nih']
 uses_params = ['ftp', 'hdl', 'prospero', 'http', 'imap',
                'https', 'shttp', 'rtsp', 'rtspu', 'sip', 'sips',
-               'mms', '', 'sftp', 'ni']
+               'mms', '', 'sftp', 'ni', 'nih']
 uses_query = ['http', 'wais', 'imap', 'https', 'shttp', 'mms',
-              'gopher', 'rtsp', 'rtspu', 'sip', 'sips', 'ni', '']
+              'gopher', 'rtsp', 'rtspu', 'sip', 'sips', 'ni', 'nih', '']
 uses_fragment = ['ftp', 'hdl', 'http', 'gopher', 'news',
                  'nntp', 'wais', 'https', 'shttp', 'snews',
-                 'file', 'prospero', 'ni', '']
+                 'file', 'prospero', 'ni', 'nih', '']
 
 # Characters valid in scheme names
 scheme_chars = ('abcdefghijklmnopqrstuvwxyz'
@@ -196,9 +203,10 @@ def urlunparse(data):
 
 def urlunsplit(data):
     scheme, netloc, url, query, fragment = data
-    if netloc or (scheme and scheme in uses_netloc and url[:2] != '//'):
-        if url and url[:1] != '/': url = '/' + url
-        url = '//' + (netloc or '') + url
+    if not (scheme and scheme in non_hierarchical):
+        if netloc or (scheme and scheme in uses_netloc and url[:2] != '//'):
+            if url and url[:1] != '/': url = '/' + url
+            url = '//' + (netloc or '') + url
     if scheme:
         url = scheme + ':' + url
     if query:
