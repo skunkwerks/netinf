@@ -760,8 +760,8 @@ class NI:
 
     def makenif(self, ni_url, file_name):
         """
-        @brief make an NI URI for a named file
-        Given an ni name, open a file, hash it and add the hash to
+        @brief make an ni or nih scheme URI for a named file
+        Given an ni or nih name template, open a file, hash it and add the hash to
         the URI template as the 'params' field appended to path file component.
 
         @param ni_url is the URI - expects NIname object (in/out)
@@ -806,10 +806,20 @@ class NI:
         
     def checknif(self, ni_url, file_name):
         """
-        @brief check if an NI URI matches a file's content
+        @brief check if an ni or nih scheme URI matches a file's content
+        Extract the hash algorithm for the URI, use to hash the file
+        contents and compare it with the digest in the URI params field.
+ 
+        If the URI and file hashes match, return will be niSUCESS
+        If the URI and file content do not match, return will be some
+        other value indicating why the match could not be done or failed.
+        An example error would be if a hash function is not supported,
+        in that case the function returns an niBADALG error.
+
         @param ni_URL is the URI - expects NIname object with params(in)
         @param file_name is a file name - string (in)
         @return result code taken from ni_errs enumeration
+        niBADSCHEME if scheme is not ni or nih
         niBADALG if algorithm name is not known,
         niBADPARAMS if the digest isn't the right format when generated
         niNOFRAG if the ni_url has fragment specifiers
@@ -820,15 +830,6 @@ class NI:
         niHASHTOOLONG if the digest in the name is too long,
         and
         niSUCCESS if all goes well.
-
-        Extract the hash algorithm for the URI, use to hash the file
-        contents and compare it with the digest in the URI params field.
- 
-        If the URI and file hashes match, return will be niSUCESS
-        If the URI and file content do not match, return will be some
-        other value indicating why the match could not be done or failed.
-        An example error would be if a hash function is not supported,
-        in that case the function returns an niBADALG error.
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -865,16 +866,20 @@ class NI:
 
     def makenib(self, ni_url, buf):
         """
-        @brief make an NI URI for a buffer
+        @brief make an ni or nih scheme URI for a buffer
+        Given an ni or nih name template, hash a buffer and add the hash to
+        the URI template as the 'params' field appended to path file component.
+
         @param ni_url is the URI template - expects NIname object without params (in/out)
         @param buf is the buffer 
         @return result code taken from ni_errs enumeration:
+        niBADSCHEME if the ni_url has ascheme other than ni or nih
+        niBADPARAMS if the digest isn't the right format when generated
+        niNOFRAG if the ni_url has fragment specifiers
+        niBADURL if the initial URL already has parameters
         niBADALG if algorithm name is not known,
         niHASHFAIL if the hash digest seems to be the wrong length or
-        niSUCCESS if all goes well.
-     
-        Given an ni name, hash a buffer and add the hash to
-        the URI template as the 'params' field appended to path file component.
+        niSUCCESS if all goes well.     
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -912,18 +917,8 @@ class NI:
 
     def checknib(self, ni_url, buf):
         """
-        @brief check if an NI URI matches a buffer
-        @param ni_url is the URI - expects NIname object with non-empty params (in)
-        @param buf is the buffer 
-        @param res is the result (out, zero if good)
-        @return result code taken from ni_errs enumeration
-        niBADALG if algorithm name is not known,
-        niHASHFAIL if the hash digest seems to be the wrong length,
-        niBADHASH if the digest in the name does not match digest of file
-        niHASHTOOLONG if the digest in the name is too long, and
-        niSUCCESS if all goes well.
- 
-        Given an ni name and a buffer, hash the buffer and compare the hash to
+        @brief check if an ni or nih scheme URI matches a buffer
+        Given an ni or nih name and a buffer, hash the buffer and compare the hash to
         the URI 'params' field appended to path file component.
      
         If the URI and buffer hashes match, return will be niSUCESS
@@ -931,6 +926,21 @@ class NI:
         other value indicating why the match could not be done or failed.
         An example error would be if a hash function is not supported,
         in that case the function returns an niBADALG error.
+
+        @param ni_url is the URI - expects NIname object with non-empty params (in)
+        @param buf is the buffer 
+        @param res is the result (out, zero if good)
+        @return result code taken from ni_errs enumeration
+        niBADSCHEME if scheme is not ni or nih
+        niBADALG if algorithm name is not known,
+        niBADPARAMS if the digest isn't the right format when generated
+        niNOFRAG if the ni_url has fragment specifiers
+        niBADURL if the initial URL already has parameters
+        niHASHFAIL if the hash digest seems to be the wrong length,
+        niBADHASH if the digest in the name does not match digest of file
+        niHASHTOOLONG if the digest in the name is too long,
+        and
+        niSUCCESS if all goes well. 
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -971,6 +981,91 @@ class NI:
             return ni_errs.niSUCCESS            
                                             
         return ni_errs.niBADHASH
+
+    def makebnf(self, suite_no, file_name):
+        """
+        @brief make a binary format hash for a file given the suite number for the encoding
+        @param suite_no index of encoding suite (see NIname.suite_index) (in)
+        @param file_name is the file (in)
+        @return (tuple) result code taken from ni_errs enumeration, binary digest as bytearray(none if fails)
+        niBADALG if algorithm name is not known,
+        niHASHFAIL if the hash digest seems to be the wrong length or
+        niSUCCESS if all goes well.
+        niBADALG if algorithm name is not known,
+        niBADPARAMS if the digest isn't the right format when generated
+        niBADFILE if canot open/read file, 
+        niHASHFAIL if the hash digest seems to be the wrong length,
+        niHASHTOOLONG if the digest in the name is too long,
+        and
+        niSUCCESS if all goes well.      
+        """
+
+        # Simulate an nih type name using the suite
+        url = "nih:%d" % suite_no
+        ni_url = NIname(url)
+        
+        # Validate the suite_no
+        rv = ni_url.validate_ni_url(has_params=False)
+        if (rv != ni_errs.niSUCCESS):
+            return (rv, None)
+                
+        # Construct the binary digest of the file
+        (bin_dgst, ret) = self.digest_file(ni_url, file_name)
+        if bin_dgst == None:
+            return (ret, None)
+
+        debug(str(len(bin_dgst)))
+
+        dgst_ba = bytearray()
+        dgst_ba.append(suite_no)
+        dgst_ba.extend(bin_dgst)
+
+        return (ni_errs.niSUCCESS, dgst_ba)
+    
+    def makebnb(self, suite_no, buf):
+        """
+        @brief make a binary format hash for a buffer given the suite number for the encoding
+        @param suite_no index of encoding suite (see NIname.suite_index) (in)
+        @param buf is the buffer (in)
+        @return (tuple) result code taken from ni_errs enumeration, binary digest as bytearray (none if fails)
+        niBADALG if algorithm name is not known,
+        niHASHFAIL if the hash digest seems to be the wrong length or
+        niSUCCESS if all goes well.
+        niBADALG if algorithm name is not known,
+        niBADPARAMS if the digest isn't the right format when generated
+        niHASHFAIL if the hash digest seems to be the wrong length,
+        niHASHTOOLONG if the digest in the name is too long,
+        and
+        niSUCCESS if all goes well.      
+        """
+        # Simulate an nih type name using the suite
+        url = "nih:%d" % suite_no
+        ni_url = NIname(url)
+        
+        # Validate the suite_no
+        rv = ni_url.validate_ni_url(has_params=False)
+        if (rv != ni_errs.niSUCCESS):
+            return (rv, None)
+                
+        debug(ni_url.get_alg_name())
+
+        debug("Hashing buffer of length %d" % len(buf))
+
+        # Construct digest of buffer
+        h = ni_url.get_hash_function()()
+        h.update(buf)
+        bin_dgst = h.digest()
+
+        # Check length is as expected
+        if len(bin_dgst) != ni_url.get_digest_length():
+            debug("Hash algorithm returned unexpected length (Exp: %d; Actual: %d)" % (self.hash_algs[alg_name][HL], len(bin_dgst)))
+            return (ni_errs.niHASHFAIL, None)
+
+        dgst_ba = bytearray()
+        dgst_ba.append(suite_no)
+        dgst_ba.extend(bin_dgst[:ni_url.get_truncated_length()])
+
+        return (ni_errs.niSUCCESS, dgst_ba)
 
 ## @brief NIproc - Global instance for NI operations class
 NIproc = NI()
@@ -1384,8 +1479,8 @@ if __name__ == "__main__":
     else:
         print "Error correctly detected when validating template: %s" % ni_errs_txt[rv]
         
-    print "\nChecking makenif and checknif"
-    print "=============================\n"
+    print "\nChecking makenif, makebnf and checknif"
+    print   "======================================\n"
     
     print "File name %s in buffer 'buf' %d octets long" % ( str(file_name), len(file_name))
     
@@ -1417,6 +1512,20 @@ if __name__ == "__main__":
     print "\nName: %s" % n.get_url() 
     NIproc.makenif(n, file_name)
     print "Name with digest: %s" % n.get_url()
+    
+    print "\nChecking makebnf with suite 6..."
+    (ret, ba) = NIproc.makebnf(6, file_name)
+    if ret == ni_errs.niSUCCESS:
+        print "Binary digest: %s" % base64.b16encode(str(ba))
+    else:
+        print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
+    
+    print "\nChecking makebnf with (bad) suite 11..."
+    (ret, ba) = NIproc.makebnf(11, file_name)
+    if ret == ni_errs.niSUCCESS:
+        print "Making binary digest succeeded unexpectedly"
+    else:
+        print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
     
     n = NIname("ni://tcd.ie.bollix/sha-256-32;?c=moreshite")
     print "\nName: %s" % n.get_url() 
@@ -1479,8 +1588,8 @@ if __name__ == "__main__":
         else:
             print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
 
-    print "\nChecking makenib and checknib"
-    print "=============================\n"
+    print "\nChecking makenib, makebnb and checknib"
+    print   "======================================\n"
 
     print "Using buffer 'buf' %d octets long filled with zeroes (%s)." % ( len(buf), buf.decode())
 
@@ -1561,6 +1670,20 @@ if __name__ == "__main__":
     print "\nName: %s" % n.get_url() 
     NIproc.makenib(n, randbuf)
     print "Name with digest: %s" % n.get_url()
+    
+    print "\nChecking makebnb with suite 6..."
+    (ret, ba) = NIproc.makebnb(6, randbuf)
+    if ret == ni_errs.niSUCCESS:
+        print "Binary digest: %s" % base64.b16encode(str(ba))
+    else:
+        print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
+    
+    print "\nChecking makebnb with (bad) suite 11..."
+    (ret, ba) = NIproc.makebnb(11, randbuf)
+    if ret == ni_errs.niSUCCESS:
+        print "Making binary digest succeeded unexpectedly"
+    else:
+        print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
     
     print "\nEnd of tests"
     print "============\n"
