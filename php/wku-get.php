@@ -1,25 +1,22 @@
 <?php
 
+// this is used to return a re-direct (307) after a .well-known/ni URL is 
+// requested via a plain HTTP GET
+
 $wkd = "/home/dtnuser/data/www/statichtml/.well-known/ni";
 // sha-256 better be last here, or we'll get an error'd first match
 $alglist=array("sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32","sha-256");
 
 
-// $urival = $_REQUEST['URI'];
-// $urival = filter_input(INPUT_POST, 'URI', FILTER_SANITIZE_ENCODED);
-$urival = filter_input(INPUT_POST, 'URI');
-$msgidval = $_REQUEST['msgid'];
-$extval = $_REQUEST['ext'];
 
-// $urival = "http://village.n4c.eu/.well-known/ni/sha-256/2u8jwt1CTn7_XkvmjMvgIApWtWz34YaiF6Rbbdbj_c4?ct=foo";
-// $urival = "ni:///sha-256/2u8jwt1CTn7_XkvmjMvgIApWtWz34YaiF6Rbbdbj_c4?ct=foo";
-// $urival = "http://village.n4c.eu/.well-known/ni/sha-256/2U8JWT1ctN7_xKVMJmVGiaPwTwZ34YaiF6Rbbdbj_c4?ct=foo";
-// $msgidval = "123";
-// $extval =  "";
-// $hashalg = "bar";
-// print $urival;
+$urival = $_SERVER['REQUEST_URI'];
+// $urival = filter_input(INPUT_GET, 'URI');
 
-// print "\n";
+// print "Asked for -- $urival --";
+
+$testy=true;
+
+if ($testy) {
 
 // extract hashalg and hash and check for file, if it exists print it, otherwise 404
 $hstr = "";
@@ -55,8 +52,9 @@ if (!$algfound) {
 	// print "Checking $filename";
 	if (file_exists($filename)) {
 
-		// new plan - if its a link then return a 307 for the file, if 
-		// the file lives in the .wku directory then just return it
+		// if its a link then return a 307 for the file, if 
+		// the file really lives in the .wku directory then just return it
+		if (!is_link($filename)) {
 			header('Content-Description: File Transfer');
 			$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
     		$mime = finfo_file($finfo, $filename);
@@ -67,7 +65,7 @@ if (!$algfound) {
 			header('Content-Disposition: inline; filename=' . basename($filename));
 			readfile($filename);
 			// print $filename;
-		if (false && is_link($filename)) {
+		} else {
 			// return 307 for that
  			$docRoot = getenv("DOCUMENT_ROOT");
 			$realfilename=readlink($filename);
@@ -108,6 +106,9 @@ if (!$algfound) {
 		// print "File; $filename\n";
 	} 
 }
+
+} // if false
+
 
 
 ?>

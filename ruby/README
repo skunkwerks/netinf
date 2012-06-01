@@ -103,6 +103,9 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-05-30]
+* fixed a bug in parsing the PUBLISH request parameter in nid
+
 [2012-05-29]
 * changed path for HTTP CL from ".well-known/netinfproto/" to "/netinfproto/"
 

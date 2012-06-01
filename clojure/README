@@ -62,7 +62,7 @@ I am using the leinigen tool
 management.
 
 If you don't have leiningen installed, you have different options,
-depending on your OK. On a UNIX-based system, including Cygwin, the
+depending on your OS. On a UNIX-based system, including Cygwin, the
 least invasive approach seems to be:
 
 curl https://raw.github.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
@@ -70,6 +70,10 @@ chmod +x ~/bin/lein
 lein self-install
 
 (see http://stackoverflow.com/questions/5983427/how-to-install-clojure-on-ubuntu-10-04-from-github-repo-with-no-clojure-jar for a detailed discussion)
+
+leiningen is also available in some distributions' package
+directories, e.g., on a recent Ubuntu system you should also be able
+to install it by "sudo apt-get install leiningen".
 
 If you have leinigen installed, you can just install the
 dependencies with calling 'make deps' (or 'lein deps' directly) on the
@@ -111,6 +115,10 @@ create NI URI from binary representation (byteArray):
 
 Changes:
 --------
+
+[2012-05-30]
+* updated to clj-http-0.4.1
+* added support for initial HTTP CL support (GET and PUBLISH client functionality)
 
 [2012-05-28]
 * added support for truncated hash suite
