@@ -32,6 +32,17 @@ Authors
 	Janne Tuononen <janne.tuononen@nsn.com>
 	Bengt Ahlgren <bengta@sics.se>
 
+Version
+------
+
+This is version 0.1a.
+
+In this version, the c, python, ruby and clojure libraries
+are up to date with draft-farrell-decade-ni-06. 
+
+Other NetInf features and other languages are in a state of
+flux at the moment.
+
 Roadmap
 -------
 

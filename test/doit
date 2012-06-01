@@ -128,13 +128,13 @@ fi
 
 # Python tests - a start at least 
 
-PYHWNAME=`../python/nicl.py -g -n 'ni:///sha-256' -f hw.txt | tail -1`
-BADRES=`../python/nicl.py -v -n $BADNAME1 -f hw.txt | grep failed`
-GOODRES=`../python/nicl.py -v -n $HWNAME1 -f hw.txt | grep matches`
+PYHWNAME=`../python/nicl.py -V -g -n 'ni:///sha-256' -f hw.txt | tail -1`
+BADRES=`../python/nicl.py -V -v -n $BADNAME1 -f hw.txt | grep failed`
+GOODRES=`../python/nicl.py -V -v -n $HWNAME1 -f hw.txt | grep matches`
 
 if [ "$HWNAME1" != "$PYHWNAME" ]
 then
-	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "ERROR in python, spec example (1) != calculated value (2)"
 	echo "(1): $HWNAME1"
 	echo "(2): $PYHWNAME"
 	PROBLEM=true
@@ -171,7 +171,6 @@ NIHOUT1=`../ruby/ni2nih  -n $NIHOUT1_TMP`
 NIHOUT2_TMP=`../ruby/mkni -d sha-256-120 -f hw.txt`
 NIHOUT2=`../ruby/ni2nih  -n $NIHOUT2_TMP`
 
-PROBLEM=false
 
 if [ "$HWNAME1?ct=text/plain" != "$CHWNAME" ]
 then
