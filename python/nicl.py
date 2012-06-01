@@ -44,55 +44,130 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%prog [-g|-v] -n <ni name> -f <pathname of content file>\n"
-    usage = usage + "       Available hash options: %s" % NIname.list_algs()
+    usage = "%prog [-g|-w|-v] -n <name> -f <pathname of content file> [-V]\n"
+    usage = usage + "       %prog -m -n <name> [-V]\n"
+    usage = usage + "       %prog -b -s <suite_number> -f <pathname of content file> [-V]\n"
+    usage = usage + "       The name can be either an ni: or nih: scheme URI\n"
+    usage = usage + "       Return code: success 0, failure non-zero (-V for more info)\n"
+    usage = usage + "       Available hashalg (suite number) options:\n"
+    usage = usage + "       %s" % NIname.list_algs()
     parser = OptionParser(usage)
     
     parser.add_option("-g", "--generate", default=False,
                       action="store_true", dest="generate",
-                      help="Generate ni name from template matching content file")
+                      help="Generate hash based on content file, " + \
+                           "and output name with encoded hash after the hashalg string")
+    parser.add_option("-w", "--well-known", default=False,
+                      action="store_true", dest="well_known",
+                      help="Generate hash based on content file, " + \
+                           "and output name with encoded hash in the .well_known URL " + \
+                           "after the hashalg string. Applies to ni: scheme only.")
     parser.add_option("-v", "--verify", default=False,
                       action="store_true", dest="verify",
-                      help="Verify hash in ni name is correct for content file")
+                      help="Verify hash in name is correct for content file")
+    parser.add_option("-m", "--map", default=False,
+                      action="store_true", dest="map_wkn",
+                      help="Maps from an ni: name to a .well-known URL")
+    parser.add_option("-b", "--binary", default=False,
+                      action="store_true", dest="bin",
+                      help="Outputs the name in binary format for a given suite number")
+    parser.add_option("-V", "--verbose", default=False,
+                      action="store_true", dest="verbose",
+                      help="Be more long winded.")
     parser.add_option("-n", "--ni-name", dest="ni_name",
                       type="string",
                       help="The ni name template for (-g) or ni name matching (-v) content file.")
     parser.add_option("-f", "--file", dest="file_name",
                       type="string",
                       help="File with content data named by ni name.")
+    parser.add_option("-s", "--suite-no", dest="suite_no",
+                      type="int",
+                      help="Suite number for hash algorithm to use.")
 
-    (options, args) = parser.parse_args()
+    (opts, args) = parser.parse_args()
 
-    if not (options.generate or options.verify):
-        parser.error( "Must specify either -g/--generate or -v/--verify.")
-    if (options.ni_name == None) or (options.file_name == None):
-        parser.error("Must specify both ni name and content file name.")
+    if not (opts.generate or opts.well_known or opts.verify or
+            opts.map_wkn or opts.bin ):
+        parser.error( "Must specify one of -g/--generate, -w/--well-known, -v/--verify, -m/--map or -b/--binary.")
+    if opts.generate or opts.well_known or opts.verify:
+        if (opts.ni_name == None) or (opts.file_name == None):
+            parser.error("Must specify both name and content file name for -g, -w or -v.")
+    if opts.map_wkn:
+        if (opts.ni_name == None):
+            parser.error("Must specify ni name for -m.")
+    if opts.bin:
+        if (opts.suite_no == None) or (opts.file_name == None):
+            parser.error("Must specify both suite number and content file name for -b.")
     if len(args) != 0:
         parser.error("Too many or unrecognised arguments specified")
 
-    # Execute reuested action
-    if options.generate:
-        n = NIname(options.ni_name)
-        ret = NIproc.makenif(n, options.file_name)
+    # Execute requested action
+    if opts.generate:
+        n = NIname(opts.ni_name)
+        ret = NIproc.makenif(n, opts.file_name)
         if ret == ni_errs.niSUCCESS:
-            print "Name generated successfully."
+            if opts.verbose:
+                print("Name generated successfully.")
             print "%s" % n.get_url()
             sys.exit(0)
-        print "Name could not be successfully generated."
-    elif options.verify:
-        n = NIname(options.ni_name)
-        ret = NIproc.checknif(n, options.file_name)
+        if opts.verbose:
+            print "Name could not be successfully generated."
+    elif opts.well_known:
+        n = NIname(opts.ni_name)
+        if n.get_scheme() == "nih":
+            if opts.verbose:
+                print "Only applicable to ni: scheme names."
+            sys.exit(1)
+        ret = NIproc.makenif(n, opts.file_name)
         if ret == ni_errs.niSUCCESS:
-            print "Name matches content file."
-            print "%s" % n.get_url()
+            if opts.verbose:
+                print("Name generated successfully.")
+            print "%s" % n.get_wku_transform()
             sys.exit(0)
-        print "Check of name against content failed."
+        if opts.verbose:
+            print "Name could not be successfully generated."
+    elif opts.verify:
+        n = NIname(opts.ni_name)
+        ret = NIproc.checknif(n, opts.file_name)
+        if ret == ni_errs.niSUCCESS:
+            if opts.verbose:
+                print("Name matches content file.")
+                print "%s" % n.get_url()
+            sys.exit(0)
+        if opts.verbose:
+            print "Check of name against content failed."
+    elif opts.map_wkn:
+        n = NIname(opts.ni_name)
+        ret = n.validate_ni_url(has_params = True)
+        if ret == ni_errs.niSUCCESS:
+            if n.get_scheme() == "nih":
+                if opts.verbose:
+                    print "Only applicable to ni: scheme names."
+                sys.exit(1)
+            if opts.verbose:
+                print("Name validated successfully.")
+            print "%s" % n.get_wku_transform()
+            sys.exit(0)
+        else:
+            if opts.verbose:
+                print "Name could not be successfully validated."
+    elif opts.bin:
+        (ret, bin_name) = NIproc.makebnf(opts.suite_no, opts.file_name)
+        if ret == ni_errs.niSUCCESS:
+            if opts.verbose:
+                print("Name generated successfully.")
+            print base64.b16encode(str(bin_name))
+            sys.exit(0)
+        else:
+            if opts.verbose:
+                print "Name could not be successfully generated."
     else:
         print"Should not have happened"
         sys.exit(2)
 
     # Print appropriate error message
-    print "Error: %s" % ni_errs_txt[ret]
+    if opts.verbose:
+        print "Error: %s" % ni_errs_txt[ret]
     sys.exit(1)
         
     sys.exit(0)

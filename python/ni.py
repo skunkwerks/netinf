@@ -181,9 +181,10 @@ class NIname:
         @brief classmethod returning a printable string listing the recognized hash algorithm identifiers
         @return string of available hash algorithms for usage strings
         """
+        NIname.construct_suite_index()
         l = ""
-        for k in NIname.hash_algs.keys():
-            l = l + k + ", "
+        for k in sorted(NIname.suite_index.keys()):
+            l = l + "%s (%d), " % (NIname.suite_index[k], k)
         return l[:-2]
 
     @classmethod
@@ -232,12 +233,8 @@ class NIname:
         The url string is made by calling ni_urlparse.urlunparse,
         using empty strings for any missing items.
         """
-        # Construct suite index on first use
-        if NIname.suite_index == None:
-            NIname.suite_index = {}
-            for key in NIname.hash_algs.keys():
-                NIname.suite_index[NIname.hash_algs[key][NIname.SI]] = key
-            debug(NIname.suite_index)
+        NIname.construct_suite_index()
+        
         debug("Constructing from %s" % str(type(url)))
         self.alg_name = None
         if (type(url) == str):
@@ -257,6 +254,17 @@ class NIname:
         else:
             debug("NIname constructor: argument type %s not allowed" % str(type(url)))
             raise TypeError
+        return
+    @classmethod
+    def construct_suite_index(cls):
+        """
+        @brief Construct suite index on first use - dicytionary of suites vs hashalg keys
+        """
+        if NIname.suite_index == None:
+            NIname.suite_index = {}
+            for key in NIname.hash_algs.keys():
+                NIname.suite_index[NIname.hash_algs[key][NIname.SI]] = key
+            debug(NIname.suite_index)
         return
     
     def set_url(self, url):
