@@ -38,7 +38,7 @@ Version
 This is version 0.1a.
 
 In this version, the c, python, ruby and clojure libraries
-are up to date with draft-farrell-decade-ni-06i for ni: and nih:
+are up to date with draft-farrell-decade-ni-07 for ni: and nih:
 name generation and verification as well as binary format names. 
 
 Other NetInf features and other languages are in a state of
@@ -81,7 +81,7 @@ Documentation
 
 The specification of the NI URI format is here (as of 2012-06-01):
 
-		http://tools.ietf.org/html/draft-farrell-decade-ni-06
+		http://tools.ietf.org/html/draft-farrell-decade-ni-07
 		http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-02
 
 The NetInf protocol specification (the basis of the HTTP and UDP
