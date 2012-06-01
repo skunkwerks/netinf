@@ -14,6 +14,10 @@ filter (http://code.foosel.org/doxypy) to create Doygen output.
 Requires the Python 'stdnum' library to supply the Luhn-mod-N checkdigit 
 algorithm.  Can be downloaded from http://pypi.python.org/pypi/python-stdnum. 
 
+(In each case the modules can be installed using:
+sudo python setup.py install
+assuming you have the distutils module installed).
+
 Provides:
 - ni.py - library of ni: and nih: URL processing and digest making/checking functions.
 - nicl.py - basic command line tool to make and check digests using ni.py.
