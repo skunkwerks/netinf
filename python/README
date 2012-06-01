@@ -11,8 +11,11 @@ Basic implementation of the the NI URI format. Work in Progress.
 Provided with Doxygen compatible documentation strings.  Requires doxypy.py
 filter (http://code.foosel.org/doxypy) to create Doygen output.
 
+Requires the Python 'stdnum' library to supply the Luhn-mod-N checkdigit 
+algorithm.  Can be downloaded from http://pypi.python.org/pypi/python-stdnum. 
+
 Provides:
-- ni.py - library of ni: URL processing and digest making/checking functions.
+- ni.py - library of ni: and nih: URL processing and digest making/checking functions.
 - nicl.py - basic command line tool to make and check digests using ni.py.
 - niget.py - command line tool to perform NetInf get requests over HTTP
 - nipub.py - command line tool to perform NetInf publish requests over HTTP
@@ -46,6 +49,7 @@ Support functions (acquired from http://atlee.ca/software/poster/index.html):
 Features
  - uses Python hashlib (ultimately dependent on OpenSSL) and base64
  - use Python urllib and mimetypes to do HTTP access
+ - uses Python stdnum.luhn module to create check digit for nih: names
  - can hash memory objects (strings), files, and web objects
  - supports hash function pluggability
 
@@ -53,6 +57,13 @@ Limitations
  - niget should work on chunks of request rather than whole file
 
 CHANGES
+  2012-06-01
+  	- Updated ni.py, nicl.py and ni_urlparse.py to match Version 06
+	  of draft-farrell-farrell-decade-ni. Adds the nih: scheme and 
+	  the binary name format.
+	- Improved the format checking when validating name in NIname.
+	- NOTE: Work still in progress on server and HTTP convergence 
+	  layer commands (niget.py and nipub.py).
   2012-02-01
 	- Improved documentation comments in ni.py and nicl.py
 	- added niget.py to provide NetInf 'get' functionality over HTTP
