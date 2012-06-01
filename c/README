@@ -3,25 +3,24 @@ Contact: stephen.farrell@cs.tcd.ie
 Copyright (C) 2012 Trinity College Dublin 
 
 This is a starter for a C library and tools for
-ni names.
+ni URIs. 
 
 - LICENSE is an Apache License under which this is
   all released
-- doit is a bash script that calls test
 - nicl.cc is a main() program for generating and verifying 
   the hashes in ni names
 - nameurl is a bash script that uses wget to fetch an HTTP
-  URL and generate a ni name for that URL
+  URL and generate a ni name for that content
 - ni.h is the library header file
 - ni.cc is the implementation
-- Makefile builds stuff, doesn't actually make a .so yet
-- foo and bar (in the samples directory) are files used in tests
-
-- test.cc is a main() program for adding test cases, now superseded
-  by the ../test/doit script really
 
 (Note that the files below are really early codesprint stuff and may or
 may not be here going forward.)
+
+- doit is a bash script that calls test
+- test.cc is a main() program for adding test cases, now superseded
+  by the ../test/doit script really
+- foo and bar (in the samples directory) are files used in old tests
 
 ***********************************************************
  * These are command line utilities for NetInf developed as
