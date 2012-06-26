@@ -22,6 +22,32 @@ wku-list.php - print the known ni URIs here
 wku-get.php - return a 307 for a ni URI that lives in normal DocRoot
   or direct content if it was NetInf PUT'd (and lives in .well-known)
 getform.html - form for triggering a NetInf GET
-getputform.html - form for triggering a NetInf GET or PUT
+getputform.html - form for triggering a NetInf GET or PUBLISH
 README - this file
+
+---- 2012-06-26 starting over to make a PHP NetInf server
+
+NetInf HTTP CL messages supported:
+
+Temp thing: http://etherpad.verkstad.net/JFIxVaa8TV SCRUB BEFORE RELEASE
+
+GET (N-GET.php)
+	- Check for content locally
+	- if present, return file
+	- else if locator known, return locator (locators only get known via PUBLISH)
+	- else return 404
+
+PUBLISH (N-PUBLISH.php)
+	- (what if I have object or know locator already?)
+	- if fullObj and valid then store locally
+	- else return 404
+
+SEARCH - TBD
+	- 404 for now
+
+N-lib.php : library functions for the above
+
+Storage:
+	- Need some simple native-ish way of storing things
+	- Want some kind of pluggability (maybe via netinffs FUSE)
 
