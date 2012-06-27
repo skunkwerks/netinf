@@ -35,14 +35,14 @@ $wkd=$myRoot . "/.well-known/ni";
 // read request attrs or use test value
 
 // read it from HTTP POST form data
-// $urival = filter_input(INPUT_POST, 'URI');
-// $msgidval = $_REQUEST['msgid'];
-// $extval = $_REQUEST['ext'];
+$urival = filter_input(INPUT_POST, 'URI');
+$msgidval = $_REQUEST['msgid'];
+$extval = $_REQUEST['ext'];
 
 // test - one I have
-$urival = "ni:///sha-256;GJuYalBtoQ-h1bb0Ovu99EJUVQqyarpRQ4EQ0bCmJgY";
-$msgidval = 100;
-$extval = "";
+// $urival = "ni:///sha-256;zxGpiG2_HXy3dHY9HZ3RJqsrhhVmWTsedpFnBTXN9us";
+// $msgidval = 100;
+// $extval = "";
 	
 // test - one I don't have (and is invalid)
 // $urival = "ni:///sha-256;xxxxxoQ-h1bb0Ovu99EJUVQqyarpRQ4EQ0bCmJgY";
@@ -74,15 +74,22 @@ if (!$algfound) {
 	exit(1);
 } 
 
-// See if we have one of those in .well-known locally
-$filename = $wkd . "/" . $hstr . "/" . $hashval ;
-if (file_exists($filename)) {
-	sendFileAns($filename,$msgid);
-	exit(0);
+// TODO: see if we have that file elsewhere (netinffs)
+
+// Check if we have NDO metadata
+$jfilename=checkStore($hstr,$hashval);
+if ($jfilename) { // we have it!
+	// TODO: figure better place
+	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
+	sendMIMEAns($jfilename,$filename,$msgidval);	
 }
 
-// TODO: see if we have that file elsewhere (netinffs)
-// Not sure how that's structured.
+// Fallback: See if we have one of those in .well-known locally
+$filename = $wkd . "/" . $hstr . "/" . $hashval ;
+if (file_exists($filename)) {
+	sendFileAns($filename,$msgidval);
+	exit(0);
+}
 
 // see if we have a locator
 

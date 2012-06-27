@@ -35,7 +35,6 @@ $wkd=$myRoot . "/.well-known/ni";
 // read request attrs or use test value
 
 // read it from HTTP POST form data
-/*
 $urival = filter_input(INPUT_POST, 'URI');
 $msgidval = $_REQUEST['msgid'];
 $extval = $_REQUEST['ext'];
@@ -55,18 +54,17 @@ if ($_FILES["octets"]["error"] > 0 ) {
 	$ftmp = $_FILES["octets"]["tmp_name"];
 	$gotfile = true;
 }
-*/
 
 // test - one I have
-$urival = "ni:///sha-256;zxGpiG2_HXy3dHY9HZ3RJqsrhhVmWTsedpFnBTXN9us";
-$msgidval = 100;
-$extval = "";
-$fname="/home/dtnuser/data/www/statichtml/.well-known/ni/sha-256/zxGpiG2_HXy3dHY9HZ3RJqsrhhVmWTsedpFnBTXN9us";
-$ftmp=$fname;
-$gotfile=false;
-$fullPut=false;
-$loc1="http://village.n4c.eu/foobar";
-$loc2="";
+// $urival = "ni:///sha-256;zxGpiG2_HXy3dHY9HZ3RJqsrhhVmWTsedpFnBTXN9us";
+// $msgidval = 100;
+// $extval = "";
+// $fname="/home/dtnuser/data/www/statichtml/.well-known/ni/sha-256/zxGpiG2_HXy3dHY9HZ3RJqsrhhVmWTsedpFnBTXN9us";
+// $ftmp=$fname;
+// $gotfile=false;
+// $fullPut=false;
+// $loc1="http://village.n4c.eu/foobar";
+// $loc2="dtn:foobar";
 
 // extract hashalg and hash and check for file, if it exists print it, otherwise 404
 $hstr = "";
@@ -91,10 +89,6 @@ if (!$algfound) {
 	retErr($ni_errno,$ni_errstr);
 	exit(1);
 } 
-
-// TODO: see if we have that file elsewhere 
-// Not sure how that's structured.
-
 
 // hackety hack
 $nicl = "/home/stephen/code/netinf-code/c/nicl";
@@ -137,7 +131,19 @@ if ($gotfile) {
 
 if ($loc1!="" || $loc2!="") {
 	// process case where fullObj=false or missing and we just get locators
-	print "locators";
+	// make a meta-file in $metadir with the JSON for this 
+	// if that file's there already just append new info
+	// TODO: check that info is really new
+
+	$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2);
+	if ($store_rv) {
+		$ni_err=true;
+		$ni_errno=494;
+		$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
+		retErr($ni_errno,$ni_errstr);
+	}
+
+	exit(0);
 }
 
 

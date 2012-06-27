@@ -62,8 +62,6 @@
 
 	// return the actual file
 	function sendFileAns($filename,$msgid) {
-		// new plan - if its a link then return a 307 for the file, if 
-		// the file lives in the .wku directory then just return it
 		header('Content-Description: File Transfer');
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
     	$mime = finfo_file($finfo, $filename);
@@ -74,5 +72,100 @@
 		header('Content-Disposition: inline; filename=' . basename($filename));
 		readfile($filename);
 	}
-	
+
+	function sendMIMEAns($jfilename,$filename,$msgid) {
+
+		$mime_boundary=hash("sha256",time());
+		$shortfilename=basename($filename);
+		$msg = "";
+		// the application/json bit
+		$msg .= "--".$mime_boundary. "\n";
+		$msg .= "Content-Type: application/json; charset=iso-8859-1". "\n";
+		$msg .= "\n";
+		$msg .= file_get_contents($jfilename);
+		$msg .= "\n\n";
+		// the payload
+		$msg .= "--".$mime_boundary. "\n";
+		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
+		$mime = finfo_file($finfo, $filename);
+		finfo_close($finfo);
+		$msg .= "Content-Type:  " . $mime  . " name=\"".$shortfilename."\"". "\n";
+		$msg .= "\n";
+		$msg .= file_get_contents($filename);
+		$msg .= "--".$mime_boundary."--". "\n\n";
+		// headers
+		header('MIME-Version: 1.0');
+		header("Content-Type: multipart/mixed; boundary=\"".$mime_boundary."\"");
+		header('Content-Length: ' . strlen($msg));
+		header('Content-Disposition: inline; filename=' . basename($filename));
+		// definitely don't cache for now:-)
+		header('Expires: Thu, 01-Jan-70 00:00:01 GMT');
+		header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+		header('Cache-Control: no-store, no-cache, must-revalidate');
+		header('Cache-Control: post-check=0, pre-check=0', false);
+		header('Pragma: no-cache');
+		// and now the payload
+		print $msg;
+
+	}
+
+	function getMetaDir() {
+		$metadir="/tmp";
+		return($metadir);
+	}
+
+	function storeMeta($hstr,$hashval,$urival,$loc1,$loc2) {
+		// make locators a good JSON array
+		$locstr="";
+		if ($loc1=="") {
+			$locstr = "[ $loc2 ] ";
+		} else if ($loc2=="") {
+			$locstr = "[ $loc1 ] ";
+		} else {
+			$locstr = "[ $loc1 , $loc2 ] ";
+		}
+		$timestamp= date(DATE_ATOM);
+		$jsonev = "{ \"ts\" : \" $timestamp \", \"loc\" : $locstr }";
+		$metadir=getMetaDir();
+		$jfilename = "$metadir/$hstr.$hashval";
+		// print "time: $timestamp\nEV: $jsonev\nFile: $jfilename\n";
+		if (file_exists($jfilename)) {
+			$fh=fopen($jfilename,"a");
+			if (!$fh) {
+				$ni_err=true;
+				$ni_errno=493;
+				$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
+				retErr($ni_errno,$ni_errstr);
+			}
+			fwrite($fh,"\n");
+			fwrite($fh,$jsonev);
+			fwrite($fh,",\n");
+			fclose($fh);
+		} else {
+			$jsonhead="{ \"NetInf\" : \"v0.1a Stephen\"\n,\"ni\" : \"$urival\",\n[\n";
+			$fh=fopen($jfilename,"w");
+			if (!$fh) {
+				$ni_err=true;
+				$ni_errno=493;
+				$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
+				retErr($ni_errno,$ni_errstr);
+			}
+			fwrite($fh,$jsonhead);
+			fwrite($fh,"\n");
+			fwrite($fh,$jsonev);
+			fwrite($fh,",\n");
+			fclose($fh);
+		}
+	}
+
+	function checkStore($hstr,$hashval) {
+		$metadir=getMetaDir();
+		$jfilename = "$metadir/$hstr.$hashval";
+		if (file_exists($jfilename)) {
+			return($jfilename);
+		} else {
+			return(false);
+		}
+	}
+
 ?>
