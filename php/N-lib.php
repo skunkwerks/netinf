@@ -83,7 +83,7 @@
 		$msg .= "Content-Type: application/json; charset=iso-8859-1". "\n";
 		$msg .= "\n";
 		$msg .= file_get_contents($jfilename);
-		$msg .= "\n\n";
+		$msg .= " ] }\n\n";
 		// the payload
 		$msg .= "--".$mime_boundary. "\n";
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension

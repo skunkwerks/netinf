@@ -1,10 +1,10 @@
 # put this into the relevant VirtualHost entry or other suitable place
 # replace <path> with what you need
 # note that this is first/shortest match so the default has to go last
-	ScriptAlias /netinfproto/get "/<path>/fetcher.php"
-	ScriptAlias /netinfproto/publish "/<path>/putter.php"
-	ScriptAlias /netinfproto/put "/<path>/putter.php"
+	ScriptAlias /netinfproto/get "/<path>/N-GET.php"
+	ScriptAlias /netinfproto/publish "/<path>/N-PUBLISH.php"
+	ScriptAlias /netinfproto/put "/<path>/N-PUBLISH.php"
 	ScriptAlias /netinfproto/list "/<path>/wku-list.php"
-	ScriptAlias /netinfproto "/<path>/fetcher.php"
+	ScriptAlias /netinfproto "/<path>/N-GET.php"
 	ScriptAlias /.well-known/ni "/<path>/wku-get.php"
 
