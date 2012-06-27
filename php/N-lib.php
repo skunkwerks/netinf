@@ -26,6 +26,9 @@
  
 */
 
+include "N-dirs.php";
+
+
 // Functions, move to library in a bit
 
 	function getAlg($lurival,&$lalgfound,&$lhstr,&$lhashval) {
@@ -73,18 +76,20 @@
 		readfile($filename);
 	}
 
-	function sendMIMEAns($jfilename,$filename,$msgid) {
+	function sendMIMEWithFile($jfilename,$filename,$msgid) {
 
 		$mime_boundary=hash("sha256",time());
 		$shortfilename=basename($filename);
 		$msg = "";
 		// the application/json bit
 		$msg .= "--".$mime_boundary. "\n";
+
 		$msg .= "Content-Type: application/json; charset=iso-8859-1". "\n";
 		$msg .= "\n";
 		$msg .= file_get_contents($jfilename);
 		$msg .= " ] }\n\n";
 		// the payload
+
 		$msg .= "--".$mime_boundary. "\n";
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
 		$mime = finfo_file($finfo, $filename);
@@ -93,6 +98,7 @@
 		$msg .= "\n";
 		$msg .= file_get_contents($filename);
 		$msg .= "--".$mime_boundary."--". "\n\n";
+
 		// headers
 		header('MIME-Version: 1.0');
 		header("Content-Type: multipart/mixed; boundary=\"".$mime_boundary."\"");
@@ -104,13 +110,43 @@
 		header('Cache-Control: no-store, no-cache, must-revalidate');
 		header('Cache-Control: post-check=0, pre-check=0', false);
 		header('Pragma: no-cache');
+
 		// and now the payload
 		print $msg;
 
 	}
 
+	function sendMIMEJSONOnly($jfilename,$msgidval) {
+
+		$mime_boundary=hash("sha256",time());
+		$msg = "\n";
+		$msg .= file_get_contents($jfilename);
+		$msg .= " ] }\n\n";
+
+		// headers
+		header('MIME-Version: 1.0');
+		header("Content-Type: application/json; boundary=\"".$mime_boundary."\"");
+		header('Content-Length: ' . strlen($msg));
+		header('Content-Disposition: inline; filename=' . basename($filename));
+		// definitely don't cache for now:-)
+		header('Expires: Thu, 01-Jan-70 00:00:01 GMT');
+		header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+		header('Cache-Control: no-store, no-cache, must-revalidate');
+		header('Cache-Control: post-check=0, pre-check=0', false);
+		header('Pragma: no-cache');
+		print $msg;
+	}
+
 	function getMetaDir() {
-		$metadir="/tmp";
+		$metadir=$GLOBALS["cfg_metadir"];
+		// check we can write there, if not fallback to /tmp
+		$tf="$metadir/foobar";
+		$fp=fopen($tf,"w");
+		if (!$fp) {
+			$metadir="/tmp";
+		} else {
+			fclose($fp);
+		} 
 		return($metadir);
 	}
 
@@ -167,5 +203,6 @@
 			return(false);
 		}
 	}
+
 
 ?>

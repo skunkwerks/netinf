@@ -28,10 +28,6 @@
 
 include 'N-lib.php';
 
-// Some globals
-$myRoot="/home/dtnuser/data/www/statichtml";
-$wkd=$myRoot . "/.well-known/ni";
-
 // read request attrs or use test value
 
 // read it from HTTP POST form data
@@ -103,6 +99,8 @@ $nicl = "/home/stephen/code/netinf-code/c/nicl";
 
 // extract hashalg and hash and check for file, if it exists print it, otherwise 404
 
+
+$allgood=false;
 if ($gotfile) {
 	// check name-data-integrity
 	$niclcmd = $nicl . " -v -n '" . $urival . "' -f " . $ftmp;
@@ -116,12 +114,12 @@ if ($gotfile) {
 		print "Bad - feck off";
 		exit("done");
 	} 
+	$allgood=true;
 
-	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
+	$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 	if (file_exists($filename)) {
 		header('HTTP/1.0 404 Not Found');
 		print "I already have $urival \n";
-		exit(1);
 	} else {
 		// print "File; $filename\n";
 		move_uploaded_file($ftmp,$filename);
@@ -147,6 +145,7 @@ if ($loc1!="" || $loc2!="") {
 }
 
 
+if ($allgood) exit(0);
 
 // ultimate fallback HTTP 404
 $ni_err=true;

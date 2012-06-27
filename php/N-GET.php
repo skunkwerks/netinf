@@ -28,9 +28,6 @@
 
 include 'N-lib.php';
 
-// Some globals
-$myRoot="/home/dtnuser/data/www/statichtml";
-$wkd=$myRoot . "/.well-known/ni";
 
 // read request attrs or use test value
 
@@ -80,12 +77,17 @@ if (!$algfound) {
 $jfilename=checkStore($hstr,$hashval);
 if ($jfilename) { // we have it!
 	// TODO: figure better place
-	$filename = $wkd . "/" . $hstr . "/" . $hashval ;
-	sendMIMEAns($jfilename,$filename,$msgidval);	
+	$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+	if (file_exists($filename)) {
+		sendMIMEWithFile($jfilename,$filename,$msgidval);	
+	} else {
+		sendMIMEJSONOnly($jfilename,$msgidval);	
+	}
+	exit(0);
 }
 
 // Fallback: See if we have one of those in .well-known locally
-$filename = $wkd . "/" . $hstr . "/" . $hashval ;
+$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 if (file_exists($filename)) {
 	sendFileAns($filename,$msgidval);
 	exit(0);
