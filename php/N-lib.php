@@ -73,6 +73,8 @@ include "N-dirs.php";
 		header('Content-Type: ' . $mime);
 		header('Content-Length: ' . filesize($filename));
 		header('Content-Disposition: inline; filename=' . basename($filename));
+		ob_clean();
+    	flush();
 		readfile($filename);
 		// bit of debug
 		$fcp=fopen("/tmp/GET-RESP","w");
