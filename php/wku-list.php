@@ -1,7 +1,8 @@
 <?php
 
-$urlprefix="http://village.n4c.eu/.well-known/ni/";
-$wkd = "/home/dtnuser/data/www/statichtml/.well-known/ni";
+include "N-dirs.php";
+$wkd = $GLOBALS[cfg_wkd];
+$urlprefix=$GLOBALS[cfg_site]."/.well-known/ni/";
 
 function getDirectoryList ($directory) {
     // create an array to hold directory list
@@ -37,17 +38,14 @@ print "<p>This is the list of things named with hashes here, see <a href=\"http:
 print "<h2>Uploaded named data objects</h2>";
 print "<p>Here, these get deleted hourly</p>";
 print "<ul>";
-for ($i=0;$i!=count($alglist);$i++) {
-	$hstr=$alglist[$i];
-	$arr=getDirectoryList($wkd . "/" . $hstr);
-	foreach ( $arr as &$fname ) {
-		$path = $urlprefix . $hstr . "/" . $fname;
-		$fpath= $wkd . "/" . $hstr . "/" . $fname;
-		// print $fpath;
-		if (!is_link($fpath)) {
-			print "<li><a href=\"" . $path . "\"> ni:///" . $hstr . ";" . $fname.  "</a></li>\n";
-		}
-	}
+$arr=getDirectoryList($GLOBALS[cfg_ndodir]);
+foreach ( $arr as &$fname ) {
+	// fname is like sha-256-84.<base64url-hash>, so split those
+	$harr=explode(".",$fname);
+	$hstr=$harr[0];
+	$hashval=$harr[1];
+	$path = "$urlprefix$hstr/$hashval";
+	print "<li><a href=\"" . $path . "\"> ni:///" . $hstr . ";" . $hashval.  "</a></li>\n";
 }
 print "</ul>";
 

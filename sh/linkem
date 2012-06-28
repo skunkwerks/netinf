@@ -15,6 +15,6 @@ then
 	echo "linking $file to $Dir/$WKU"
 	ln -s $file $Dir/$WKU
 	mtype=`file --mime-type $file | awk '{print $2}' | sed -s 's/\//%2F/g'`
-	ln -s $file $Dir/$WKU?c=$mtype
+	ln -s $file $Dir/$WKU?ct=$mtype
 fi
 

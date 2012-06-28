@@ -252,4 +252,9 @@ include "N-dirs.php";
 		$out=str_replace('\/','/',$tmp);
 	}
 
+	function getNDOfname($hstr,$hashval) {
+		$filename = $GLOBALS["cfg_ndodir"] . "/$hstr.$hashval";
+		return($filename);
+	}
+
 ?>

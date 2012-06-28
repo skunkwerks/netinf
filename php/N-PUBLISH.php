@@ -116,13 +116,17 @@ if ($gotfile) {
 	} 
 	$allgood=true;
 
-	$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+	$filename = getNDOfname($hstr,$hashval);
 	if (file_exists($filename)) {
 		header('HTTP/1.0 404 Not Found');
 		print "I already have $urival \n";
 	} else {
 		// print "File; $filename\n";
 		move_uploaded_file($ftmp,$filename);
+		// make a link in .well-known/ni
+		$wlname="$GLOBALS[cfg_wkd]/$hstr/$hashval";
+		$rv=symlink($filename,$wlname);
 		print "Ok, I've put that there. (for now!)";
 	} 
 } 
@@ -131,7 +135,6 @@ if ($loc1!="" || $loc2!="") {
 	// process case where fullObj=false or missing and we just get locators
 	// make a meta-file in $metadir with the JSON for this 
 	// if that file's there already just append new info
-	// TODO: check that info is really new
 
 	$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2);
 	if ($store_rv) {

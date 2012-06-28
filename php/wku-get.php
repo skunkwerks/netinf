@@ -3,7 +3,9 @@
 // this is used to return a re-direct (307) after a .well-known/ni URL is 
 // requested via a plain HTTP GET
 
-$wkd = "/home/dtnuser/data/www/statichtml/.well-known/ni";
+include "N-dirs.php";
+$wkd = $GLOBALS[cfg_wkd];
+
 // sha-256 better be last here, or we'll get an error'd first match
 $alglist=array("sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32","sha-256");
 

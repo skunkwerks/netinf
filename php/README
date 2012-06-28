@@ -34,20 +34,19 @@ Temp thing: http://etherpad.verkstad.net/JFIxVaa8TV SCRUB BEFORE RELEASE
 GET (N-GET.php)
 	- Check for content locally
 	- if present, return file
-	- else if locator known, return locator (locators only get known via PUBLISH)
+	- if locator known, also return locator (locators only get known via PUBLISH)
+	- if only locator known, return that
 	- else return 404
 
 PUBLISH (N-PUBLISH.php)
-	- (what if I have object or know locator already?)
-	- if fullObj and valid then store locally
+	- if fullObj && I have object then don't overwrite
+	- if fullObj && I don't have object then store
+	- create/append locator info provided
 	- else return 404
 
 SEARCH - TBD
-	- 404 for now
 
 N-lib.php : library functions for the above
+N-dirs.php : global directory/config settings
 
-Storage:
-	- Need some simple native-ish way of storing things
-	- Want some kind of pluggability (maybe via netinffs FUSE)
 

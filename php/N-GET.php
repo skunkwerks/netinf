@@ -77,7 +77,8 @@ if (!$algfound) {
 $jfilename=checkStore($hstr,$hashval);
 if ($jfilename) { // we have it!
 	// TODO: figure better place
-	$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+	$filename = getNDOfname($hstr,$hashval);
 	if (file_exists($filename)) {
 		sendMIMEWithFile($jfilename,$filename,$msgidval);	
 	} else {
@@ -87,7 +88,8 @@ if ($jfilename) { // we have it!
 }
 
 // Fallback: See if we have one of those in .well-known locally
-$filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
+$filename = getNDOfname($hstr,$hashval);
 if (file_exists($filename)) {
 	sendFileAns($filename,$msgidval);
 	exit(0);

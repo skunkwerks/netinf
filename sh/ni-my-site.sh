@@ -8,7 +8,7 @@
 # create a sym link pointing at the original file.
 
 # TBD - guess the MIME type of the file and also create
-# a sym link with the c= query string element
+# a sym link with the ct= query string element
 
 # You need to run this with relevant permissions, 
 # e.g. as root or as www-user
@@ -47,7 +47,7 @@ do
 
 	# now trawl and do stuff
 	# omit .hg from the find
-	find $DocRoot -path $DocRoot/.hg -prune -o -type f -exec $LINKEM {} $Prefix $TNID \;
+	find $DocRoot -path $DocRoot/.well-known/ni -prune -o -path $DocRoot/.hg -prune -o -type f -exec $LINKEM {} $Prefix $TNID \;
 
 # finished per alg
 done

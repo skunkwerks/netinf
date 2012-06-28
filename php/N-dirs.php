@@ -32,6 +32,11 @@ $cfg_myRoot="/home/dtnuser/data/www/statichtml";
 $cfg_wkd=$cfg_myRoot . "/.well-known/ni";
 // Where to keep meta-data files
 $cfg_metadir="/home/dtnuser/data/www/statichtml/ni-meta";
+// Where to keep he NDO octets
+// If this isn't below docRoot then some coding is needed!
+$cfg_ndodir="/home/dtnuser/data/www/statichtml/ni-ndo";
+// The site I'm working on 
+$cfg_site="http://village.n4c.eu";
 
 ?>
 
