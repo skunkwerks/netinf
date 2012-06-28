@@ -84,10 +84,22 @@ include "N-dirs.php";
 		// the application/json bit
 		$msg .= "--".$mime_boundary. "\n";
 
-		$msg .= "Content-Type: application/json; charset=iso-8859-1". "\n";
+		$msg .= "Content-Type: application/json;". "\n";
 		$msg .= "\n";
-		$msg .= file_get_contents($jfilename);
-		$msg .= " ] }\n\n";
+		$jmsg = file_get_contents($jfilename);
+		$jmsg .= " ] }\n\n";
+
+		// reduce jmsg
+		$rjmsg="";
+		$rv=jreduce($jmsg,$rjmsg);
+		if ($rv==1) { // error, use original
+			$msg .= $jmsg;
+		} else { // nice - use reduced
+			$msg .= $rjmsg;
+			$msg .= "\n";
+			$msg .= "\n";
+		}
+
 		// the payload
 
 		$msg .= "--".$mime_boundary. "\n";
@@ -120,8 +132,20 @@ include "N-dirs.php";
 
 		$mime_boundary=hash("sha256",time());
 		$msg = "\n";
-		$msg .= file_get_contents($jfilename);
-		$msg .= " ] }\n\n";
+		$jmsg = file_get_contents($jfilename);
+		$jmsg .= " ] }\n\n";
+		//reduce jmsg
+
+		// reduce jmsg
+		$rjmsg="";
+		$rv=jreduce($jmsg,$rjmsg);
+		if ($rv==1) { // error, use original
+			$msg .= $jmsg;
+		} else { // nice - use reduced
+			$msg .= $rjmsg;
+			$msg .= "\n";
+			$msg .= "\n";
+		}
 
 		// headers
 		header('MIME-Version: 1.0');
@@ -154,14 +178,14 @@ include "N-dirs.php";
 		// make locators a good JSON array
 		$locstr="";
 		if ($loc1=="") {
-			$locstr = "[ $loc2 ] ";
+			$locstr = "[ \"$loc2\" ] ";
 		} else if ($loc2=="") {
-			$locstr = "[ $loc1 ] ";
+			$locstr = "[ \"$loc1\" ] ";
 		} else {
-			$locstr = "[ $loc1 , $loc2 ] ";
+			$locstr = "[ \"$loc1\" , \"$loc2\" ] ";
 		}
 		$timestamp= date(DATE_ATOM);
-		$jsonev = "{ \"ts\" : \" $timestamp \", \"loc\" : $locstr }";
+		$jsonev = "{ \"ts\" : \"$timestamp\", \"loc\" : $locstr }";
 		$metadir=getMetaDir();
 		$jfilename = "$metadir/$hstr.$hashval";
 		// print "time: $timestamp\nEV: $jsonev\nFile: $jfilename\n";
@@ -173,12 +197,12 @@ include "N-dirs.php";
 				$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
 				retErr($ni_errno,$ni_errstr);
 			}
-			fwrite($fh,"\n");
-			fwrite($fh,$jsonev);
 			fwrite($fh,",\n");
+			fwrite($fh,$jsonev);
+			fwrite($fh,"\n");
 			fclose($fh);
 		} else {
-			$jsonhead="{ \"NetInf\" : \"v0.1a Stephen\"\n,\"ni\" : \"$urival\",\n[\n";
+			$jsonhead="{ \"NetInf\" : \"v0.1a Stephen\"\n,\"ni\" : \"$urival\",\n\"details\" : [\n";
 			$fh=fopen($jfilename,"w");
 			if (!$fh) {
 				$ni_err=true;
@@ -189,7 +213,7 @@ include "N-dirs.php";
 			fwrite($fh,$jsonhead);
 			fwrite($fh,"\n");
 			fwrite($fh,$jsonev);
-			fwrite($fh,",\n");
+			fwrite($fh,"\n");
 			fclose($fh);
 		}
 	}
@@ -204,5 +228,28 @@ include "N-dirs.php";
 		}
 	}
 
+	// merge the locator arrays known about an NDO into one
+	// with no repeats
+	function jreduce($in,&$out) {
+		$jstr=json_decode($in);
+		if ($jstr==NULL) return(1);
+		$ojstr->NetInf=$jstr->NetInf;
+		$ojstr->ni=$jstr->ni;
+		$i=0;
+		$olocs[$i]="";
+		foreach ($jstr->details as $det) {
+			foreach ($det->loc as $loc) {
+				$olocs[$i]=$loc;
+				$i++;
+			}
+		}
+		$oarr->ts=date(DATE_ATOM);
+		$oarr->loc=array_values(array_unique($olocs));
+		$ojstr->details=$oarr;
+		$tmp=json_encode($ojstr);
+		if ($tmp===false) return(1);
+		// PHP 5.4.0 has JSON_UNESCAPED_SLASHES but not my version, so hack it
+		$out=str_replace('\/','/',$tmp);
+	}
 
 ?>
