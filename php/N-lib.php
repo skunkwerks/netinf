@@ -170,6 +170,7 @@ include "N-dirs.php";
 			$metadir="/tmp";
 		} else {
 			fclose($fp);
+			unlink("$metadir/foobar");
 		} 
 		return($metadir);
 	}

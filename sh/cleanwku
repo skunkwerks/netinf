@@ -42,3 +42,18 @@ do
 		echo "$ts$LogSepChar$file$LogSepChar" "deleted" >>$LogFile
 	fi
 done
+
+NDODIR=$DocRoot/ni-ndo
+
+files=`find $NDODIR -type f`
+for file in $files
+do
+	ts=`date -u`
+	rm -f $file >/dev/null 2>&1
+	if [ -f $file ]
+	then
+		echo "$ts$LogSepChar$file$LogSepChar" "deletion failed" >>$LogFile
+	else
+		echo "$ts$LogSepChar$file$LogSepChar" "deleted" >>$LogFile
+	fi
+done
