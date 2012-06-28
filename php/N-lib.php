@@ -232,7 +232,7 @@ include "N-dirs.php";
 		}
 	}
 
-	function checkStore($hstr,$hashval) {
+	function checkMeta($hstr,$hashval) {
 		$metadir=getMetaDir();
 		$jfilename = "$metadir/$hstr.$hashval";
 		if (file_exists($jfilename)) {
@@ -278,9 +278,10 @@ include "N-dirs.php";
 			} else {
 				$ndofile=readlink($wkf);
 			}
-		} 
-		// if no sign so far check for the configured place
-		$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr.$hashval";
+		} else {
+			// if no sign so far check for the configured place
+			$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr.$hashval";
+		}
 		return($ndofile);
 	}
 

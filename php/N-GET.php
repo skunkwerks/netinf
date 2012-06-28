@@ -74,9 +74,8 @@ if (!$algfound) {
 // TODO: see if we have that file elsewhere (netinffs)
 
 // Check if we have NDO metadata
-$jfilename=checkStore($hstr,$hashval);
-if ($jfilename) { // we have it!
-	// TODO: figure better place
+$jfilename=checkMeta($hstr,$hashval);
+if ($jfilename) { // we have meta data!
 	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 	$filename = getNDOfname($hstr,$hashval);
 	if (file_exists($filename)) {
