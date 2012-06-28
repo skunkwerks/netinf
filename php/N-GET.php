@@ -59,7 +59,7 @@ if (getAlg($urival,$algfound,$hstr,$hashval)===false) {
 	$ni_err=true;
 	$ni_errno=490;
 	$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
-	retErr($ni_errno,$nistr);
+	retErr($ni_errno,$ni_errstr);
 	exit(1);
 }
 

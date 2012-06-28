@@ -4,7 +4,7 @@
 // requested via a plain HTTP GET
 
 include "N-dirs.php";
-$wkd = $GLOBALS[cfg_wkd];
+$wkd = $GLOBALS["cfg_wkd"];
 
 // sha-256 better be last here, or we'll get an error'd first match
 $alglist=array("sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32","sha-256");
@@ -77,14 +77,14 @@ if (!$algfound) {
 				print "I don't have $urival \n";
 				print "I know the link, but its to a bad place";
 			} else {
-				print $realfilename;
-				print $docRoot;
-				print $top;
+				// print $realfilename;
+				// print $docRoot;
+				// print $top;
 				print "<br/>";
 				$top = $_SERVER['SERVER_NAME'];
 				$reluri=substr($realfilename,strlen($docRoot));
 				$location="http://" . $top .  $reluri;
-				print $location;
+				// print $location;
     			$hs = headers_sent();
 				// bits here inspired by http://edoceo.com/creo/php-redirect
 				if ($hs) {

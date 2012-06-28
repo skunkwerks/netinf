@@ -1,8 +1,8 @@
 <?php
 
 include "N-dirs.php";
-$wkd = $GLOBALS[cfg_wkd];
-$urlprefix=$GLOBALS[cfg_site]."/.well-known/ni/";
+$wkd = $GLOBALS["cfg_wkd"];
+$urlprefix=$GLOBALS["cfg_site"]."/.well-known/ni/";
 
 function getDirectoryList ($directory) {
     // create an array to hold directory list
@@ -38,14 +38,14 @@ print "<p>This is the list of things named with hashes here, see <a href=\"http:
 print "<h2>Uploaded named data objects</h2>";
 print "<p>Here, these get deleted hourly. Recent ones have links. Deleted don't</p>";
 print "<ul>";
-$arr=getDirectoryList($GLOBALS[cfg_metadir]);
+$arr=getDirectoryList($GLOBALS["cfg_metadir"]);
 foreach ( $arr as &$fname ) {
 	// fname is like sha-256-84.<base64url-hash>, so split those
 	$harr=explode(".",$fname);
 	$hstr=$harr[0];
 	$hashval=$harr[1];
 	$path = "$urlprefix$hstr/$hashval";
-	$ndofile="$GLOBALS[cfg_ndodir]/$hstr.$hashval";
+	$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr.$hashval";
 	if (file_exists($ndofile)) {
 		print "<li><a href=\"" . $path . "\"> ni:///" . $hstr . ";" . $hashval.  "</a></li>\n";
 	} else {

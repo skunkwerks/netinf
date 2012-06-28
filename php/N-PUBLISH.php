@@ -125,7 +125,7 @@ if ($gotfile) {
 		// print "File; $filename\n";
 		move_uploaded_file($ftmp,$filename);
 		// make a link in .well-known/ni
-		$wlname="$GLOBALS[cfg_wkd]/$hstr/$hashval";
+		$wlname=$GLOBALS["cfg_wkd"]."/$hstr/$hashval";
 		$rv=symlink($filename,$wlname);
 		print "Ok, I've put that there. (for now!)";
 	} 

@@ -69,11 +69,15 @@ include "N-dirs.php";
 		$finfo = finfo_open(FILEINFO_MIME_TYPE); // return mime type ala mimetype extension
     	$mime = finfo_file($finfo, $filename);
 		finfo_close($finfo);
-		// header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
+		header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
 		header('Content-Type: ' . $mime);
 		header('Content-Length: ' . filesize($filename));
 		header('Content-Disposition: inline; filename=' . basename($filename));
 		readfile($filename);
+		// bit of debug
+		$fcp=fopen("/tmp/GET-RESP","w");
+		fwrite($fcp,"Just sent $filename\n");
+		fclose($fcp);
 	}
 
 	function sendMIMEWithFile($jfilename,$filename,$msgid) {
@@ -126,6 +130,11 @@ include "N-dirs.php";
 		// and now the payload
 		print $msg;
 
+		// bit of debug
+		$fcp=fopen("/tmp/GET-RESP","w");
+		fwrite($fcp,$msg);
+		fclose($fcp);
+
 	}
 
 	function sendMIMEJSONOnly($jfilename,$msgidval) {
@@ -159,6 +168,10 @@ include "N-dirs.php";
 		header('Cache-Control: post-check=0, pre-check=0', false);
 		header('Pragma: no-cache');
 		print $msg;
+		// bit of debug
+		$fcp=fopen("/tmp/GET-RESP","w");
+		fwrite($fcp,$msg);
+		fclose($fcp);
 	}
 
 	function getMetaDir() {
@@ -223,6 +236,7 @@ include "N-dirs.php";
 		$metadir=getMetaDir();
 		$jfilename = "$metadir/$hstr.$hashval";
 		if (file_exists($jfilename)) {
+
 			return($jfilename);
 		} else {
 			return(false);
@@ -254,8 +268,20 @@ include "N-dirs.php";
 	}
 
 	function getNDOfname($hstr,$hashval) {
-		$filename = $GLOBALS["cfg_ndodir"] . "/$hstr.$hashval";
-		return($filename);
+		// check if we also have a well-known and where that
+		// points
+		$ndofile="";
+		$wkf=$GLOBALS["cfg_wkd"]."/$hstr/$hashval";
+		if (file_exists($wkf)) {
+			if (!is_link($wkf)) {
+				$ndofile=$wkf;
+			} else {
+				$ndofile=readlink($wkf);
+			}
+		} 
+		// if no sign so far check for the configured place
+		$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr.$hashval";
+		return($ndofile);
 	}
 
 ?>

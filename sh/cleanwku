@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# set -x
+
 # A script to clean out files that are not links in $WKURoot 
 # which is probably $DocRoot/.well-known/ni
 # and log when and what's been deleted to $LogFile
@@ -10,7 +12,7 @@
 # then this could be suitable for a cron job or something
 # like that, I run this hourly for now
 
-DocRoot=/home/stephen/code/statichtml
+DocRoot=/home/dtnuser/data/www/statichtml
 LogFile=/var/log/apache2/wkucleaned
 # if I can't write to the above, then I'll try here
 Me=`whoami`
