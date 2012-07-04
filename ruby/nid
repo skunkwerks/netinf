@@ -159,10 +159,15 @@ server.mount_proc("/netinfproto/get") do |request, response|
     f=findMappedResource(mountedDests) # find one
   end
   
-  if f
-    response.body=f
-    response.content_length=f.size
-    response.content_type="application/octet-stream"
+  boundary="TBD"
+
+  if f # got an object
+    nhttp=NetInfHTTP.new
+    body,boundary=nhttp.getResponseObj(ni.to_s, f.read, msgId)
+    response.body=body
+
+    response.content_length=body.length
+    response.content_type="multipart/mixed; boundary=#{boundary}"
     foundObj=true
   elsif !((r=routes.find(uri)).empty?) # check for routing info
     print "found routes: #{r}\n"
@@ -171,9 +176,11 @@ server.mount_proc("/netinfproto/get") do |request, response|
     loc=route.dest
     options=route.options
     if options[:redirect]       # return locator only
-      response.body=[loc.to_s].to_json
-      response.content_type="application/json"
-      response.content_length=response.body.size
+      nhttp=NetInfHTTP.new
+      body,boundary=nhttp.getResponseLoc(ni.to_s, msgId [{"loc"=>loc}])
+      response.body=body
+      response.content_length=body.length
+      response.content_type="multipart/mixed; boundary=#{boundary}"
       foundObj=true
     else
       case loc.scheme
@@ -188,9 +195,12 @@ server.mount_proc("/netinfproto/get") do |request, response|
         if obj.code=="200"
           
           #      print "got #{obj}\n"
-          response.body=obj.body
-          response.content_length=obj.body.size
-          response.content_type="application/octet-stream"
+
+          body,boundary=nhttp.getResponseObj(ni.to_s, obj.body, msgId)
+          response.body=body
+
+          response.content_length=body.length
+          response.content_type="multipart/mixed; boundary=#{boundary}"
           foundObj=true
           cache(uri, obj.body)
         else

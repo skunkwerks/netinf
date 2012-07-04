@@ -26,6 +26,8 @@
 
 require 'net/http'
 require 'net/http/post/multipart'
+require 'mime'
+require 'json'
 require 'ni'
 require 'netinf'
 
@@ -68,6 +70,51 @@ class NetInfHTTP < NetInf
     
     res=Net::HTTP.post_form(httpuri, 'URI'  => niUri.to_s, 'msgid' => msgId, 'ext' => "no extension")
   end
+
+
+  def createMeta(name, msgId, fullObj, ext, status, details)
+    {
+      "NetInf" => "Dirk-0.01",
+      "ni" => name,
+      "msgId" => msgId,
+      "fullObj" => fullObj,
+      "ext" => ext,
+      "status" => status,
+      "details" => details
+    }
+  end
+
+# create a GET response for returning the object
+# returns string that represent the multipart mime structure
+  def getResponseObj(name, obj, msgId, details=[], contentType="application/octet-stream")
+
+    meta=createMeta(name, msgId, true, {}, 200, details)
+    
+    jsonPart=MIME::ApplicationMedia.new(meta.to_json, 'application/json')
+    # using the generic application media class for now:
+    objPart = MIME::ApplicationMedia.new(obj, contentType)
+
+    msg = MIME::MultipartMedia::Mixed.new
+    msg.add_entity(objPart)
+    msg.add_entity(jsonPart)
+
+    [msg.body.to_s, msg.boundary]
+  end
+
+# create a GET response for returning a locator list
+# returns string that represent the multipart mime structure
+  def getResponseLoc(name, msgId, details=[], contentType="application/octet-stream")
+
+    meta=createMeta(name, msgId, false, {}, 200, details)
+
+    jsonPart=MIME::ApplicationMedia.new(meta.to_json, 'application/json')
+
+    msg = MIME::MultipartMedia::Mixed.new
+    msg.add_entity(jsonPart)
+
+    [msg.body.to_s, msg.boundary]
+  end
+
 
 
 # publish the specified object (send it)

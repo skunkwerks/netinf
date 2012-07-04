@@ -30,6 +30,10 @@ $: << File.dirname(__FILE__)
 
 require 'getoptlong'
 require 'json'
+#require 'multipart_parser/reader'
+#require 'multipart-parser'
+#require 'rack/multipart/parser'
+require 'mail'
 require 'httpcl'
 require 'routes'
 require 'udpcl'
@@ -174,7 +178,20 @@ end
 if output
   File.open(output, 'w') {|f| f.write(obj.body) }
 else
-  print("#{obj.body}\n")
+#  print("#{obj.class}\n")
+#  print("#{obj.body.class}\n")
+#  print("#{obj.body}\n")
+  boundary=obj["content-type"].split(";")[1].split("=")[1]
+#  print("Boundary: #{boundary}\n")
+  m=Mail::Body.new(obj.body)
+  m.split!(boundary)
+#  print (m.parts)
+  meta=JSON::parse(m.parts[0].body.to_s)
+  object=m.parts[1].body
+
+  print ("\nmeta data: #{meta}\n")
+  print ("\nobject: #{object}\n")
+
 end
 
 

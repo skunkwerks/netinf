@@ -51,6 +51,12 @@ standalone NetInf router, to illustrate the usage.
 * Nick Sieger's multipart-post library
   - https://github.com/nicksieger/multipart-post
   - or "sudo gem install multipart-post"
+* MIME library from RubyForge
+  - http://mime.rubyforge.org/
+  - "sudo gem install mime"
+* MAIL library
+  - https://github.com/mikel/mail/
+  - "sudo gem install mail"
 
 
 == Roadmap
