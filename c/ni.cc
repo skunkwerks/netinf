@@ -492,26 +492,42 @@ int checknib(niname name, long blen, unsigned char *buf, int *res)
 	}
 	if (nihscheme) {
 		// checkdigit is optional
-		if ((strlen(ptr1) >= b64hashlen) && !memcmp(ptr1,b64hashbuf,b64hashlen)) {
+		char *ptr2=(char*)malloc(strlen(ptr1)+1);
+		if (!ptr2) RETURN(-1);
+		// strip any "-" characters from ptr2
+		int ptr2ind=0;
+		int j;
+		for (j=0;j!=strlen(ptr1);j++) {
+			if (ptr1[j]!='-') {
+				ptr2[ptr2ind]=ptr1[j];
+				ptr2ind++;
+			}
+		}
+		ptr2[ptr2ind]='\0';
+		if ((strlen(ptr2) >= b64hashlen) && !memcmp(ptr2,b64hashbuf,b64hashlen)) {
 			*res=NI_OK; // supplied nih hash matches and so does cdig
 		} else {
-			if ((strlen(ptr1) >= (b64hashlen-2)) && !memcmp(ptr1,b64hashbuf,b64hashlen-2)) {
+			if ((strlen(ptr2) >= (b64hashlen-2)) && !memcmp(ptr2,b64hashbuf,b64hashlen-2)) {
 				*res=NI_CDBAD; // hash matches but cdig doesn't - oddity
 			} else { // check if the input nih CD is wrong
-				if (strlen(ptr1)==(hashlen*2)) { // no CD supplied at all
+				if (strlen(ptr2)==(hashlen*2)) { // no CD supplied at all
 					*res=NI_BAD; // no more info
-				} else if (strlen(ptr1)>=((hashlen*2)+2)) { // CD supplied, no other crap
-					if (ptr1[(hashlen*2)]==';')  {
+				} else if (strlen(ptr2)>=((hashlen*2)+2)) { // CD supplied, no other crap
+					if (ptr2[(hashlen*2)]==';')  {
 						char cdig2;
-						int rv=makecd(hashlen*2,(const unsigned char*) ptr1,&cdig2);
-						if (rv) RETURN(rv);
-						if (cdig2!=ptr1[(2*hashlen)+1]) { // aha! - bad CD for supplied hash
+						int rv=makecd(hashlen*2,(const unsigned char*) ptr2,&cdig2);
+						if (rv) {
+							free(ptr2);
+							RETURN(rv);
+						}
+						if (cdig2!=ptr2[(2*hashlen)+1]) { // aha! - bad CD for supplied hash
 							*res=NI_CDINBAD;
 						}
 					}
 				}
 			} 
 		}
+		free(ptr2);
 	}
 		
 
