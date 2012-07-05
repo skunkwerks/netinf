@@ -119,7 +119,7 @@ include "N-dirs.php";
 
 		// headers
 		header('MIME-Version: 1.0');
-		header("Content-Type: multipart/mixed; boundary=\"".$mime_boundary."\"");
+		header("Content-Type: multipart/mixed; boundary=".$mime_boundary);
 		header('Content-Length: ' . strlen($msg));
 		header('Content-Disposition: inline; filename=' . basename($filename));
 		// definitely don't cache for now:-)
