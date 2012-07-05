@@ -370,9 +370,10 @@ module URI
       fields=@opaque.split(";")
 #      print fields
       algo=fields[0]
-      h=Base16::decode(fields[1])
+      hashString=fields[1].tr("-","")
+      h=Base16::decode(hashString)
       check=fields[2]
-      if check && (Base16::luhn(fields[1])!=check)
+      if check && (Base16::luhn(hashString)!=check)
         @checkSumError=true
         print "nih checksum error: expected '#{Base16::luhn(fields[1])}', got '#{check}'\n"
       end
@@ -388,6 +389,11 @@ module URI
       (@hashAlgo==other.hashAlgo) and (@hash==other.hash)
     end
 
+# interleaves alphnum string with delimiter (after every four characters)
+    def withDelimiter(str, delim)
+      str.split(/([[:alnum:]]{4})/).keep_if {|item| item.length()>0}.join(delim)
+    end
+
 
 # return string representation of NIH URI
     def to_s
@@ -398,7 +404,7 @@ module URI
         algoString=@hashAlgo.to_s
       end
       hexhash=Base16::encode(@hash)
-      @scheme + ':' + algoString + ';' + hexhash + ';' + Base16::luhn(hexhash)
+      @scheme + ':' + algoString + ';' + withDelimiter(hexhash, '-') + ';' + Base16::luhn(hexhash)
     end
 
 

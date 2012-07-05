@@ -109,6 +109,12 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-07-05]
+* added delimiter handling for NIH URIs
+
+[2012-07-04]
+* added preliminary support for new MIME structure in GET-RESP in HTTP CL
+
 [2012-05-30]
 * fixed a bug in parsing the PUBLISH request parameter in nid
 

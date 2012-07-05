@@ -181,8 +181,9 @@ else
 #  print("#{obj.class}\n")
 #  print("#{obj.body.class}\n")
 #  print("#{obj.body}\n")
+#
   boundary=obj["content-type"].split(";")[1].split("=")[1]
-#  print("Boundary: #{boundary}\n")
+  print("Boundary: #{boundary}\n")
   m=Mail::Body.new(obj.body)
   m.split!(boundary)
 #  print (m.parts)
