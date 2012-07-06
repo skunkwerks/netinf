@@ -13,7 +13,7 @@
 # like that, I run this hourly for now
 
 DocRoot=/home/dtnuser/data/www/statichtml
-LogFile=/var/log/apache2/wkucleaned
+LogFile=/var/log/netinf/wkucleaned
 # if I can't write to the above, then I'll try here
 Me=`whoami`
 TmpLog=/tmp/cleanwku-$Me.log

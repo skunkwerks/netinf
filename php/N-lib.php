@@ -193,7 +193,9 @@ include "N-dirs.php";
 	function storeMeta($hstr,$hashval,$urival,$loc1,$loc2) {
 		// make locators a good JSON array
 		$locstr="";
-		if ($loc1=="") {
+        if ($loc1=="" && $loc2=="") {
+            $locstr = "[] ";
+		} else if ($loc1=="") {
 			$locstr = "[ \"$loc2\" ] ";
 		} else if ($loc2=="") {
 			$locstr = "[ \"$loc1\" ] ";
@@ -252,16 +254,24 @@ include "N-dirs.php";
 		if ($jstr==NULL) return(1);
 		$ojstr->NetInf=$jstr->NetInf;
 		$ojstr->ni=$jstr->ni;
-		$i=0;
-		$olocs[$i]="";
+		$oloccnt=0;
+		$olocs=array();
 		foreach ($jstr->details as $det) {
-			foreach ($det->loc as $loc) {
-				$olocs[$i]=$loc;
-				$i++;
+            if (count($det->loc)!=0) {
+			    foreach ($det->loc as $loc) {
+                    if (count($loc)!=0) {
+				        $olocs[$i]=$loc;
+				        $oloccnt++;
+                    }
+                }
 			}
 		}
 		$oarr->ts=date(DATE_ATOM);
-		$oarr->loc=array_values(array_unique($olocs));
+        if ($oloccnt==0) {
+            $oarr->loc=array();
+        } else {
+		    $oarr->loc=array_values(array_unique($olocs));
+        }
 		$ojstr->details=$oarr;
 		$tmp=json_encode($ojstr);
 		if ($tmp===false) return(1);

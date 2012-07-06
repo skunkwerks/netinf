@@ -100,8 +100,7 @@ $nicl = "/home/stephen/code/netinf-code/c/nicl";
 // extract hashalg and hash and check for file, if it exists print it, otherwise 404
 
 
-$allgood=false;
-if ($gotfile) {
+if ($fullPut && $gotfile) {
 	// check name-data-integrity
 	$niclcmd = $nicl . " -v -n '" . $urival . "' -f " . $ftmp;
 	exec($niclcmd,$results);
@@ -114,7 +113,6 @@ if ($gotfile) {
 		print "Bad - feck off";
 		exit("done");
 	} 
-	$allgood=true;
 
 	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 	$filename = getNDOfname($hstr,$hashval);
@@ -127,34 +125,19 @@ if ($gotfile) {
 		// make a link in .well-known/ni
 		$wlname=$GLOBALS["cfg_wkd"]."/$hstr/$hashval";
 		$rv=symlink($filename,$wlname);
-		print "Ok, I've put that there. (for now!)";
 	} 
 } 
 
-if ($loc1!="" || $loc2!="") {
-	// process case where fullObj=false or missing and we just get locators
-	// make a meta-file in $metadir with the JSON for this 
-	// if that file's there already just append new info
-
-	$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2);
-	if ($store_rv) {
-		$ni_err=true;
-		$ni_errno=494;
-		$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
-		retErr($ni_errno,$ni_errstr);
-	}
-
-	exit(0);
+$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2);
+if ($store_rv) {
+	$ni_err=true;
+	$ni_errno=494;
+	$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
+	retErr($ni_errno,$ni_errstr);
 }
 
 
-if ($allgood) exit(0);
-
-// ultimate fallback HTTP 404
-$ni_err=true;
-$ni_errno=492;
-$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
-retErr($ni_errno,$ni_errstr);
-exit(1);
+print "Ok, I've put that there. (for now!)";
+exit(0);
 
 ?>
