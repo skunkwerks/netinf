@@ -26,14 +26,16 @@ RUBYSRC=chkni ni.rb map.rb mapdsl.rb mapping.rb mkni mounttab.rb netinf.rb httpc
 
 .PHONY: testudp test doc clean
 
-testudp:
-	ruby -d testudp.rb
+doc:
+	rdoc $(RUBYSRC) README
+
 
 test:
 	ruby testni.rb
 
-doc:
-	rdoc $(RUBYSRC) README
+testudp:
+	ruby testudp.rb
+
 
 clean:
 	rm -rf *~ doc

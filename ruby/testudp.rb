@@ -52,9 +52,4 @@ class TestUDPCL < Test::Unit::TestCase
     sleep(2)
 
   end
-
-
-
-  
-
- end
+end
