@@ -56,8 +56,7 @@ module Base16
         addend=factor*codePoint
         factor=(factor==2)?1:2
         addend=(addend / n) + (addend % n)
-        sum+=addend
-      }
+        sum+=addend }
       remainder=sum %n
       checkCodePoint=(n-remainder)%n
       checkCodePoint.to_s(base=n)

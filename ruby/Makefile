@@ -22,12 +22,16 @@
 # limitations under the License.
 
 
-RUBYSRC=chkni ni.rb map.rb mapdsl.rb mapping.rb mkni mounttab.rb netinf.rb httpcl.rb nitowellknown niutils.rb pubni regni routedsl.rb routes.rb routing.rb searchni tabentry.rb testni.rb testudp.rb udpcl.rb digest-trunc.rb ni2bin ni2nih ni2qr nih2ni utils.rb
+RUBYSRC=ni.rb chkni map.rb mapdsl.rb mapping.rb mkni mounttab.rb netinf.rb httpcl.rb nitowellknown niutils.rb pubni regni routedsl.rb routes.rb routing.rb searchni tabentry.rb testni.rb testudp.rb udpcl.rb digest-trunc.rb ni2bin ni2nih ni2qr nih2ni 
+#utils.rb ## rdoc has issues with this
 
-.PHONY: testudp test doc clean
+.PHONY: testudp test doc clean splash
+
+splash:
+	@echo "run 'make doc' to create documention, or 'make test' to run the tests"
 
 doc:
-	rdoc $(RUBYSRC) README
+	-rdoc $(RUBYSRC) README
 
 
 test:
