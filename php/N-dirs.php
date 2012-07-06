@@ -38,5 +38,9 @@ $cfg_ndodir="/home/dtnuser/data/www/statichtml/ni-ndo";
 // The site I'm working on 
 $cfg_site="http://village.n4c.eu";
 
+// Whether to stuff debug output in /tmp for e.g. MIME responses
+// set to non-zero to get debug, might add more options later
+$cfg_debug=0;
+
 ?>
 

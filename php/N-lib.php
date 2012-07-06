@@ -28,7 +28,6 @@
 
 include "N-dirs.php";
 
-
 // Functions, move to library in a bit
 
 	function getAlg($lurival,&$lalgfound,&$lhstr,&$lhashval) {
@@ -77,9 +76,11 @@ include "N-dirs.php";
     	flush();
 		readfile($filename);
 		// bit of debug
-		$fcp=fopen("/tmp/GET-RESP","w");
-		fwrite($fcp,"Just sent $filename\n");
-		fclose($fcp);
+		if ($GLOBALS["cfg_debug"]!=0) {
+		    $fcp=fopen("/tmp/GET-RESP-fa","w");
+		    fwrite($fcp,"Just sent $filename\n");
+		    fclose($fcp);
+        }
 	}
 
 	function sendMIMEWithFile($jfilename,$filename,$msgid) {
@@ -133,9 +134,11 @@ include "N-dirs.php";
 		print $msg;
 
 		// bit of debug
-		$fcp=fopen("/tmp/GET-RESP","w");
-		fwrite($fcp,$msg);
-		fclose($fcp);
+		if ($GLOBALS["cfg_debug"]!=0) {
+		    $fcp=fopen("/tmp/GET-RESP-mf","w");
+		    fwrite($fcp,$msg);
+		    fclose($fcp);
+        }
 
 	}
 
@@ -171,9 +174,11 @@ include "N-dirs.php";
 		header('Pragma: no-cache');
 		print $msg;
 		// bit of debug
-		$fcp=fopen("/tmp/GET-RESP","w");
-		fwrite($fcp,$msg);
-		fclose($fcp);
+		if ($GLOBALS["cfg_debug"]!=0) {
+		    $fcp=fopen("/tmp/GET-RESP-jo","w");
+		    fwrite($fcp,$msg);
+		    fclose($fcp);
+        }
 	}
 
 	function getMetaDir() {
