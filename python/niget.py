@@ -51,7 +51,8 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%prog [-q] [-f <pathname of content file>] <ni name>"
+    usage = "%prog [-q] [-f <pathname of content file>] <ni name>\n" + \
+            "<ni name> must include location (netloc) from which to retrieve object."
     parser = OptionParser(usage)
     
     parser.add_option("-f", "--file", dest="file_name",
