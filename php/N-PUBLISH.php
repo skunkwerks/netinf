@@ -86,9 +86,6 @@ if (!$algfound) {
 	exit(1);
 } 
 
-// hackety hack
-$nicl = "/home/stephen/code/netinf-code/c/nicl";
-
 // What needs doing?
 // Pseudo-code
 // check_params() incl. name-data-integrity
@@ -102,7 +99,7 @@ $nicl = "/home/stephen/code/netinf-code/c/nicl";
 
 if ($fullPut && $gotfile) {
 	// check name-data-integrity
-	$niclcmd = $nicl . " -v -n '" . $urival . "' -f " . $ftmp;
+	$niclcmd = $GLOBALS["cfg_nicl"] . " -v -n '" . $urival . "' -f " . $ftmp;
 	exec($niclcmd,$results);
 	$answer = $results[0];
 	$ndifile=($answer=="good");

@@ -265,7 +265,7 @@ include "N-dirs.php";
             if (count($det->loc)!=0) {
 			    foreach ($det->loc as $loc) {
                     if (count($loc)!=0) {
-				        $olocs[$i]=$loc;
+				        $olocs[$oloccnt]=$loc;
 				        $oloccnt++;
                     }
                 }

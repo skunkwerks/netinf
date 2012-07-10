@@ -25,7 +25,10 @@ function getDirectoryList ($directory) {
 }
 
 print "<html><head><title>Current List Named Data Objects here</title></head><body>";
+
 print "<h1>Current List of Named Data Objects here</h1>";
+
+print "<p>You can do NetInf protocols things <a href=\"/getputform.html\">here</a></p>";
 
 // For test purpuses use this and mkdir .../ni/there to check error handling here
 // $alglist=array("sha-256","notthere","there","sha-256-128","sha-256-120","sha-256-96","sha-256-64","sha-256-32");
@@ -35,7 +38,7 @@ $alglist=array("sha-256","sha-256-128","sha-256-120","sha-256-96","sha-256-64","
 
 print "<p>This is the list of things named with hashes here, see <a href=\"http://tools.ietf.org/html/draft-farrell-decade-ni/\">draft-farrell-decade-ni</a> for the specificaiton.</p>";
 
-print "<h2>Uploaded named data objects</h2>";
+print "<h2>Uploaded named data objects, and meta-data for search results</h2>";
 print "<p>Here, these get deleted hourly. Recent ones have links. Deleted don't. (But a NetInf GET will still get you the meta-data as JSON)</p>";
 print "<ul>";
 $arr=getDirectoryList($GLOBALS["cfg_metadir"]);

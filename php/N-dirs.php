@@ -37,6 +37,10 @@ $cfg_metadir="/home/dtnuser/data/www/statichtml/ni-meta";
 $cfg_ndodir="/home/dtnuser/data/www/statichtml/ni-ndo";
 // The site I'm working on 
 $cfg_site="http://village.n4c.eu";
+// nicl command
+$cfg_nicl = "/home/stephen/code/netinf-code/c/nicl";
+// cache directory
+$cfg_cache="/home/dtnuser/data/www/statichtml/ni-cache";
 
 // Whether to stuff debug output in /tmp for e.g. MIME responses
 // set to non-zero to get debug, might add more options later

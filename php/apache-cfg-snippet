@@ -1,6 +1,7 @@
 # put this into the relevant VirtualHost entry or other suitable place
 # replace <path> with what you need
 # note that this is first/shortest match so the default has to go last
+	ScriptAlias /netinfproto/search "/<path>/N-SEARCH.php"
 	ScriptAlias /netinfproto/get "/<path>/N-GET.php"
 	ScriptAlias /netinfproto/publish "/<path>/N-PUBLISH.php"
 	ScriptAlias /netinfproto/put "/<path>/N-PUBLISH.php"

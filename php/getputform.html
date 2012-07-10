@@ -7,7 +7,6 @@
 <body>
 
 <h1>NetInf GET</h1>
-
 <form name="fetchni" action="/netinfproto/get" method="post">
 <table border="1">
 <tbody>
@@ -42,6 +41,25 @@
 
 </form>
 
+
+<h1>NetInf SEARCH</h1>
+
+<p>This will search Wikipedia (when it work!)</p>
+
+<form name="searchni" action="/netinfproto/search" method="post">
+<table border="1">
+<tbody>
+<input type="hidden" name="stage" value="zero"/>
+<tr> <td>Keywords:</td> <td><input type="text" name="tokens" /></td> </tr>
+<tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
+<tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
+<tr>
+<td/>
+<td><input type="submit" value="Submit"/> </td>
+</tr>
+</tbody>
+</table>
+</form>
 
 </body>
 </html>
