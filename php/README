@@ -44,7 +44,11 @@ PUBLISH (N-PUBLISH.php)
 	- create/append locator info provided
 	- else return 404
 
-SEARCH - TBD
+SEARCH - (N-SEARCH.php)
+    - takes a search string (tokens) and searches wikipedia for the first
+      10 matching thigs, then gets those, generates ni names and caches
+      them and returns a list of 'em
+    - they get added to .well-known etc as well
 
 N-lib.php : library functions for the above
 N-dirs.php : global directory/config settings
