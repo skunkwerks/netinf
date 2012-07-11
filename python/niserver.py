@@ -143,6 +143,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     # Fixed strings used in NI HTTP translations and requests
     WKN            = "/.well-known/"
+    WKDIR          = "/ni_wkd/"
     NI_HTTP        = WKN + "ni"
     NI_ACCESS_FORM = "/getputform.html"
     NI_SHOWCACHE   = "/showcache.html"
@@ -236,17 +237,24 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         and must be closed by the caller under all circumstances), or
         None, in which case the caller has nothing further to do.
 
-        There are two special cases:
+        There are three special cases:
         - Returning the form code
         - Getting a listing of the cache
+        - Returning the NETINF favicon
+
+        Otherwise, we expect either
+        - a path that starts with the WKDIR prefix
+          which is a direct acces for one of the cached files, or
+        - a path that starts /.well-known/ni/
 
         """
+        self.logdebug("GET?HEAD with path %s" % self.path)
         # Display the put/get form for this server.
         if (self.path.lower() == self.NI_ACCESS_FORM):
             f = StringIO()
             f.write(GET_PUT_FORM_HTML)
             file_len = f.tell()
-            f.seek(0)
+            f.seek(0, os.SEEK_SET)
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.send_header("Content-Length", str(file_len))
@@ -255,6 +263,24 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         if self.path.lower().startswith(self.NI_SHOWCACHE):
             return self.showcache(self.path.lower())
+
+        if (self.path.lower() == "/favicon.ico") :
+            self.logdebug("Getting favicon")
+            f = open("favicon.ico", 'rb')
+            f.seek(0, os.SEEK_END)
+            file_len = f.tell()
+            f.seek(0, os.SEEK_SET)
+            self.send_response(200)
+            self.send_header("Content-type", "image/x-icon")
+            self.send_header("Content-Length", str(file_len))
+            self.end_headers()
+            return f
+
+        if (self.path.lower().startswith(self.WKDIR)):
+            return self.send_get_header( \
+                self.redirect_name_to_file_name(self.server.storage_root,
+                                           self.path))
+            
 
         rv, ni_name, path = self.translate_path(self.server.authority,
                                                 self.server.storage_root,
@@ -265,7 +291,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(406, ni.ni_errs_txt[rv])
             return None
 
-        return self.send_get_header(path)
+        return self.send_get_redirect(ni_name, path)
 
     def send_get_header(self, path):           
         """
@@ -300,9 +326,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         - send 200 OK and appropriate headers
         """
         f = None
+        self.logdebug("send_get_header for path %s" % path)
         # Check if the path corresponds to an actual file
         if not os.path.isfile(path):
-            self.loginfo("File does not exists: %s" % path)
+            self.loginfo("File does not exist: %s" % path)
             self.send_error(404)
             return None
 
@@ -328,6 +355,38 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return f
 
+    def send_get_redirect(self, ni_name, path):
+        f = None
+        # Check if the path corresponds to an actual file
+        if not os.path.isfile(path):
+            self.loginfo("File does not exist: %s" % path)
+            self.send_error(404)
+            return None
+
+        rpath = os.path.realpath(path)
+        type_offset = rpath.find(self.TI)
+        if (type_offset != -1):
+            ctype = urllib.unquote(rpath[type_offset+len(self.TI):])
+        else:
+            ctype = self.server.default_mime_type
+        try:
+            # Always read in binary mode. Opening files in text mode may cause
+            # newline translations, making the actual size of the content
+            # transmitted *less* than the content-length!
+            f = open(path, 'rb')
+        except IOError:
+            self.send_error(404, "File not readable")
+            return None
+        f.close()
+        self.send_response(307)
+        self.send_header("Location", "http://%s%s%s/%s" % (self.authority,
+                                                            self.WKDIR,
+                                                            ni_name.get_alg_name(),
+                                                            ni_name.get_digest()))
+        self.end_headers()
+        
+        return None
+
     def ni_name_to_file_name(self, storage_root, ni_name):
         """
         @brief make basic patname for ni_name in object cache
@@ -340,6 +399,19 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return "%s/%s/%s" % (storage_root,
                              ni_name.get_alg_name(),
                              ni_name.get_digest())
+
+    def redirect_name_to_file_name(self, storage_root, redirect_name):
+        """
+        @brief make basic patname for redirect_name in object cache
+        @param root of directory tree for object cache
+        @param pathname as supplied to redirect for ni: .well-known name
+        @return pathname for 'basic' file (no mimetype extension)
+
+        Generate <storage root>/<redirect_name less WKDIR prefix>
+        """
+        return "%s/%s" % (storage_root,
+                          redirect_name[len(self.WKDIR):])
+
 
 
     def translate_path(self, authority, storage_root, path):
@@ -356,10 +428,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         an ni name corresponding to the http: form. Validates the
         form of the ni name and then builds it into a local file name.
         The path is expected to have the form:
-        /.well-known/ni/<digest name>/<url encoded digest>[?<query][#<fragment>]
+        /.well-known/ni/<digest name>/<url encoded digest>[?<query]
 
         If this is found, then it is turned into:
-         - ni URI:   ni://<authority>/<digest name>;<url encoded digest>[?<query][#<fragment>]
+         - ni URI:   ni://<authority>/<digest name>;<url encoded digest>[?<query]
          - filename: <storage_root>/<digest name>/<url encoded digest>
         Both are returned.
         
@@ -384,7 +456,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         path = self.ni_name_to_file_name(storage_root, ni_name)
         self.logdebug("NI URL: %s, storage path: %s" % (url, path))
 
-        return (ni.ni_errs.niSUCCESS, url, path)
+        return (ni.ni_errs.niSUCCESS, ni_name, path)
 
     def copyfile(self, source, outputfile):
         """
@@ -843,10 +915,11 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         del self.running_threads
         self.shutdown()
 
-def ni_http_server(storage_root, authority, logger):
-    HOST, PORT = "localhost", 8080
-    return NIHTTPServer((HOST, PORT), storage_root,
-                         authority, logger)
+def ni_http_server(storage_root, authority, server_port, logger):
+    #HOST, PORT = "mightyatom.folly.org.uk", 8080
+    print authority, server_port
+    return NIHTTPServer((authority, server_port), storage_root,
+                         "%s:%d" % (authority, server_port), logger)
 
 #=========================================================================
 

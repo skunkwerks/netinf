@@ -220,11 +220,11 @@ def main(default_config_file):
             if (ctrl_port is None):
                 conf_option = "ctrl_port"
                 if config.has_option(conf_section, conf_option):
-                    ctrl_port = config.get(conf_section, conf_option)
+                    ctrl_port = int(config.get(conf_section, conf_option))
             if (server_port is None):
                 conf_option = "server_port"
                 if config.has_option(conf_section, conf_option):
-                    server_port = config.get(conf_section, conf_option)
+                    server_port = int(config.get(conf_section, conf_option))
                 
         conf_section = "authority"
         if (authority is None) and (not config.has_section(conf_section)):
@@ -287,7 +287,7 @@ def main(default_config_file):
     logerror = niserver_logger.error
     loginfo("%s: Main started" % parser.get_prog_name())
     
-    loginfo("Serving for authority %s" % authority)
+    loginfo("Serving for authority %s on port %s" % (authority, server_port))
     #print log_config_file, storage_root, log_base, logger, ctrl_port, server_port
 
     #====================================================================#
@@ -307,7 +307,7 @@ def main(default_config_file):
                 
     #====================================================================#
     # Create server to handle HTTP requests
-    ni_server = ni_http_server(storage_root, authority, niserver_logger)
+    ni_server = ni_http_server(storage_root, authority, server_port, niserver_logger)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request
@@ -356,7 +356,7 @@ def main(default_config_file):
     
 #============================================================================
 if __name__ == "__main__":
-    if not main("./niserver.conf"):
+    if not main("/var/niserver/niserver.conf"):
         os._exit(1)
 
 
