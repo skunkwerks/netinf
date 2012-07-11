@@ -195,7 +195,7 @@ include "N-dirs.php";
 		return($metadir);
 	}
 
-	function storeMeta($hstr,$hashval,$urival,$loc1,$loc2) {
+	function storeMeta($hstr,$hashval,$urival,$loc1,$loc2,$extrameta) {
 		// make locators a good JSON array
 		$locstr="";
         if ($loc1=="" && $loc2=="") {
@@ -208,9 +208,13 @@ include "N-dirs.php";
 			$locstr = "[ \"$loc1\" , \"$loc2\" ] ";
 		}
 		$timestamp= date(DATE_ATOM);
-		$jsonev = "{ \"ts\" : \"$timestamp\", \"loc\" : $locstr }";
+        if ($extrameta!="") {
+		    $jsonev = "{ \"ts\" : \"$timestamp\", \"loc\" : $locstr, \"metadata\" : $extrameta }";
+        } else {
+		    $jsonev = "{ \"ts\" : \"$timestamp\", \"loc\" : $locstr }";
+        }
 		$metadir=getMetaDir();
-		$jfilename = "$metadir/$hstr.$hashval";
+		$jfilename = "$metadir/$hstr;$hashval";
 		// print "time: $timestamp\nEV: $jsonev\nFile: $jfilename\n";
 		if (file_exists($jfilename)) {
 			$fh=fopen($jfilename,"a");
@@ -243,9 +247,8 @@ include "N-dirs.php";
 
 	function checkMeta($hstr,$hashval) {
 		$metadir=getMetaDir();
-		$jfilename = "$metadir/$hstr.$hashval";
+		$jfilename = "$metadir/$hstr;$hashval";
 		if (file_exists($jfilename)) {
-
 			return($jfilename);
 		} else {
 			return(false);
@@ -261,6 +264,8 @@ include "N-dirs.php";
 		$ojstr->ni=$jstr->ni;
 		$oloccnt=0;
 		$olocs=array();
+        $metas=(object)NULL;
+        $metacnt=0;
 		foreach ($jstr->details as $det) {
             if (count($det->loc)!=0) {
 			    foreach ($det->loc as $loc) {
@@ -270,14 +275,21 @@ include "N-dirs.php";
                     }
                 }
 			}
+            if ($det->metadata) {
+                $metas=(object) array_merge((array)$metas,(array)$det->metadata);
+                $metacnt++;
+            }
 		}
-		$oarr->ts=date(DATE_ATOM);
-        if ($oloccnt==0) {
-            $oarr->loc=array();
-        } else {
-		    $oarr->loc=array_values(array_unique($olocs));
+		$ojstr->ts=date(DATE_ATOM);
+        if ($metacnt!=0) {
+		    $ojstr->metadata=$metas;
+            // $ojstr->metacnt="$metacnt";
         }
-		$ojstr->details=$oarr;
+        if ($oloccnt==0) {
+            $ojstr->loc=array();
+        } else {
+		    $ojstr->loc=array_values(array_unique($olocs));
+        }
 		$tmp=json_encode($ojstr);
 		if ($tmp===false) return(1);
 		// PHP 5.4.0 has JSON_UNESCAPED_SLASHES but not my version, so hack it
@@ -297,7 +309,7 @@ include "N-dirs.php";
 			}
 		} else {
 			// if no sign so far check for the configured place
-			$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr.$hashval";
+			$ndofile=$GLOBALS["cfg_ndodir"]."/$hstr;$hashval";
 		}
 		return($ndofile);
 	}

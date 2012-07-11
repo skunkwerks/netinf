@@ -6,6 +6,10 @@
 </head>
 <body>
 
+<p>Some forms to let you play NetInf games in a browser. The list 
+of things named with hashes on this site can be seen
+<a href="/netinfproto/list">here</a>.</p>
+
 <h1>NetInf GET</h1>
 <form name="fetchni" action="/netinfproto/get" method="post">
 <table border="1">
@@ -44,7 +48,10 @@
 
 <h1>NetInf SEARCH</h1>
 
-<p>This will search Wikipedia (when it work!)</p>
+<p>This will search Wikipedia for the terms entered, get the first 10
+hits, retrieve those and generate ni URIs for them and store meta-data
+for that ni URI with the wikipedia and local .well-known locators.
+ </p>
 
 <form name="searchni" action="/netinfproto/search" method="post">
 <table border="1">

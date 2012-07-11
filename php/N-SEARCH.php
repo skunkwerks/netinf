@@ -108,7 +108,7 @@ foreach ( $xmlfile->Section->Item as $item) {
     $results[$resind]['ni']=$nistr;
     // cache a copy, make the .well-known link, store the meta-data
     getAlg($nistr,$algfound,$hstr,$hashval);
-    $filename=$GLOBALS["cfg_cache"]."/".$hstr."-".$hashval;
+    $filename=$GLOBALS["cfg_cache"]."/".$hstr.";".$hashval;
 	rename($tfname,$filename);
     $results[$resind]['file']=$filename;
     // make a link
@@ -117,7 +117,8 @@ foreach ( $xmlfile->Section->Item as $item) {
     $results[$resind]['wku']=$wlname;
     $wku = $GLOBALS["cfg_site"] . "/.well-known/ni/" . $hstr . "/" . $hashval ;
     // make meta-data file
-    storeMeta($hstr,$hashval,$nistr,$item->Url,$wku);
+    $extrameta="{ \"search\" : \"$tokens\"}";
+    storeMeta($hstr,$hashval,$nistr,$item->Url,$wku,$extrameta);
     // some output please
     print "<li>";
     print "<a href=\"$wku\">$nistr</a>";

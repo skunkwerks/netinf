@@ -125,7 +125,8 @@ if ($fullPut && $gotfile) {
 	} 
 } 
 
-$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2);
+$extrameta="{ \"publish\" : \"php\" }";
+$store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2,$extrameta);
 if ($store_rv) {
 	$ni_err=true;
 	$ni_errno=494;

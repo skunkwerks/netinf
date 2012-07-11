@@ -47,7 +47,13 @@ do
 
 	# now trawl and do stuff
 	# omit .hg from the find
-	find $DocRoot -path $DocRoot/.well-known/ni -prune -o -path $DocRoot/.hg -prune -o -type f -exec $LINKEM {} $Prefix $TNID \;
+	find $DocRoot \
+        -path $DocRoot/.well-known/ni -prune -o \
+        -path $DocRoot/.hg -prune -o  \
+        -path $DocRoot/ni-meta -prune -o  \
+        -path $DocRoot/ni-ndo -prune -o  \
+        -path $DocRoot/ni-cache-prune -o  \
+        -type f -exec $LINKEM {} $Prefix $TNID \;
 
 # finished per alg
 done

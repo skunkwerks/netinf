@@ -98,6 +98,6 @@ if (file_exists($filename)) {
 
 // ultimate fallback HTTP 404
 header('HTTP/1.0 404 Not Found');
-print "I don't have $urival \n";
+print "I don't have $urival (N-GET 499) \n";
 
 ?>

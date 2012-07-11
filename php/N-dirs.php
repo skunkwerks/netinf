@@ -37,6 +37,8 @@ $cfg_metadir="/home/dtnuser/data/www/statichtml/ni-meta";
 $cfg_ndodir="/home/dtnuser/data/www/statichtml/ni-ndo";
 // The site I'm working on 
 $cfg_site="http://village.n4c.eu";
+// The place on the site where ni URI meta-data is accessible
+$cfg_metasite="http://village.n4c.eu/ni-meta";
 // nicl command
 $cfg_nicl = "/home/stephen/code/netinf-code/c/nicl";
 // cache directory
