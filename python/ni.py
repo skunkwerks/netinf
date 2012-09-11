@@ -447,6 +447,13 @@ class NIname:
         """
         return self.url
         
+    def get_query_string(self):
+        """
+        @brief return stored query string
+        @return query
+        """
+        return self.query
+        
     def get_hash_function(self):
         """
         @brief return hash function for specified hash alg name (file_part)

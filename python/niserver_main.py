@@ -50,7 +50,7 @@ import logging.config
 import ConfigParser
 from optparse import OptionParser
 
-from niserver import ni_http_server
+from niserver import ni_http_server, NDO_DIR, META_DIR
 from ni import NIname
 
 # UDP port number used to send a shutdown control request.
@@ -295,16 +295,18 @@ def main(default_config_file):
     if not os.path.isdir(storage_root):
         logerror("Storage root directory %s does not exist." % storage_root)
         sys.exit(-1)
-    for auth_name in NIname.get_all_algs():
-        dir_name = "%s/%s" % (storage_root, auth_name)
-        if not os.path.isdir(dir_name):
-            loginfo("Creating object cache directory: %s" % dir_name)
-            try:
-                os.mkdir(dir_name, 0755)
-            except Exception, e:
-                logerror("Unable to create cache directory %s : %s." % (dir_name, str(e)))
-                sys.exit(-1)
-                
+    for tree_name in (NDO_DIR, META_DIR):
+        for auth_name in NIname.get_all_algs():
+            dir_name = "%s%s%s" % (storage_root, tree_name, auth_name)
+            if not os.path.isdir(dir_name):
+                loginfo("Creating object cache directory: %s" % dir_name)
+                try:
+                    os.mkdir(dir_name, 0755)
+                except Exception, e:
+                    logerror("Unable to create cache directory %s : %s." % \
+                             (dir_name, str(e)))
+                    sys.exit(-1)
+                    
     #====================================================================#
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port, niserver_logger)
