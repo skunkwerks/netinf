@@ -91,6 +91,8 @@ import threading
 import logging
 import shutil
 import json
+import re
+import DNS
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -194,10 +196,7 @@ class NetInfMetaData:
         self.json_obj["detail"] = {}
 
         detail = self.json_obj["detail"]
-        if timestamp is None:
-            detail["ts"]            = ""
-        else:
-            detail["ts"]            = timestamp
+        self.set_timestamp(timestamp)
         if ctype is None:
             detail["ct"]        = ""
         else:
@@ -220,6 +219,9 @@ class NetInfMetaData:
 
     def json_val(self):
         return self.json_obj
+    
+    def set_json_val(self, json_val):
+        self.json_obj = json_val
 
     def append_locs(self, myloc=None, loc1=None, loc2=None):
         loclist = self.json_obj["detail"]["loc"]
@@ -233,22 +235,36 @@ class NetInfMetaData:
             if not loc2 in loclist: 
                 loclist.append(loc2)
         return
+    
     def get_ni(self):
         return self.json_obj["ni"]
     
     def get_timestamp(self):
         return self.json_obj["detail"]["ts"]
 
+    def set_timestamp(self, timestamp):
+        if timestamp is None:
+            self.json_obj["detail"]["ts"] = "(unknown)"
+        else:
+            self.json_obj["detail"]["ts"] = timestamp
+        return
+
     def get_ctype(self):
         return self.json_obj["detail"]["ct"]
 
+    def set_ctype(self, ctype):
+        if ctype is not None:
+            self.json_obj["detail"]["ct"] = ctype
+        return
+
     def get_loclist(self):
-        return self.json_obj["detail"]["loclist"]
+        return self.json_obj["detail"]["loc"]
         
     def get_extrameta(self):
-        return self.json_obj["detail"]["extrameta"]
-        
-        
+        return self.json_obj["detail"]["extrameta"]        
+
+NDO_DIR        = "/ndo_dir/"
+META_DIR       = "/meta_dir/"
 
 class NIHTTPHandler(BaseHTTPRequestHandler):
 
@@ -256,15 +272,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     WKN            = "/.well-known/"
     WKDIR          = "/ni_wkd/"
     NI_HTTP        = WKN + "ni"
-    NDO_DIR        = "/ndo_dir/"
-    META_DIR       = "/meta_dir/"
     NI_ACCESS_FORM = "/getputform.html"
     ALG_QUERY      = "?alg="
-    NETINF_GET     = "netinfproto/get"
-    NETINF_PUBLISH = "netinfproto/publish" 
-    NETINF_PUT     = "netinfproto/put"
-    NETINF_SEARCH  = "netinfproto/search"
-    NETINF_LIST    = "netinfproto/list"
+    NETINF_GET     = "/netinfproto/get"
+    NETINF_PUBLISH = "/netinfproto/publish" 
+    NETINF_PUT     = "/netinfproto/put"
+    NETINF_SEARCH  = "/netinfproto/search"
+    NETINF_LIST    = "/netinfproto/list"
 
     # Type introducer string in cached file names
     TI             = "?c="
@@ -285,8 +299,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Logging functions
         self.loginfo = self.server.logger.info
         self.logdebug = self.server.logger.debug
-        #self.logwarn = self.server.logger.warn
-        #self.logerror = self.server.logger.error
+        self.logwarn = self.server.logger.warn
+        self.logerror = self.server.logger.error
 
         self.loginfo("New HTTP request connection from %s" % self.client_address[0])
 
@@ -383,7 +397,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return f
 
-        if self.path.lower().startswith(self.NI_LIST):
+        if self.path.lower().startswith(self.NETINF_LIST):
             return self.showcache(self.path.lower())
 
         if (self.path.lower() == "/favicon.ico") :
@@ -855,9 +869,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(412, "Missing mandatory field %s in form." % field)
                 return
         ofc = 0
+        fov = {}
         for field in optional_publish_fields:
             if field in form.keys():
                 ofc += 1
+                fov[field] = form[field].value
+            else:
+                fov[field] = "(not supplied)"
                 
         if (len(form.keys()) > (len(mandatory_publish_fields) + ofc)):
             self.logdebug("NetInf publish form has too many fields: %s" % str(form.keys()))
@@ -885,18 +903,22 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 return
             # Record that there is a file ready
             file_uploaded = True
+            fov["octets"] = form["octets"].filename
             timestamp = self.date_time_string()
+        elif "octets" in form.keys():
+            self.logwarn("Unexpected 'octets' form field present with 'fullPut' is not set")
+            
 
         
         self.logdebug("NetInf publish for "
                       "URI %s, fullPut %s octets %s, msgid %s, ext %s,"
                       "loc1 %s, loc2 %s at %s" % (form["URI"].value,
-                                                  form["fullPut"].value,
-                                                  form["octets"].filename,
+                                                  fov["fullPut"],
+                                                  fov["octets"],
                                                   form["msgid"].value,
-                                                  form["ext"].value,
-                                                  form["loc1"].value,
-                                                  form["loc2"].value,
+                                                  fov["ext"],
+                                                  fov["loc1"],
+                                                  fov["loc2"],
                                                   timestamp))
         
         # Generate NIname and validate it (it should have a Params field).
@@ -921,9 +943,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # once the digest has been verified.
             # This file name is unique to this thread and because it has # in it
             # should never conflict with a digested file name which doesn't use #.
-            temp_name = "%s/%s/publish#temp#%d" % (self.server.storage_root,
-                                                   ni_name.get_alg_name(),
-                                                   self.thread_num)
+            temp_name = "%s%s%s/publish#temp#%d" % (self.server.storage_root,
+                                                    NDO_DIR,
+                                                    ni_name.get_alg_name(),
+                                                    self.thread_num)
             self.logdebug("Copying and digesting to temporary file %s" % temp_name)
 
             # Prepare hashing mechanisms
@@ -961,7 +984,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Calculated binary digest has wrong length")
                 os.remove(temp_name)
                 return
-            digest = ni.NIproc.make_urldigest(bin_dgst[:ni_name.get_truncated_length()])
+            digest = ni.NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
             if digest is None:
                 self.logdebug("Failed to create urlsafe bas64 encoded digest")
                 self.send_error(500, "Failed to create urlsafe bas64 encoded digest")
@@ -986,7 +1009,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         #   Override type got via received file if there was one but log warning if different
         qs = ni_name.get_query_string()
         if not (qs == ""):
-            ct = re.search(r'ct\w*=\w*("[^"]+")', qs)
+            ct = re.search(r'ct=([^&]+)', qs)
             if not (ct is  None or ct.group(1) == ""):
                 if not (ctype is None or ctype == ct.group(1)):
                     self.logwarn("Inconsistent content types detected: %s and %s" % \
@@ -1002,11 +1025,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Check if the metadata file exists - i.e., if this is an update
         if os.path.isfile(meta_path):
             # It does - had previous publish so update metadata
-            md = update_metadata(meta_path, form, timestamp, ctype)
+            first_store = False
+            md = self.update_metadata(meta_path, form, timestamp, ctype)
             if md is None:
                 self.logerror("Unable to update metadata file %s" % meta_path)
-                self.send_error(500, "Unable to upddate metadata file for %s" % \
+                self.send_error(500, "Unable to update metadata file for %s" % \
                                 ni_name.get_url())
+                return
 
             # Check the ni is the same - only affects query string
             # Assume for the time being that we expect exactly the same string
@@ -1023,12 +1048,26 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             if not((ctype is None) or (md.get_ctype() == ctype)):
                 self.logerror("Update uses different content type - old: %s; new: %s" % \
                               (md.get_ctype(), ctype))
-                self.send_error(412, "Publish update uses different ni - previous was %s" % \
+                self.send_error(412, "Publish update uses different content type  - previous was %s" % \
                                 md.get_ctype())
                 return
                 
         else:
-            md = store_metadata(meta_path, form, timestamp, ctype)
+            # New metadata file needed
+            first_store = True
+
+            # Extract extra metadata if present
+            if "ext" in form.keys():
+                em_str = "{ %s }" % form["ext"].value
+                em = json.loads(em_str)
+            else:
+                em = None
+            md = self.store_metadata(meta_path, form, timestamp, ctype, em)
+            if md is None:
+                self.logerror("Unable to create metadata file %s" % meta_path)
+                self.send_error(500, "Unable to create metadata file for %s" % \
+                                ni_name.get_url())
+                return
 
         # Check if the path corresponds to an actual content file
         if os.path.isfile(ndo_path):
@@ -1042,88 +1081,48 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                     self.send_error(500, "Cannot unlink temporary file")
                     return
                     
-            md = update_metadata(meta_path, form, ctype)
-            if md is None:
-                self.logerror("Unable to update metadata file %s" % meta_path)
-                self.send_error(500, "Unable to upddate metadata file for %s" % \
-                                ni_name.get_url())
-            ts = md.get_timestamp()
             fs = os.stat(ndo_path)
 
-            mb = self.mime_boundary()
-
-            f = StringIO()
-            f.write(mb + "\r\n")
-            f.write("Content-Type: text/html\r\n")
-            f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
-            f.write("<html>\n<title>NetInf PUBLISH Report</title>\n")
-            f.write("<h2>NetInf PUBLISH Report</h2>\n")
-            f.write("\n<p>File %s is already in cache as '%s' (%d octets)</p>\n" % (form["octets"].filename,
-                                                                                    ni_name.get_url(),
-                                                                                    fs[6]))
-            f.write("\n</body>\n</html>\r\n\r\n")
-            f.write(mb + "\r\n")
-            f.write("Content-Type: application/json\r\n")
-            json.dump({ "status": "updated", "msgid" : form["msgid"].value,
-                        "loclist" : md.get_loclist() }, f)
-            f.write("\r\n\r\n" + mb + "-\r\n")
-                    
-            length = f.tell()
-            f.seek(0)
-            self.send_response(200, "Object already in cache here")
-            self.send_header("MIME-Version", "1.0")
-            self.send_header("Content-Type", "multipart/mixed; boundary=%s" % mb)
-            self.send_header("Content-Disposition", "inline")
-            self.send_header("Content-Length", str(length))
-            # Ensure response not cached
-            self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
-            self.send_header("Last-Modified", ts)
-            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
-            # IE extensions - extra header
-            self.send_header("Cache-Control", "post-check=0, pre-check=0")
-            # This seems irrelevant to a response
-            self.send_header("Pragma", "no-cache")
-            self.end_headers()
-            self.wfile.write(f.read())
+            self.send_publish_report("updated metadata", True,
+                                     True, first_store, form,
+                                     md, ni_name.get_url(), fs)
 
             return
 
-        # Rename the temporary file to be the long name with query string
-        try:
-            os.rename(temp_name, ndo_path)
-        except:
-            os.remove(temp_name)
-            self.logerror("Unable to rename tmp file %s to %s: %s" % (temp_name, ndo_path, str(e)))
-            self.send_error(500, "Unable to rename temporary file")
+        # We now know there is no preexisting content file...
+        # If a file was uploaded...
+        if file_uploaded:
+            # Rename the temporary file to be the NDO content file name
+            try:
+                os.rename(temp_name, ndo_path)
+            except:
+                os.remove(temp_name)
+                self.logerror("Unable to rename tmp file %s to %s: %s" % (temp_name, ndo_path, str(e)))
+                self.send_error(500, "Unable to rename temporary file")
+                return
+
+            fs = os.stat(ndo_path)
+
+            self.send_publish_report("stored_all", True,
+                                     False, first_store, form,
+                                     md, ni_name.get_url(), fs)
+
             return
 
-        # Set up the metadata
-        md = 
-                    
+        # Otherwise report we just stored the metadata
+        self.send_publish_report("stored_metadata", False,
+                                 False, first_store, form,
+                                 md, ni_name.get_url(), None)
 
-        # Generate a nice response
-        f = StringIO()
-        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
-        f.write("<html>\n<title>NetInf PUBLISH Report</title>\n")
-        f.write("<h2>NetInf PUBLISH Report</h2>\n")
-        f.write("\n<p>Uploaded %s as '%s' (%d octets)</p>\n" % (form["octets"].filename,
-                                                                    ni_name.get_url(),
-                                                                    file_len))
-        f.write("\n</body>\n</html>\n")
-        length = f.tell()
-        f.seek(0)
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", str(length))
-        self.end_headers()
-        self.wfile.write(f.read())
+
         return
 
-    def store_metadata(self, meta_path, form, timestamp, ctype):
+    def store_metadata(self, meta_path, form, timestamp, ctype, extrameta):
         """
         @brief Create new metadata file for a cached NDO from form data etc
         @param File name for metadata file
         @param processed form data
+        @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
         @return NetInfMetaData instance that was written to file or None if a problem
 
@@ -1136,12 +1135,144 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         try:
             f = open(meta_path, "w")
         except Exception, e:
-            logerror("Unable to create metadata file %s: %s", % (meta_path, str(e)))
+            self.logerror("Unable to create metadata file %s: %s" % (meta_path, str(e)))
             return None
 
-        md = NetInfMetaData
+        if "loc1" in form.keys():
+            loc1 = form["loc1"].value
+        else:
+            loc1 = None
+
+        if "loc2" in form.keys():
+            loc2 = form["loc1"].value
+        else:
+            loc2 = None
+
+        em = {}
+        em["ext"] = extrameta
+
+        md = NetInfMetaData(form["URI"].value, timestamp, ctype,
+                            self.server.authority, loc1, loc2, em)
+        print "stored:", md
+        try:
+            json.dump(md.json_val(), f)
+        except Exception, e:
+            self.logerror("Write to metatdata file %s failed: %s." % (meta_path, str(e)))
+            md = None
+
+        f.close()
+
+        return md
     
-    
+    def update_metadata(self, meta_path, form, timestamp, ctype):
+        """
+        @brief Update existing metadata file for a cached NDO from form data etc
+        @param File name for metadata file
+        @param processed form data
+        @param timestamp when file written (maybe None if not entering NDO this time)
+        @param content type (maybe None if no uploaded file)
+        @return NetInfMetaData instance that was written to file or None if a problem
+
+        The file contains JSON encoded metadata created by writing
+        a JSON encoded NetInfMetaData class instance to the file.
+
+        Contract: The meta_path file exists on entry
+        """
+
+        try:
+            f = open(meta_path, "r+")
+        except Exception, e:
+            self.logerror("Unable to open metadata file %s: %s" % (meta_path, str(e)))
+            return None
+
+        if "loc1" in form.keys():
+            loc1_val = form["loc1"].value
+        else:
+            loc1_val = None
+
+        if "loc2" in form.keys():
+            loc2_val = form["loc2"].value
+        else:
+            loc2_val = None
+
+        # Create empty metadata object
+        md = NetInfMetaData()
+        try:
+            md.set_json_val(json.load(f))
+        except Exception, e:
+            self.logerror("Read from metadata file %s failed.", meta_path)
+            return None
+        
+        f.seek(0)
+
+        # Update info in metadata structure
+        md.append_locs(loc1 = loc1_val, loc2 = loc2_val)
+        md.set_timestamp(timestamp)
+        md.set_ctype(ctype)
+
+        # Write metadata back to file
+        print "updated: ", md
+        try:
+            json.dump(md.json_val(), f)
+        except Exception, e:
+            self.logerror("Write to metatdata file %s failed.", meta_path)
+            md = None
+
+        f.close()        
+        return md
+
+    def send_publish_report(self, status, ndo_in_cache, ignored_upload,
+                            first_store, form, metadata, url, ndo_status):
+        mb = self.mime_boundary()
+
+        f = StringIO()
+        f.write(mb + "\r\n")
+        f.write("Content-Type: text/html\r\n")
+        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
+        f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
+        f.write("<h2>NetInf PUBLISH Report</h2>\n")
+        if ndo_in_cache and ignored_upload:
+            f.write("\n<p>File %s is already in cache as '%s' (%d octets);"
+                    " metadata updated</p>\n" % (form["octets"].filename,
+                                                 url,
+                                                 ndo_status[6]))
+        elif ndo_in_cache:
+            f.write("\n<p>File %s and metadata stored in cache"
+                    " as '%s' (%d octets)</p>\n" % (form["octets"].filename,
+                                                    url,
+                                                    ndo_status[6]))
+        elif first_store:
+            f.write("\n<p>Metadata only for '%s' stored in cache</p>\n" % url)
+        else:
+            f.write("\n<p>Metadata for '%s' updated in cache (NDO not present)</p>\n" % url)
+            
+        f.write("\n</body>\n</html>\n")
+        f.write(mb + "\r\n")
+        f.write("Content-Type: application/json\r\n")
+        json.dump({ "status": "updated", "msgid" : form["msgid"].value,
+                    "loclist" : metadata.get_loclist() }, f)
+        f.write("\n" + mb + "--\r\n")
+                
+        length = f.tell()
+        f.seek(0)
+        self.send_response(200, "Object already in cache here")
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", "multipart/mixed; boundary=%s" % mb)
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        # Ensure response not cached
+        self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
+        self.send_header("Last-Modified", metadata.get_timestamp())
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        # IE extensions - extra header
+        self.send_header("Cache-Control", "post-check=0, pre-check=0")
+        # This seems irrelevant to a response
+        self.send_header("Pragma", "no-cache")
+        self.end_headers()
+        self.wfile.write(f.read())
+
+        return
+
 class NIHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, addr, storage_root, authority, logger):
         # These are used  by individual requests
@@ -1155,12 +1286,6 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
         # Default mimetype to use when we don't know.
         self.default_mime_type = 'application/octet-stream'
-
-        # JSON encoder and decoder for use with metadata
-        # Use all defaults for JSON processing (i.e. ascii output)
-        self.json_enc = json.JSONEncoder()
-        self.json_dec = json.JSONDecoder()
-
 
         # Setup to produce a daemon thread for each incoming request
         # and be able to reuse address
@@ -1189,8 +1314,16 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
 def ni_http_server(storage_root, authority, server_port, logger):
     #HOST, PORT = "mightyatom.folly.org.uk", 8080
-    print authority, server_port
-    return NIHTTPServer((authority, server_port), storage_root,
+    # Get an honest-to-goodness routable IP address for authority
+    # Python tends to give you the loopback address which
+    # means the srever cannot be accessed from elsewhere
+    try:
+        ipaddr = DNS.dnslookup(authority, "A")[0]
+    except:
+        self.logger.warn("Cannot get IP address for authority from DNS")
+        ipaddr = socket.gethostbyname(authority)
+    print authority, ipaddr, server_port
+    return NIHTTPServer((ipaddr, server_port), storage_root,
                          "%s:%d" % (authority, server_port), logger)
 
 #=========================================================================

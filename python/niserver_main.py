@@ -296,8 +296,17 @@ def main(default_config_file):
         logerror("Storage root directory %s does not exist." % storage_root)
         sys.exit(-1)
     for tree_name in (NDO_DIR, META_DIR):
+        tree_root = "%s%s" % (storage_root, tree_name)
+        if not os.path.isdir(tree_root):
+            loginfo("Creating object cache tree directory: %s" % tree_root)
+            try:
+                os.mkdir(tree_root, 0755)
+            except Exception, e:
+                logerror("Unable to create tree directory %s : %s." % \
+                         (tree_root, str(e)))
+                sys.exit(-1)
         for auth_name in NIname.get_all_algs():
-            dir_name = "%s%s%s" % (storage_root, tree_name, auth_name)
+            dir_name = "%s%s" % (tree_root, auth_name)
             if not os.path.isdir(dir_name):
                 loginfo("Creating object cache directory: %s" % dir_name)
                 try:
@@ -327,7 +336,7 @@ def main(default_config_file):
     # The main thread now goes to sleep until either an interrupt or incoming data
     # (any incoming data) on CTRL_PORT (typically one more than the mail input port)
     # Shutdown control is restricted to local machine.
-    HOST = "localhost"
+    HOST = "mightyatom.folly.org.uk"
     ctrl_skt = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,0)
     ctrl_skt.bind((HOST, CTRL_PORT))
     read_fds = [ctrl_skt]
