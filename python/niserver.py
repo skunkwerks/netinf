@@ -281,7 +281,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     NETINF_LIST    = "/netinfproto/list"
 
     # Type introducer string in cached file names
-    TI             = "?c="
+    TI             = "?ct="
 
     def end_run(self):
         self.request_close()
@@ -413,11 +413,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return f
 
         if (self.path.lower().startswith(self.WKDIR)):
-            return self.send_get_header( \
-                                         self.redirect_name_to_file_name( \
+            ndo_path, meta_path = self.redirect_name_to_file_name( \
                                                 self.server.storage_root,
-                                                self.path))
-            
+                                                self.path)
+            return self.send_get_header(ndo_path, meta_path)           
 
         rv, ni_name, ndo_path, meta_path = self.translate_path(self.server.authority,
                                                                self.server.storage_root,
@@ -428,13 +427,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(406, ni.ni_errs_txt[rv])
             return None
 
-        return self.send_get_redirect(ni_name, path)
+        return self.send_get_redirect(ni_name, meta_path)
 
-    def send_get_header(self, path):           
+    def send_get_header(self, ndo_path, meta_path):           
         """
-        @brief Send headers for the response to a get request.
-        @param prospective path of file
-        @return open file object for copying data to output stream.
+        @brief Send headers and data for the response to a get request.
+        @param prospective paths of file
+        @return None.
 
         The path has been derived from an ni: scheme URI but not yet
         verifed as extant.
@@ -448,36 +447,57 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         from the contents then it defaults to application/octet-stream.
 
         For this routine:
-        - Check the path corresponds to a real file
+        - Check the meta_path corresponds to a real file
             - send 404 error if not
-        - Get the canonical file name if it exists and extract minetype
-            - Use application/octet-stream if can't be deduced this way
-        - open the file and find out how large it is
-            - send 404 error if opening for reading fails
-        - send 200 OK and appropriate headers
+        - Read in the metadata and decode JSON
+            - send 500 error if file is unreadable or mangled
+        - check if content file exists:
+            - if not, just send metadata as JSON string (with added status)
+            - if so, then
+                - open the file and find out how large it is
+                    - send 404 error if opening for reading fails
+        - send 200 OK and appropriate headers (application/json if only metatdata,
+          multipart/mixed if both metadata and NDO content)
+        - send the JSON
+        - if sending content send MIME boundaries and content file.
         """
         f = None
-        self.logdebug("send_get_header for path %s" % path)
+        self.logdebug("send_get_header for path %s" % meta_path)
         # Check if the path corresponds to an actual file
-        if not os.path.isfile(path):
+        if not os.path.isfile(meta_path):
             self.loginfo("File does not exist: %s" % path)
-            self.send_error(404)
+            self.send_error(404, "Object not found in cache")
             return None
 
-        rpath = os.path.realpath(path)
-        type_offset = rpath.find(self.TI)
-        if (type_offset != -1):
-            ctype = urllib.unquote(rpath[type_offset+len(self.TI):])
-        else:
-            ctype = self.server.default_mime_type
         try:
             # Always read in binary mode. Opening files in text mode may cause
             # newline translations, making the actual size of the content
             # transmitted *less* than the content-length!
-            f = open(path, 'rb')
+            f = open(meta_path, 'rb')
         except IOError:
-            self.send_error(404, "File not readable")
+            self.logerror("Unable to open file %s for reading.", % meta_path)
+            self.send_error(404, "Metadata not readable")
             return None
+        try:
+            md = NetInfMetaData()
+            md.set_json_val(json.load(f))
+        except Exception, e:
+            self.logerror("JSON decode of metatdata file %s failed: %s" % (meta_path, str(e)))
+            self.send_error(500, "Metadata is corrupt")
+            f.close()
+            return None
+
+        f.close()
+
+        # Check if content is present
+        if os.path.isfile(ndo_path):
+            try:
+                f = open(ndo_path, "rb")
+            except IOError:
+                self.logerror("Unable to open file %s for reading: %s"
+                        
+            
+            
         self.send_response(200)
         self.send_header("Content-type", ctype)
         fs = os.fstat(f.fileno())
@@ -486,29 +506,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return f
 
-    def send_get_redirect(self, ni_name, path):
-        f = None
-        # Check if the path corresponds to an actual file
-        if not os.path.isfile(path):
+    def send_get_redirect(self, ni_name, meta_path):
+        # Check if the metadata path corresponds to an actual file
+        if not os.path.isfile(meta_path):
             self.loginfo("File does not exist: %s" % path)
-            self.send_error(404)
+            self.send_error(404, "Requested file not in cache")
             return None
 
-        rpath = os.path.realpath(path)
-        type_offset = rpath.find(self.TI)
-        if (type_offset != -1):
-            ctype = urllib.unquote(rpath[type_offset+len(self.TI):])
-        else:
-            ctype = self.server.default_mime_type
-        try:
-            # Always read in binary mode. Opening files in text mode may cause
-            # newline translations, making the actual size of the content
-            # transmitted *less* than the content-length!
-            f = open(path, 'rb')
-        except IOError:
-            self.send_error(404, "File not readable")
-            return None
-        f.close()
         self.send_response(307)
         self.send_header("Location", "http://%s%s%s/%s" % (self.authority,
                                                             self.WKDIR,
@@ -538,18 +542,22 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return (ndo_name, meta_name)
 
 
-    def redirect_name_to_file_name(self, storage_root, redirect_name):
+    def redirect_name_to_file_names(self, storage_root, redirect_name):
         """
         @brief make basic patname for redirect_name in object cache
         @param root of directory tree for object cache
         @param pathname as supplied to redirect for ni: .well-known name
-        @return pathname for 'basic' file (no mimetype extension)
+        @return pathnames for NDO file and metadata file
 
-        Generate <storage root>/ndo_dir/<redirect_name less WKDIR prefix>
+        Generate <storage root>/[ndo_dir|meta_dir]/<redirect_name less WKDIR prefix>
         """
-        return "%s%s%s" % (storage_root, NDO_DIR,
-                          redirect_name[len(self.WKDIR):])
-
+        ndo_name =  "%s%s%s" % (storage_root,
+                                NDO_DIR,
+                                redirect_name[len(self.WKDIR):])
+        meta_name =  "%s%s%s" % (storage_root,
+                                 META_DIR,
+                                 redirect_name[len(self.WKDIR):])
+        return (ndo_name, meta_name)
 
 
     def translate_path(self, authority, storage_root, path):
@@ -1225,37 +1233,44 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                             first_store, form, metadata, url, ndo_status):
         mb = self.mime_boundary()
 
+        if ndo_in_cache and ignored_upload:
+            info1 = ("File %s is already in cache as '%s' (%d octets);" + \
+                    " metadata updated.") % (form["octets"].filename,
+                                             url,
+                                             ndo_status[6])
+            info2 = "Object already in cache; metadata updated."
+        elif ndo_in_cache:
+            info1 = ("File %s and metadata stored in cache" + \
+                     " as '%s' (%d octets)") % (form["octets"].filename,
+                                                url,
+                                                ndo_status[6])
+            info2 = "Object and metadata cached."
+        elif first_store:
+            info1 = "Metadata only for '%s' stored in cache" % url
+            info2 = "Metadata for object stored in cache."
+        else:
+            info1 = "Metadata for '%s' updated in cache (NDO not present)" % url
+            info2 = "Metadata for object updated - object not present."
         f = StringIO()
         f.write("--" + mb + "\n")
         f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
         json.dump({ "status": "updated", "msgid" : form["msgid"].value,
                     "loclist" : metadata.get_loclist() }, f)
         f.write("\n\n--" + mb + "\n")
+        f.write("Content-Type: text/plain\nMIME-Version: 1.0\n\n")
+        f.write(info1)
+        f.write("\n\n--" + mb + "\n")
         f.write("Content-Type: text/html\nMIME-Version: 1.0\n\n")
         f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
         f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
         f.write("<h2>NetInf PUBLISH Report</h2>\n")
-        if ndo_in_cache and ignored_upload:
-            f.write("\n<p>File %s is already in cache as '%s' (%d octets);"
-                    " metadata updated</p>\n" % (form["octets"].filename,
-                                                 url,
-                                                 ndo_status[6]))
-        elif ndo_in_cache:
-            f.write("\n<p>File %s and metadata stored in cache"
-                    " as '%s' (%d octets)</p>\n" % (form["octets"].filename,
-                                                    url,
-                                                    ndo_status[6]))
-        elif first_store:
-            f.write("\n<p>Metadata only for '%s' stored in cache</p>\n" % url)
-        else:
-            f.write("\n<p>Metadata for '%s' updated in cache (NDO not present)</p>\n" % url)
-            
+        f.write("\n<p>%s</p>" % info1)
         f.write("\n</body>\n</html>\n\n")
         f.write("--" + mb + "--\n")
                 
         length = f.tell()
         f.seek(0)
-        self.send_response(200, "Object already in cache here")
+        self.send_response(200, info2)
         self.send_header("MIME-Version", "1.0")
         self.send_header("Content-Type", "multipart/mixed; boundary=%s" % mb)
         self.send_header("Content-Disposition", "inline")

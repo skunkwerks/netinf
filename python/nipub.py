@@ -30,6 +30,7 @@ import  random
 from optparse import OptionParser
 import urllib2
 import mimetypes
+import json
 
 import mimetools
 import email.parser
@@ -208,28 +209,48 @@ def main():
     debug("Response info: %s" % http_info)
     debug("Response type: %s" % http_info.gettype())
 
-    print http_object.headers["content-type"]
-
     # Read results into buffer
-    buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
-    buf = buf_ct + http_object.read()
+    payload = http_object.read()
     http_object.close()
-    msg = email.parser.Parser().parsestr(buf)
-    if verbose:
-        if msg.is_multipart():
-            print "Is multipart"
-            print "part 1", msg.get_payload(0)
-            print "part 2", msg.get_payload(1)
-        else:
-            print "not multipart"
 
     # Report outcome
     if (http_result != 200):
         if verbose:
             print("Publish request returned HTTP code %d" % http_result) 
         sys.exit(-3)
+
+    # Parse expected multipart MIME response
+    # Part 1 is JSON
+    # Part 2 is a plain text report
+    # Part 3 is an HTML coded report 
+    buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
+    buf = buf_ct + payload
+    msg = email.parser.Parser().parsestr(buf)
+    parts = msg.get_payload()
+    debug("Multipart: %s" % str(msg.is_multipart()))
+    if msg.is_multipart():
+        debug("Number of parts: %d" % len(parts))
+        if len(parts) != 3:
+            if verbose:
+                print("Error: Response from server does not have three parts.")
+            sys.exit(-5)
+    else:
+        if verbose:
+            print("Error: Response from server is not multipart.")
+        sys.exit(-6)
+
+    # Extract JSON value from part 1
+    try:
+        json_report = json.loads(parts[0].get_payload())
+    except Exception, e:
+        if verbose:
+            print("Error: Could not decode JSON report '%s': %s" % (parts[0].get_payload(),
+                                                                    str(e)))
+        sys.exit(-7)
+
     if verbose:
-        print("Object published as %s" % octet_param.get_url())
+        report = parts[1].get_payload()
+        print(report)
     sys.exit(0)
 if __name__ == "__main__":
     main()
