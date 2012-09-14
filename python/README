@@ -8,11 +8,20 @@ You can redistribute it and/or modify it under the same terms as Python.
 
 Basic implementation of the the NI URI format. Work in Progress.
 
+Currently the code is for release 2 (version 2.6 or later) of Python.
+Support for release 3 will need some conversion work.
+
 Provided with Doxygen compatible documentation strings.  Requires doxypy.py
 filter (http://code.foosel.org/doxypy) to create Doygen output.
 
 Requires the Python 'stdnum' library to supply the Luhn-mod-N checkdigit 
 algorithm.  Can be downloaded from http://pypi.python.org/pypi/python-stdnum. 
+
+Requires the Python 'PyDNS' module to allow the server to determine a routable
+address for the node it is running in from DNS (otherwise it usually gets
+the loopback address).  Can be downloaded from 
+http://pydns.sourceforge.net/downloads.html.  Install the appropriate version
+for the major release of Python you are using.
 
 (In each case the modules can be installed using:
 sudo python setup.py install
@@ -37,11 +46,12 @@ Support functions (acquired from http://atlee.ca/software/poster/index.html):
  Provides an HTTP server that just serves as the server end of the NetInf
  protocol, manages a local cache of NDOs and provides http: access using
  the .well-known/ni mechanism. It provides the following functions:
- - NetInf GET over HTTP CL (responds to POSTS to /.well-knowm/netinfproto/get)
- - NetInf PUBLISH over HTTP CL (responds to POSTS to /.well-knowm/netinfproto/publish)
+ - NetInf GET over HTTP CL (responds to POSTS to /netinfproto/get)
+ - NetInf PUBLISH over HTTP CL (responds to POSTS to /netinfproto/publish or .../put)
  - HTTP GET for /.well-known/ni/<alg name>/<digest>
  - HTTP GET for /getputform.html
  - HTTP GET for /showcache.html and /showcache.html?alg=<alg-name>
+ - HTTP GET for /favicon.ico (NetInf mini icon displayed in browser URL box)
  Uses the following files:
  - niserver_main.py - the main server controller
  - niserver.py - the guts of the server
@@ -61,11 +71,15 @@ Limitations
  - niget should work on chunks of request rather than whole file
 
 CHANGES
+  2012-09-14
+  	- Updated niserver to send back JSON encoded metadata and status.
   2012-06-01
   	- Updated ni.py, nicl.py and ni_urlparse.py to match Version 06
 	  of draft-farrell-farrell-decade-ni. Adds the nih: scheme and 
 	  the binary name format.
 	- Improved the format checking when validating name in NIname.
+	- Added redirection to server when using .well-known to
+	  conform to standards for .well-known usage (not too much data).
 	- NOTE: Work still in progress on server and HTTP convergence 
 	  layer commands (niget.py and nipub.py).
   2012-02-01

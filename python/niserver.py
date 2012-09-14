@@ -340,7 +340,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         @brief Create a MIME boundary string by hashing today's date
         @return ASCII string suitable for use as mime boundary
         """
-        return "--" + hashlib.sha256(str(datetime.date.today())).hexdigest()
+        return hashlib.sha256(str(datetime.date.today())).hexdigest()
 
     def do_GET(self):
         """
@@ -994,7 +994,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Check digest matches with digest in ni name in URI field
             if (digest != ni_name.get_digest()):
                 self.loginfo("Digest calculated from incoming file does not match digest in ni; name")
-                send_error(401, "Digest of incoming file does match specified ni;  URI")
+                self.send_error(401, "Digest of incoming file does match specified ni;  URI")
                 os.remove(temp_name)
                 return
 
@@ -1226,8 +1226,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         mb = self.mime_boundary()
 
         f = StringIO()
-        f.write(mb + "\r\n")
-        f.write("Content-Type: text/html\r\n")
+        f.write("--" + mb + "\n")
+        f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
+        json.dump({ "status": "updated", "msgid" : form["msgid"].value,
+                    "loclist" : metadata.get_loclist() }, f)
+        f.write("\n\n--" + mb + "\n")
+        f.write("Content-Type: text/html\nMIME-Version: 1.0\n\n")
         f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
         f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
         f.write("<h2>NetInf PUBLISH Report</h2>\n")
@@ -1246,12 +1250,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             f.write("\n<p>Metadata for '%s' updated in cache (NDO not present)</p>\n" % url)
             
-        f.write("\n</body>\n</html>\n")
-        f.write(mb + "\r\n")
-        f.write("Content-Type: application/json\r\n")
-        json.dump({ "status": "updated", "msgid" : form["msgid"].value,
-                    "loclist" : metadata.get_loclist() }, f)
-        f.write("\n" + mb + "--\r\n")
+        f.write("\n</body>\n</html>\n\n")
+        f.write("--" + mb + "--\n")
                 
         length = f.tell()
         f.seek(0)

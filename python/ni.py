@@ -242,7 +242,7 @@ class NIname:
         elif (type(url) == tuple):
             l = len(url)
             if ((l < 3) or (l > 5)):
-                raise
+                raise ValueError
             # Allow for the fragment field but make it always empty
             url_compts = [url[0], url[1], url[2], "", "", ""]
             if l >= 4:

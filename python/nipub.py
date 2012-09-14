@@ -32,6 +32,8 @@ import urllib2
 import mimetypes
 
 import mimetools
+import email.parser
+import email.message
 from ni import *
 from encode import *
 import streaminghttp
@@ -62,9 +64,9 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%%prog %s\n%s\n       %%prog %s\n%s" %("[-q] -f <pathname of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]+",
+    usage = "%%prog %s\n%s\n       %%prog %s\n%s" %("[-q] -f <pathname of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
                                                     "          -- publish file via NI URI over HTTP",
-                                                    "[-q] -w <HTTP URI of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]+",
+                                                    "[-q] -w <HTTP URI of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
                                                     "          -- publish web content via NI URI over HTTP")
     parser = OptionParser(usage)
     
@@ -76,10 +78,10 @@ def main():
                       help="HTTP URL for content to be published.")
     parser.add_option("-a", "--authority", dest="authority",
                       type="string",
-                      help="FQDN to be placed in authority component of NI name published.")
+                      help="FQDN to be placed in authority component of NI name published. Also where HTTP is sent.")
     parser.add_option("-l", "--loc", dest="locs", action="append",
                       type="string",
-                      help="An FQDN where NI might be retrieved. One is required (and is where object is published to) but may be several.")
+                      help="An FQDN where NI might be retrieved. Maybe be zero to two.")
     parser.add_option("-d", "--digest", dest="hash_alg", default="sha-256",
                       type="string",
                       help="Digest algorithm to be used to hash content and create NI URI. Defaults to sha-256.")
@@ -89,20 +91,25 @@ def main():
 
     (options, args) = parser.parse_args()
 
-    # Check command line options - -a and -q are optional, must be at least one -l ,
+    # Check command line options - -a and -q are optional, there must be at least one -l ,
     # must be either a -f or a -w but not both at once.  No leftover arguments allowed.
     if len(args) != 0:
         parser.error("Unrecognized arguments %s supplied." % str(args))
         sys.exit(-1)
     if (options.locs == None):
-        parser.error("Must supply at least one locator (-l/--loc) argument")
+        parser.error("Must supply at least one locator (-l/--loc) argument.")
         sys.exit(-1)
-    if (len(options.locs) > 2):
+    if ((options.locs is not None) and (len(options.locs) > 2)):
         parser.error("Initial version only supports two locators (-l/--loc).")
         sys.exit(-1)
     if (((options.file_name == None) and (options.http_name == None)) or
         ((options.file_name != None) and (options.http_name != None))):
         parser.error("Exactly one of -f/--file and -w/--web must be specified")
+
+    # **** -w is not implemented yet
+    if options.http_name != None:
+        print "Web name as source(-w option) not yet implemented. Exiting"
+        sys.exit(-2)
 
     verbose = not options.quiet
 
@@ -115,14 +122,14 @@ def main():
     ni_digester = NIdigester()
 
     # Install the template URL built from the authority and the digest algorithm
-    rv = ni_digester.set_url((authority, options.hash_alg))
+    rv = ni_digester.set_url(("ni", authority, options.hash_alg))
     if rv != ni_errs.niSUCCESS:
         print("Cannot construct valid ni URL: %s" % ni_err_txt[rv])
         sys.exit(-1)
     debug(ni_digester.get_url())
 
     # Where to send the publish request.
-    http_url = "http://%s/.well-known/netinfproto/publish" % options.locs[0]
+    http_url = "http://%s/netinfproto/publish" % options.locs[0]
     debug("Accessing: %s" % http_url)
 
     # Open the file if possible
@@ -154,7 +161,7 @@ def main():
     param_list = [octet_param,
                   ("URI",       uri_dict),
                   ("msgid",     str(random.randint(1, 32000))),
-                  ("ext",       "ignored"),
+                  #("ext",       "ignored"),
                   ("fullPut",   "yes"),
                   ("loc1",      options.locs[0])]
     if (len(options.locs) == 2):
@@ -201,11 +208,20 @@ def main():
     debug("Response info: %s" % http_info)
     debug("Response type: %s" % http_info.gettype())
 
+    print http_object.headers["content-type"]
+
     # Read results into buffer
-    buf = http_object.read()
+    buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
+    buf = buf_ct + http_object.read()
     http_object.close()
+    msg = email.parser.Parser().parsestr(buf)
     if verbose:
-        print "Read: %s" % buf
+        if msg.is_multipart():
+            print "Is multipart"
+            print "part 1", msg.get_payload(0)
+            print "part 2", msg.get_payload(1)
+        else:
+            print "not multipart"
 
     # Report outcome
     if (http_result != 200):
