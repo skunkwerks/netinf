@@ -336,7 +336,7 @@ def main(default_config_file):
     # The main thread now goes to sleep until either an interrupt or incoming data
     # (any incoming data) on CTRL_PORT (typically one more than the mail input port)
     # Shutdown control is restricted to local machine.
-    HOST = "mightyatom.folly.org.uk"
+    HOST = "localhost"
     ctrl_skt = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,0)
     ctrl_skt.bind((HOST, CTRL_PORT))
     read_fds = [ctrl_skt]

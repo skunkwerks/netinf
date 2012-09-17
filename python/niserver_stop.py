@@ -1,41 +1,10 @@
 #!/usr/bin/python
-# PyMail DTN Nomadic Mail System
-# Copyright (C) Folly Consulting Ltd, 2009, 2010
-#
-#    Licensed under the Apache License, Version 2.0 (the "License");
-#    you may not use this file except in compliance with the License.
-#    You may obtain a copy of the License at
-# 
-#        http://www.apache.org/licenses/LICENSE-2.0
-# 
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS,
-#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#    See the License for the specific language governing permissions and
-#    limitations under the License.
-#
 
-
-"""
-Postfix to DTN Interface - Program to stop the PyMail daemon
-
-The main thread in the PyMail daemon (see dp_main/dp_outstation) hangs up
-waiting for (any) input on UDP port 2112 or a signal (like SIGINT).
-
-This short program writes a string (what it is is irrelevant) on port 2112
-of the local host which should stop the daemon.
-
-Revision History
-================
-Version   Date       Author         Notes
-0.0	  24/06/2010 Elwyn Davies   Created for N4C Summer tests 2010
-"""
-#!/usr/bin/python
 """
 @package ni
 @file niserver_stop.py
-@brief Control application for stopping running niserver NI HTTP server.
-@version $Revision: 0.01 $ $Author: elwynd $
+@brief Control application for stopping running niserver NI HTTP convergence layer server.
+@version $Revision: 0.02 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
@@ -58,8 +27,8 @@ limitations under the License.
 
 ===========================================================================
 
-Trivial application to send a randowm UDP packet to the control port (2114)
-of a running niserver.
+Trivial command line application to send a random UDP packet to the control
+port (2114) of a running niserver.
 
 The main thread of the server hangs up in an indefinite select system call
 waiting for a (UDP) packet to be received on the control port.  When such a
@@ -71,6 +40,7 @@ irrelevant.
 Revision History
 ================
 Version   Date       Author         Notes
+0.1	  17/09/2012 Elwyn Davies   Improved comments - removed history.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
 

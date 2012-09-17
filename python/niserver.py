@@ -272,7 +272,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     WKN            = "/.well-known/"
     WKDIR          = "/ni_wkd/"
     NI_HTTP        = WKN + "ni"
-    NI_ACCESS_FORM = "/getputform.html"
+    NI_ACCESS_FORM = "/getputform.html"    
+    #NI_SHOWCACHE   = "/showcache.html"
     ALG_QUERY      = "?alg="
     NETINF_GET     = "/netinfproto/get"
     NETINF_PUBLISH = "/netinfproto/publish" 
@@ -413,7 +414,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return f
 
         if (self.path.lower().startswith(self.WKDIR)):
-            ndo_path, meta_path = self.redirect_name_to_file_name( \
+            ndo_path, meta_path = self.redirect_name_to_file_names( \
                                                 self.server.storage_root,
                                                 self.path)
             return self.send_get_header(ndo_path, meta_path)           
@@ -422,7 +423,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                                                self.server.storage_root,
                                                                self.path)
         if rv is not ni.ni_errs.niSUCCESS:
-            self.loginfo("Path format for %s inappropriate: %s" % (self.ndo_path,
+            self.loginfo("Path format for %s inappropriate: %s" % (self.path,
                                                                    ni.ni_errs_txt[rv]))
             self.send_error(406, ni.ni_errs_txt[rv])
             return None
@@ -475,7 +476,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # transmitted *less* than the content-length!
             f = open(meta_path, 'rb')
         except IOError:
-            self.logerror("Unable to open file %s for reading.", % meta_path)
+            self.logerror("Unable to open file %s for reading." % meta_path)
             self.send_error(404, "Metadata not readable")
             return None
         try:
@@ -492,20 +493,95 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Check if content is present
         if os.path.isfile(ndo_path):
             try:
-                f = open(ndo_path, "rb")
+                cf = open(ndo_path, "rb")
             except IOError:
-                self.logerror("Unable to open file %s for reading: %s"
-                        
+                self.logerror("Unable to open file %s for reading: %s")
+                self.send_error(500, "Unable to open content file")
+                return None
+            fs = os.fstat(cf.fileno())
+            ct_length = fs[6]
+            have_content = True
+        else:
+            have_content = False
             
-            
-        self.send_response(200)
-        self.send_header("Content-type", ctype)
-        fs = os.fstat(f.fileno())
-        self.send_header("Content-Length", str(fs[6]))
-        self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
-        self.end_headers()
-        return f
+        if have_content:
+            # Return two part multipart/mixed MIME message
+            # Part 1 - appliction/json encoded metedata
+            # Part 2 - content according to type
 
+            # Assemble body for message and calculate length
+            # Put together the part before the content file in a StringIO
+            mb = self.mime_boundary()
+            final_mb = "\n--" + mb + "--"
+            f = StringIO()
+            # Initial MIME boundary
+            f.write("--" + mb + "\n")
+            # Part 0 - Metadata as JSON string
+            f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
+            json_obj = md.json_val()
+            json_obj["status"] = "content_and_metadata"
+            json.dump(json_obj, f)
+            # MIME boundary
+            f.write("\n\n--" + mb + "\n")
+            # Headers for NDO content file
+            f.write("Content-Type: %s\nMIME-Version: 1.0\n" % md.get_ctype())
+            f.write("Content-Length: %d\n\n" % ct_length)
+            # Complete data to be returned consists of three parts
+            # - data now in StringIO object
+            # - data in content file
+            # - final MIME boundary
+            # Calculate total length to go in HTTP header and reset pointer in StringIO
+            length = f.tell() + ct_length +len(final_mb)
+            f.seek(0)
+            
+            # Now generate the top level HTTP headers
+            self.send_response(200, "Returning content and metadata")
+            self.send_header("MIME-Version", "1.0")
+            self.send_header("Content-Type", "multipart/mixed; boundary=%s" % mb)
+            self.send_header("Content-Disposition", "inline")
+            self.send_header("Content-Length", str(length))
+            # Ensure response not cached
+            self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
+            self.send_header("Last-Modified", md.get_timestamp())
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            # IE extensions - extra header
+            self.send_header("Cache-Control", "post-check=0, pre-check=0")
+            # This seems irrelevant to a response
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+            # Copy the three chunks of data to the output stream
+            self.wfile.write(f.read())
+            self.copyfile(cf, self.wfile)
+            self.wfile.write(final_mb)
+            cf.close()
+            f.close()
+            return None
+        else:
+            # No content so just send the metadata as an application/json object
+            f = StringIO()
+            json_obj = md.json_val()
+            json_obj["status"] = "metadata_only"
+            json.dump(json_obj, f)
+            length = f.tell()
+            f.seek(0)
+            
+            # Now generate the top level HTTP headers
+            self.send_response(200, "Returning metadata only")
+            self.send_header("MIME-Version", "1.0")
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Disposition", "inline")
+            self.send_header("Content-Length", str(length))
+            # Ensure response not cached
+            self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
+            self.send_header("Last-Modified", md.get_timestamp())
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            # IE extensions - extra header
+            self.send_header("Cache-Control", "post-check=0, pre-check=0")
+            # This seems irrelevant to a response
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+            return f
+            
     def send_get_redirect(self, ni_name, meta_path):
         # Check if the metadata path corresponds to an actual file
         if not os.path.isfile(meta_path):
@@ -514,7 +590,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return None
 
         self.send_response(307)
-        self.send_header("Location", "http://%s%s%s/%s" % (self.authority,
+        self.send_header("Location", "http://%s%s%s/%s" % (self.server.authority,
                                                             self.WKDIR,
                                                             ni_name.get_alg_name(),
                                                             ni_name.get_digest()))
@@ -586,13 +662,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Note: 'path' may contain param and query (nut not fragment) components
         if not path.startswith(self.NI_HTTP):
-            return (ni.ni_errs.niBADURL, None, None)
+            return (ni.ni_errs.niBADURL, None, None, None)
         path = path[len(self.NI_HTTP):]
         if (len(path) == 0) or not path.startswith("/"):
-            return (ni.ni_errs.niBADURL, None, None)
+            return (ni.ni_errs.niBADURL, None, None, None)
         dgstrt = path.find("/", 1)
         if dgstrt == -1:
-            return (ni.ni_errs.niBADURL, None, None)
+            return (ni.ni_errs.niBADURL, None, None, None)
             
         url = "ni://%s%s;%s" % (authority, path[:dgstrt], path[dgstrt+1:])
         self.logdebug("path %s converted to url %s" % (path, url))
@@ -657,7 +733,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
         # Determine which directories to list - assume all by default
         algs_list = ni.NIname.get_all_algs()
-        qo = len(self.NI_SHOWCACHE)
+        qo = len(self.NETINF_LIST)
         if (len(path) > qo):
             # Check if there is a query string
             if not path[qo:].startswith(self.ALG_QUERY):
@@ -797,9 +873,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(412, "Missing mandatory field %s in form." % field)
                 return
         ofc = 0
+        fov = {}
         for field in optional_get_fields:
             if field in form.keys():
                 ofc += 1
+                fov[field] = form[field].value
+            else:
+                fov[field] = "(not supplied)"
                 
         if (len(form.keys()) > (len(mandatory_get_fields) + ofc)):
             self.logdebug("NetInf get form has too many fields: %s" % str(form.keys()))
@@ -807,7 +887,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                                                                  str(optional_get_fields)))
         self.logdebug("NetInf get for URI %s, nsgid %s, ext %s" % (form["URI"].value,
                                                                    form["msgid"].value,
-                                                                   form["ext"].value))
+                                                                   fov["ext"]))
         
         # Generate NIname and validate it (it should have a Params field).
         ni_name = ni.NIname(form["URI"].value)
@@ -1252,21 +1332,28 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             info1 = "Metadata for '%s' updated in cache (NDO not present)" % url
             info2 = "Metadata for object updated - object not present."
         f = StringIO()
+        # Starting MIME boundary
         f.write("--" + mb + "\n")
+        # Part 0: Metadata as JSON string
         f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
         json.dump({ "status": "updated", "msgid" : form["msgid"].value,
                     "loclist" : metadata.get_loclist() }, f)
+        # MIME boundary
         f.write("\n\n--" + mb + "\n")
+        # Textual from report (used by publish command line applications
         f.write("Content-Type: text/plain\nMIME-Version: 1.0\n\n")
         f.write(info1)
+        # MIME boundary
         f.write("\n\n--" + mb + "\n")
+        # HTML formatted report intended to be outputted by web browsers
         f.write("Content-Type: text/html\nMIME-Version: 1.0\n\n")
         f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
         f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
         f.write("<h2>NetInf PUBLISH Report</h2>\n")
         f.write("\n<p>%s</p>" % info1)
-        f.write("\n</body>\n</html>\n\n")
-        f.write("--" + mb + "--\n")
+        f.write("\n</body>\n</html>\n")
+        # Output final MIME boundary
+        f.write("\n--" + mb + "--")
                 
         length = f.tell()
         f.seek(0)
@@ -1331,12 +1418,17 @@ def ni_http_server(storage_root, authority, server_port, logger):
     #HOST, PORT = "mightyatom.folly.org.uk", 8080
     # Get an honest-to-goodness routable IP address for authority
     # Python tends to give you the loopback address which
-    # means the srever cannot be accessed from elsewhere
-    try:
-        ipaddr = DNS.dnslookup(authority, "A")[0]
-    except:
-        self.logger.warn("Cannot get IP address for authority from DNS")
+    # means the server cannot be accessed from elsewhere
+    # However if the authority is localhost (mainly for testing)
+    # just use gethostbyname. (This will need some work to function with IPv6)
+    if authority == "localhost":
         ipaddr = socket.gethostbyname(authority)
+    else:
+        try:
+            ipaddr = DNS.dnslookup(authority, "A")[0]
+        except:
+            self.logger.warn("Cannot get IP address for authority from DNS")
+            ipaddr = socket.gethostbyname(authority)
     print authority, ipaddr, server_port
     return NIHTTPServer((ipaddr, server_port), storage_root,
                          "%s:%d" % (authority, server_port), logger)

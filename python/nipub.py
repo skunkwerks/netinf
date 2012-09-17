@@ -44,7 +44,7 @@ def debug(string):
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    print string
+    #print string
     return
 
 def main():
@@ -65,9 +65,9 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%%prog %s\n%s\n       %%prog %s\n%s" %("[-q] -f <pathname of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
+    usage = "%%prog %s\n%s\n       %%prog %s\n%s" %("[-q] [-m|-v] -f <pathname of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
                                                     "          -- publish file via NI URI over HTTP",
-                                                    "[-q] -w <HTTP URI of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
+                                                    "[-q] [-m|-v] -w <HTTP URI of content file> [-a <authority>] [-d <digest alg>] [-l <FQDN - locator>]{0,2}",
                                                     "          -- publish web content via NI URI over HTTP")
     parser = OptionParser(usage)
     
@@ -89,11 +89,19 @@ def main():
     parser.add_option("-q", "--quiet", default=False,
                       action="store_true", dest="quiet",
                       help="Suppress textual output")
+    parser.add_option("-m", "--metadata", default=False,
+                      action="store_true", dest="metadata",
+                      help="Output returned metedata as JSON string")
+    parser.add_option("-v", "--view", default=False,
+                      action="store_true", dest="view",
+                      help="Pretty print returned metadata.")
+
 
     (options, args) = parser.parse_args()
 
-    # Check command line options - -a and -q are optional, there must be at least one -l ,
+    # Check command line options - -a, -q, -m and -v are optional, there must be at least one -l ,
     # must be either a -f or a -w but not both at once.  No leftover arguments allowed.
+    # It is probably stupid to specify -m and -v but not conflicting.
     if len(args) != 0:
         parser.error("Unrecognized arguments %s supplied." % str(args))
         sys.exit(-1)
@@ -125,7 +133,7 @@ def main():
     # Install the template URL built from the authority and the digest algorithm
     rv = ni_digester.set_url(("ni", authority, options.hash_alg))
     if rv != ni_errs.niSUCCESS:
-        print("Cannot construct valid ni URL: %s" % ni_err_txt[rv])
+        print("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
         sys.exit(-1)
     debug(ni_digester.get_url())
 
@@ -201,7 +209,7 @@ def main():
     debug("Sent request: URL: %s" % octet_param.get_url())
 
 
-    # Get message headers - an instance of mimetools.Message
+    # Get message headers - an instance of email.message
     http_info = http_object.info()
     http_result = http_object.getcode()
     if verbose:
@@ -226,6 +234,7 @@ def main():
     buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
     buf = buf_ct + payload
     msg = email.parser.Parser().parsestr(buf)
+    #print msg.__dict__
     parts = msg.get_payload()
     debug("Multipart: %s" % str(msg.is_multipart()))
     if msg.is_multipart():
@@ -234,10 +243,17 @@ def main():
             if verbose:
                 print("Error: Response from server does not have three parts.")
             sys.exit(-5)
+        exp_ct = ("application/json", "text/plain", "text/html")
+        for msg_part_no in (0, 1, 2):
+            msg_part = parts[msg_part_no]
+            if msg_part.get("Content-Type") != exp_ct[msg_part_no]:
+                print("Unexpected content type '%s' for publish return message part %d" %
+                      (msg_part.get("Content-Type"), msg_part_no))
+                sys.exit(-6)
     else:
         if verbose:
             print("Error: Response from server is not multipart.")
-        sys.exit(-6)
+        sys.exit(-7)
 
     # Extract JSON value from part 1
     try:
@@ -246,11 +262,18 @@ def main():
         if verbose:
             print("Error: Could not decode JSON report '%s': %s" % (parts[0].get_payload(),
                                                                     str(e)))
-        sys.exit(-7)
+        sys.exit(-8)
 
     if verbose:
         report = parts[1].get_payload()
         print(report)
+
+    if options.view:
+        print("Returned metadata for %s:" % octet_param.get_url())
+        print json.dumps(json_report, indent = 4)
+
+    if options.metadata:
+        print json.dumps(json_report, separators=(",", ":"))
     sys.exit(0)
 if __name__ == "__main__":
     main()

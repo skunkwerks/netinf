@@ -30,8 +30,18 @@ import  random
 from optparse import OptionParser
 import urllib
 import urllib2
-import mimetools
+import json
+import email.parser
+import email.message
 from ni import *
+
+def debug(string):
+    """
+    @brief Print out debugging information string
+    @param string to be printed (in)
+    """
+    #print string
+    return
 
 def main():
     """
@@ -51,7 +61,7 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%prog [-q] [-f <pathname of content file>] <ni name>\n" + \
+    usage = "%prog [-q] [-m|-v] [-f <pathname of content file>] <ni name>\n" + \
             "<ni name> must include location (netloc) from which to retrieve object."
     parser = OptionParser(usage)
     
@@ -61,10 +71,16 @@ def main():
     parser.add_option("-q", "--quiet", default=False,
                       action="store_true", dest="quiet",
                       help="Suppress textual output")
+    parser.add_option("-m", "--metadata", default=False,
+                      action="store_true", dest="metadata",
+                      help="Output returned metedata as JSON string")
+    parser.add_option("-v", "--view", default=False,
+                      action="store_true", dest="view",
+                      help="Pretty print returned metadata.")
 
     (options, args) = parser.parse_args()
 
-    # Check command line options - -q and -f are optional, <ni name> is mandatory
+    # Check command line options - -q, -f, -m and -v are optional, <ni name> is mandatory
     if len(args) != 1:
         parser.error("URL <ni name> not specified.")
         sys.exit(-1)
@@ -85,7 +101,7 @@ def main():
         options.file_name = ni_url.get_digest()
         
     # Generate NetInf form access URL
-    http_url = "http://%s/.well-known/netinfproto/get" % ni_url.get_netloc()
+    http_url = "http://%s/netinfproto/get" % ni_url.get_netloc()
     """
     if (http_url == None):
         if verbose:
@@ -96,7 +112,7 @@ def main():
     # Set up HTTP form data for get request
     form_data = urllib.urlencode({ "URI":   ni_url.get_url(),
                                    "msgid": random.randint(1, 32000),
-                                   "ext":   "ignored" })
+                                   "ext":   "" })
 
     # Send POST request to destination server
     try:
@@ -109,10 +125,11 @@ def main():
     # Get HTTP result code
     http_result = http_object.getcode()
 
-    # Get message headers - an instance of mimetools.Message
+    # Get message headers - an instance of email.Message
     http_info = http_object.info()
-    print http_info
-    #print http_info.gettype()
+    debug("Response info: %s" % http_info)
+    debug("Response type: %s" % http_info.gettype())
+
     obj_length_str = http_info.getheader("Content-Length")
     if (obj_length_str != None):
         obj_length = int(obj_length_str)
@@ -120,52 +137,106 @@ def main():
         obj_length = None
 
     # Read results into buffer
-    buf = http_object.read()
+    # Would be good to try and do this better...
+    # if the object is large we will run into problems here
+    payload = http_object.read()
     http_object.close()
-    #print buf
+
+    # The results may be either:
+    # - a single application/json MIME item carrying metadata of object
+    # - a two part multipart/mixed object with metadats and the content (of whatever type)
+    # Parse the MIME object
 
     # Verify length and digest if HTTP result code was 200 - Success
     if (http_result != 200):
         if verbose:
-            print("Warning: Request returned HTTP code %d - as code is not 200, digest check omitted" % http_result) 
-    else:
-        if ((obj_length != None) and (len(buf) != obj_length)):
-            if verbose:
-                print("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
-        rv = NIproc.checknib(ni_url, buf)
-        if (rv != ni_errs.niSUCCESS):
-            if verbose:
-                print("Error: digest of received data does not match digest in URL %s: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
-            sys.exit(-5)
+            print("Get request returned HTTP code %d" % http_result)
+        sys.exit(-5)
 
-    # Write to file
+    if ((obj_length != None) and (len(payload) != obj_length)):
+        if verbose:
+            print("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
+        sys.exit(-6)
+        
+    buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
+    buf = buf_ct + payload
+    msg = email.parser.Parser().parsestr(buf)
+    debug( msg.__dict__)
+    parts = msg.get_payload()
+    debug("Multipart: %s" % str(msg.is_multipart()))
+    if msg.is_multipart():
+        debug("Number of parts: %d" % len(parts))
+        if len(parts) != 2:
+            if verbose:
+                print("Error: Response from server does not have two parts.")
+            sys.exit(-7)
+        json_msg = parts[0]
+        ct_msg = parts[1]
+    else:
+        debug("Return is single part")
+        json_msg = msg
+        ct_msg = None
+
+    # Extract JSON values from message
+    # Check the message is a application/json
+    if json_msg.get("Content-type") != "application/json":
+        print("First or only component (metadata) of result is not of type application/json")
+        sys.exit(-8)
+
+    # Extract the JSON structure
     try:
-        f = open(options.file_name, "wb")
+        json_report = json.loads(json_msg.get_payload())
     except Exception, e:
         if verbose:
-            print("Error: Unable to open destination file %s: %s" % (os.path.abspath(options.file_name), str(e)))
-        sys.exit(-6)
+            print("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
+                                                                    str(e)))
+        sys.exit(-9)
+    
+    if options.view:
+        print("Returned metadata for %s:" % args[0])
+        print json.dumps(json_report, indent = 4)
 
-    try:
-        f.write(buf)
-    except:
-        if verbose:
-            print("Error: Unable to write data to destination file %s: %s" % (os.path.abspath(options.file_name), str(e)))
-        sys.exit(-7)
+    if options.metadata:
+        print json.dumps(json_report, separators=(",", ":"))
 
-    f.close()
-    if (http_result == 200):
-        if verbose:
-            print("Success: file %s written with verified contents (length %d) resulting from 'get' from URL %s" % (os.path.abspath(options.file_name),
-                                                                                                                    len(buf),
-                                                                                                                    ni_url.get_url()))
+    # If the content was also returned..
+    if ct_msg != None:
+        debug( ct_msg.__dict__)
+        # Check the digest
+        rv = NIproc.checknib(ni_url, ct_msg.get_payload())
+        if (rv != ni_errs.niSUCCESS):
+            if verbose:
+                print("Error: digest of received data does not match digest in URL %s: %s" %
+                      (ni_url.get_url(), ni_errs_txt[rv]))
+            sys.exit(-10)
+
+        # Write to file
+        try:
+            f = open(options.file_name, "wb")
+        except Exception, e:
+            if verbose:
+                print("Error: Unable to open destination file %s: %s" %
+                      (os.path.abspath(options.file_name), str(e)))
+            sys.exit(-11)
+
+        try:
+            f.write(ct_msg.get_payload())
+        except:
+            if verbose:
+                print("Error: Unable to write data to destination file %s: %s" %
+                      (os.path.abspath(options.file_name), str(e)))
+            sys.exit(-12)
+
+        f.close()
+        
+        if (http_result == 200):
+            if verbose:
+                print("Success: file %s written with verified contents "
+                      "(length %d) resulting from 'get' from URL %s" %
+                      (os.path.abspath(options.file_name),
+                       len(ct_msg.get_payload()),
+                       ni_url.get_url()))
         sys.exit(0)
-    else:
-        if verbose:
-            print("Check file %s written with message resulting from 'get' from URL %s with HTTP result %d" % (os.path.abspath(options.file_name),
-                                                                                                               ni_url.get_url(),
-                                                                                                               http_result))
-        sys.exit(1)
                                                                                                     
 if __name__ == "__main__":
     main()
