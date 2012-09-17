@@ -417,7 +417,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             ndo_path, meta_path = self.redirect_name_to_file_names( \
                                                 self.server.storage_root,
                                                 self.path)
-            return self.send_get_header(ndo_path, meta_path)           
+            # Really ought to get msgid as a query string?
+            return self.send_get_header(ndo_path, meta_path, None)           
 
         rv, ni_name, ndo_path, meta_path = self.translate_path(self.server.authority,
                                                                self.server.storage_root,
@@ -430,10 +431,11 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return self.send_get_redirect(ni_name, meta_path)
 
-    def send_get_header(self, ndo_path, meta_path):           
+    def send_get_header(self, ndo_path, meta_path, msgid):           
         """
         @brief Send headers and data for the response to a get request.
         @param prospective paths of file
+        @param msgid or None (for well known accesses)
         @return None.
 
         The path has been derived from an ni: scheme URI but not yet
@@ -520,6 +522,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
             json_obj = md.json_val()
             json_obj["status"] = "content_and_metadata"
+            if msgid is not None:
+                json_obj["msgid"] = msgid
             json.dump(json_obj, f)
             # MIME boundary
             f.write("\n\n--" + mb + "\n")
@@ -561,6 +565,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             f = StringIO()
             json_obj = md.json_val()
             json_obj["status"] = "metadata_only"
+            if msgid is not None:
+                json_obj["msgid"] = msgid
             json.dump(json_obj, f)
             length = f.tell()
             f.seek(0)
@@ -902,7 +908,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Then send the headers if all is well
         (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root, ni_name)
         # send_get_header returns open file pointer to file to be returned (or None)
-        f = self.send_get_header(ndo_path, meta_path)
+        f = self.send_get_header(ndo_path, meta_path, form["msgid"].value)
         if f:
             self.copyfile(f, self.wfile)
             f.close()

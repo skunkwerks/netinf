@@ -50,7 +50,7 @@ Support functions (acquired from http://atlee.ca/software/poster/index.html):
  - NetInf PUBLISH over HTTP CL (responds to POSTS to /netinfproto/publish or .../put)
  - HTTP GET for /.well-known/ni/<alg name>/<digest>
  - HTTP GET for /getputform.html
- - HTTP GET for /showcache.html and /showcache.html?alg=<alg-name>
+ - HTTP GET for /netinfproto/list and /netinfproto/list?showcache.html?alg=<alg-name>
  - HTTP GET for /favicon.ico (NetInf mini icon displayed in browser URL box)
  Uses the following files:
  - niserver_main.py - the main server controller
@@ -58,7 +58,11 @@ Support functions (acquired from http://atlee.ca/software/poster/index.html):
  - niserver.conf - main configuration file - specifies locations for logs, cache
  - niserver_log.conf - configuration file for Python logging system for server
 
--  
+Also:
+ - niserver_stop.py - command line utility to stop the server (only from the
+   same host as it was started on)
+
+--------------------  
 
 Features
  - uses Python hashlib (ultimately dependent on OpenSSL) and base64
@@ -71,6 +75,26 @@ Limitations
  - niget should work on chunks of request rather than whole file
 
 CHANGES
+  2012-0917
+        - Completed implementation of addition of storing and returning
+          metadata in niserver, nipub and niget.  Current implementation
+          now allows publication of both complete NDOs (content and metadata)
+          and also metadata alone.  The metadata can be updated when 
+          repeated publication attempts are made - this just adds additional
+          locators.  The GET function will now return just the metedata if
+          that is all that is available or both when both are available.
+          The response from a (successful) PUBLISH is now a three part
+          MIME multipart/mixed object.  The first part is a subset of the 
+          JSON encoded metadata (the list of locators) plus the msgid and the 
+          status of the report; the second is a text/plain report of what 
+          was done and the third part is an equivalent report in text/html
+          format.  When the publication is made form a web browser, the HTML
+          format will normally be displayed.  A command line application can
+          use the text/plain version.  The response from GET is now either a
+          single part application/json response if the cache only holds the 
+          metadata or a two part multipart/mixed object with the JSON encoded
+          complete metadata plus msgid and status in the first part and the 
+          actual content in the second part.
   2012-09-14
   	- Updated niserver to send back JSON encoded metadata and status.
   2012-06-01
