@@ -116,7 +116,7 @@ include "N-dirs.php";
 		$msg .= "Content-Type:  " . $mime  . " name=\"".$shortfilename."\"". "\n";
 		$msg .= "\n";
 		$msg .= file_get_contents($filename);
-		$msg .= "--".$mime_boundary."--". "\n\n";
+		$msg .= "\n--".$mime_boundary."--". "\n\n";
 
 		// headers
 		header('MIME-Version: 1.0');
