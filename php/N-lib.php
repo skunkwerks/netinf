@@ -91,7 +91,7 @@ include "N-dirs.php";
 		// the application/json bit
 		$msg .= "--".$mime_boundary. "\n";
 
-		$msg .= "Content-Type: application/json;". "\n";
+		$msg .= "Content-Type: application/json". "\n";
 		$msg .= "\n";
 		$jmsg = file_get_contents($jfilename);
 		$jmsg .= " ] }\n\n";
