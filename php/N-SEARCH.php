@@ -37,6 +37,9 @@ include 'N-lib.php';
 $tokens = filter_input(INPUT_POST, 'tokens');
 $msgidval = $_REQUEST['msgid'];
 $extval = $_REQUEST['ext'];
+$rform = $_REQUEST['rform'];
+if ($rform == "") $rform="json";
+
 
 // test - one I have
 // $tokens = 'Delay';

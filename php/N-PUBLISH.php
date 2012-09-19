@@ -104,7 +104,8 @@ if ($fullPut && $gotfile) {
 	$answer = $results[0];
 	$ndifile=($answer=="good");
 	if ($ndifile) {
-		// print "Good - nice";
+		// outcome is good, file present, verified and I don't have it already
+		// HTTP: 200, 
 	} else {
 		header('HTTP/1.0 404 Not Found');
 		print "Bad - feck off";
