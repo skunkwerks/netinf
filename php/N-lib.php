@@ -98,7 +98,7 @@ include "N-dirs.php";
 
 		// reduce jmsg
 		$rjmsg="";
-		$rv=jreduce($jmsg,$rjmsg);
+		$rv=jreduce($jmsg,$rjmsg,$msgid);
 		if ($rv==1) { // error, use original
 			$msg .= $jmsg;
 		} else { // nice - use reduced
@@ -152,7 +152,7 @@ include "N-dirs.php";
 
 		// reduce jmsg
 		$rjmsg="";
-		$rv=jreduce($jmsg,$rjmsg);
+		$rv=jreduce($jmsg,$rjmsg,$msgidval);
 		if ($rv==1) { // error, use original
 			$msg .= $jmsg;
 		} else { // nice - use reduced
@@ -257,10 +257,11 @@ include "N-dirs.php";
 
 	// merge the locator arrays known about an NDO into one
 	// with no repeats
-	function jreduce($in,&$out) {
+	function jreduce($in,&$out,$msgid) {
 		$jstr=json_decode($in);
 		if ($jstr==NULL) return(1);
 		$ojstr->NetInf=$jstr->NetInf;
+        $ojstr->msgid=$msgid;
 		$ojstr->ni=$jstr->ni;
 		$oloccnt=0;
 		$olocs=array();
