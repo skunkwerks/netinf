@@ -83,6 +83,22 @@ include "N-dirs.php";
         }
 	}
 
+	function getMeta($hstr,$hashval,$msgid,$respstatus) {
+		$metadir=getMetaDir();
+		$jfilename = "$metadir/$hstr;$hashval";
+		$jmsg = file_get_contents($jfilename);
+		$jmsg .= " ] }\n\n";
+		// reduce jmsg
+		$rjmsg="";
+		$rv=jreduce($jmsg,$rjmsg,$msgid,$respstatus);
+		if ($rv==1) { // error, use original
+			$metastr .= $jmsg;
+		} else { // nice - use reduced
+			$metastr .= $rjmsg;
+		}
+        return($metastr);
+    }
+
 	function sendMIMEWithFile($jfilename,$filename,$msgid) {
 
 		$mime_boundary=hash("sha256",time());
@@ -93,12 +109,13 @@ include "N-dirs.php";
 
 		$msg .= "Content-Type: application/json". "\n";
 		$msg .= "\n";
+
 		$jmsg = file_get_contents($jfilename);
 		$jmsg .= " ] }\n\n";
 
 		// reduce jmsg
 		$rjmsg="";
-		$rv=jreduce($jmsg,$rjmsg,$msgid);
+		$rv=jreduce($jmsg,$rjmsg,$msgid,200);
 		if ($rv==1) { // error, use original
 			$msg .= $jmsg;
 		} else { // nice - use reduced
@@ -152,7 +169,7 @@ include "N-dirs.php";
 
 		// reduce jmsg
 		$rjmsg="";
-		$rv=jreduce($jmsg,$rjmsg,$msgidval);
+		$rv=jreduce($jmsg,$rjmsg,$msgidval,200);
 		if ($rv==1) { // error, use original
 			$msg .= $jmsg;
 		} else { // nice - use reduced
@@ -257,11 +274,12 @@ include "N-dirs.php";
 
 	// merge the locator arrays known about an NDO into one
 	// with no repeats
-	function jreduce($in,&$out,$msgid) {
+	function jreduce($in,&$out,$msgid,$respstatus) {
 		$jstr=json_decode($in);
 		if ($jstr==NULL) return(1);
 		$ojstr->NetInf=$jstr->NetInf;
         $ojstr->msgid=$msgid;
+        $ojstr->status=$respstatus;
 		$ojstr->ni=$jstr->ni;
 		$oloccnt=0;
 		$olocs=array();

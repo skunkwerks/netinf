@@ -38,6 +38,15 @@ $loc1 = $_REQUEST['loc1'];
 $loc2 = $_REQUEST['loc2'];
 $fullPut = $_REQUEST['fullPut'];
 
+$rform = $_REQUEST['rform'];
+if ($rform == "") $rform="json";
+if ($rform != "html" && $rform!="json") {
+    header('HTTP/1.0 404 Malformed response format');
+    print "Can't respond with \"$rform\" use \"html\" or \"json\" only.\n";
+    exit(1);
+    
+}
+
 // get that file
 $gotfile=false;
 if ($_FILES["octets"]["error"] > 0 ) {
@@ -66,6 +75,8 @@ if ($_FILES["octets"]["error"] > 0 ) {
 $hstr = "";
 $algfound=false;
 $hashval="";
+
+$respstatus=201; // created, use 1st time
 
 $ni_err=false;
 $ni_errno=0;
@@ -115,8 +126,13 @@ if ($fullPut && $gotfile) {
 	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 	$filename = getNDOfname($hstr,$hashval);
 	if (file_exists($filename)) {
-		header('HTTP/1.0 404 Not Found');
-		print "I already have $urival \n";
+        if ($rform=="html") {
+		    header('HTTP/1.0 404 Not Found');
+		    print "I already have $urival \n";
+        }
+        if ($rform=="json") {
+            $respstatus=202; // accepted, not for the first time
+        }
 	} else {
 		// print "File; $filename\n";
 		move_uploaded_file($ftmp,$filename);
@@ -125,6 +141,10 @@ if ($fullPut && $gotfile) {
 		$rv=symlink($filename,$wlname);
 	} 
 } 
+
+if (!$fullPut) {
+    $respstatus=204; // no content
+}
 
 $extrameta="{ \"publish\" : \"php\" }";
 $store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2,$extrameta);
@@ -136,7 +156,22 @@ if ($store_rv) {
 }
 
 
-print "Ok, I've put that there. (for now!)";
+if ($rform=="html") {
+    print "<html><head><title>NetInf Search results</title></head><body>";
+    print "<h1>NetInf Search results</h1>";
+    print "<br/>";
+    print "<t>Ok, I've put that there. (for now!)</t>";
+    print "</html>";
+}
+if ($rform="json") {
+    // what to do?
+    // respond with version, ts, msgid, status, name, [ meta ]
+    // $timestamp= date(DATE_ATOM);
+    // print "{\"NetInf\":\"v0.1a Stephen\",\"status\":$respstatus,\"ts\":\"$timestamp\",\"msgid\":\"$msgidval\",\"name\":\"$urival\"}";
+	$metastr=getMeta($hstr,$hashval,$msgidval,$respstatus);
+    print $metastr;
+}
 exit(0);
+
 
 ?>

@@ -145,11 +145,11 @@ if ($rform=="html") {
 }
 if ($rform=="json") {
     // print "coming soon!";
-    print "{\"NetInf\":\"v0.1a Stephen\",\"ts\":\"$timestamp\",\"msgid\"=\"$msgidval\",";
+    print "{\"NetInf\":\"v0.1a Stephen\",\"status\":200,\"ts\":\"$timestamp\",\"msgid\":\"$msgidval\",";
     print "\"results\":[";
     for ($i=0;$i!=$resind;$i++) {
         $nit=$results[$i]['ni'];
-        print "{ \"name\":\"$nit\"}";
+        print "{ \"ni\":\"$nit\"}";
         if ($i!=($resind-1)) print ",";
     }
     print "]}";
