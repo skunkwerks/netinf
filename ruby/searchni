@@ -34,16 +34,18 @@ require 'getoptlong'
 require 'net/http'
 
 loc=nil
+keywords=nil
 
 
 def printUsage
-  print "Usage: searchnii -l <FQDN> -- search node over HTTP\n"
+  print "Usage: searchni -k <keywords> -l <FQDN> -- search node over HTTP\n"
   print "       searchni -h -- print usage info\n"
 end
 
 
 opts = GetoptLong.new(
                       ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+                      ['--keywords', '-k', GetoptLong::REQUIRED_ARGUMENT ],
                       ['--loc', '-l', GetoptLong::REQUIRED_ARGUMENT ]
 )
 
@@ -56,6 +58,8 @@ opts.each do |opt, arg|
     exit 0
   when "--loc"
     loc=arg
+  when "--keywords"
+    keywords=arg
   end
 end
 
@@ -68,18 +72,31 @@ end
 nhttp=NetInfHTTP.new
 
 msgId=Time.new.strftime("%Y%m%d%H%M%S")
-res=nhttp.search(loc, msgId)
+res=nhttp.search(loc, msgId, keywords)
 if res.code=="200"
+#  print res.body
+#  exit 0
   l=JSON::parse(res.body)
-  if l.class==Array
-    l.each { |n|
-      print "#{n}\n"
-    }
-  else
-    print "parse error"
-  end
+#  print "#{l}\n"
+  results=l["results"]
+#  print "#{results}\n"
+  nr=1
+  results.each { |r|
+    name=r["name"]
+    print "#{nr}: #{name}\n"
+    nr+=1
+  }
+
+  # if l.class==Array
+  #   l.each { |n|
+  #     print "#{n}\n"
+  #   }
+  # else
+  #   print "parse error"
+  # end
 else
   print "error, got: #{res}\n"
+  print "#{res.body}\n"
 end
 
   
