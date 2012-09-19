@@ -39,6 +39,12 @@ $msgidval = $_REQUEST['msgid'];
 $extval = $_REQUEST['ext'];
 $rform = $_REQUEST['rform'];
 if ($rform == "") $rform="json";
+if ($rform != "html" && $rform!="json") {
+    header('HTTP/1.0 404 Malformed response format');
+    print "Can't respond with \"$rform\" use \"html\" or \"json\" only.\n";
+    exit(1);
+    
+}
 
 
 // test - one I have
@@ -86,11 +92,12 @@ if ($xmlfile === false ) {
     exit(1);
 }
 
-print "<html><head><title>NetInf Search results</title></head><body>";
-print "<h1>NetInf Search results</h1>";
-
-print "<br/>";
-print "<ul>";
+if ($rform=="html") {
+    print "<html><head><title>NetInf Search results</title></head><body>";
+    print "<h1>NetInf Search results</h1>";
+    print "<br/>";
+    print "<ul>";
+}
 
 $results=array();
 $resind=0;
@@ -123,15 +130,32 @@ foreach ( $xmlfile->Section->Item as $item) {
     $extrameta="{ \"search\" : \"$tokens\"}";
     storeMeta($hstr,$hashval,$nistr,$item->Url,$wku,$extrameta);
     // some output please
-    print "<li>";
-    print "<a href=\"$wku\">$nistr</a>";
-    print "</li>";
+    if ($rform=="html") {
+        print "<li>";
+        print "<a href=\"$wku\">$nistr</a>";
+        print "</li>";
+    }
     // increment, why not
     $resind++;
 }
-// print_r($results);
 
-print "</ul></html>";
+$timestamp= date(DATE_ATOM);
+if ($rform=="html") {
+    print "</ul><t>Generated at: $timestamp</t></html>";
+}
+if ($rform=="json") {
+    // print "coming soon!";
+    print "{\"NetInf\":\"v0.1a Stephen\",\"ts\":\"$timestamp\",\"msgid\"=\"$msgidval\",";
+    print "\"results\":[";
+    for ($i=0;$i!=$resind;$i++) {
+        $nit=$results[$i]['ni'];
+        print "{ \"name\":\"$nit\"}";
+        if ($i!=($resind-1)) print ",";
+    }
+    print "]}";
+    //print "\n\n\n<br/><br/>";
+    //print_r($results);
+}
 // $xml=$xmlfile->xpath("//page");
 // $page=$xml[0];
 // if(!$page['missing']){
