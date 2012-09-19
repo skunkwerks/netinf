@@ -181,15 +181,19 @@ class NetInfHTTP < NetInf
 
 
 # send a SEARCH request to the specified next hop
-  def search(loc, msgId, keywords)
+  def search(loc, msgId, keywords, index=false)
 
 #    httpuri=URI::parse("http://#{loc}/netinfproto/search")
 #    Net::HTTP.post_form(httpuri, 'msgid' => msgId, 'ext' => "no extension")
 
 
     httpuri= URI::parse("http://#{loc}/netinfproto/search")
+    ext="no extension"
+    if index
+      ext="index"
+    end
     
-    res=Net::HTTP.post_form(httpuri, 'tokens'  => keywords, 'msgid' => msgId, 'ext' => "no extension")
+    res=Net::HTTP.post_form(httpuri, 'tokens'  => keywords, 'msgid' => msgId, 'ext' => ext)
 #, "rform" => "json")
 
 

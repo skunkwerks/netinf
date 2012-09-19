@@ -72,7 +72,7 @@ end
 nhttp=NetInfHTTP.new
 
 msgId=Time.new.strftime("%Y%m%d%H%M%S")
-res=nhttp.search(loc, msgId, keywords)
+res=nhttp.search(loc, msgId, keywords, false) # true: index
 if res.code=="200"
 #  print res.body
 #  exit 0

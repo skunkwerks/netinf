@@ -259,8 +259,32 @@ end
 # SEARCH: currently returns list of all object names"
 server.mount_proc("/netinfproto/search") do |request, response|
   print "SEARCH\n"
-  allNames=Mapping.instance.allNames.map { |n| n.to_s }
-  response.body=allNames.to_json
+  print "#{request}\n"
+
+
+  ext = request.query["ext"]
+  keywords = request.query["tokens"]
+
+  print "Keywords: #{keywords}\n"
+
+  reply="no reply"
+
+  if (ext=="index")             # user wants index
+    allNames=Mapping.instance.allNames.map { |n| {"ni" => n.to_s} }
+    
+    reply={"NetInf" => "v0.1a Dirk","status" => 200, "ts" =>
+      "2012-09-19T16:41:00+00:00", "msgid" => "12", "results" => allNames}
+
+    response.body=reply.to_json
+
+  else                          # forward to village.n4c.eu
+    httpcl=NetInfHTTP.new
+    res=httpcl.search("village.n4c.eu", "123", keywords, false)
+    reply=res.body
+    print "res: #{reply}\n"
+    response.body=reply
+  end
+
   response.content_type="application/json"
   response.content_length=response.body.size
 end
