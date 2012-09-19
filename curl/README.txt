@@ -5,6 +5,7 @@ This directory contains patch(es) for curl that adds ni: URL rewriting
 to http .well-known URL using the ni library.
 
 curl-7.21.3-ni-rewrite-patch - patch for curl 7.21.3
+curl-7.24.0-ni-rewrite-patch - patch for curl 7.24.0
 
 Assumptions:
 
