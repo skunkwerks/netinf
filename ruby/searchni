@@ -82,7 +82,7 @@ if res.code=="200"
 #  print "#{results}\n"
   nr=1
   results.each { |r|
-    name=r["name"]
+    name=r["ni"]
     print "#{nr}: #{name}\n"
     nr+=1
   }

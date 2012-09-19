@@ -256,7 +256,9 @@ server.mount_proc("/netinfproto/publish") do |request, response|
   response['Content-Type'] = "text/plain"
 end
 
+# SEARCH: currently returns list of all object names"
 server.mount_proc("/netinfproto/search") do |request, response|
+  print "SEARCH\n"
   allNames=Mapping.instance.allNames.map { |n| n.to_s }
   response.body=allNames.to_json
   response.content_type="application/json"
