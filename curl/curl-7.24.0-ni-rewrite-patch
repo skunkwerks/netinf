@@ -1,0 +1,50 @@
+Index: lib/Makefile.in
+===================================================================
+--- lib/Makefile.in	(.../vendor/current)	(revision 14)
++++ lib/Makefile.in	(.../trunk)	(revision 14)
+@@ -97,7 +97,7 @@
+ 	gopher.lo axtls.lo idn_win32.lo http_negotiate_sspi.lo \
+ 	cyassl.lo http_proxy.lo non-ascii.lo asyn-ares.lo \
+ 	asyn-thread.lo curl_gssapi.lo curl_ntlm.lo curl_ntlm_wb.lo \
+-	curl_ntlm_core.lo curl_ntlm_msgs.lo
++	curl_ntlm_core.lo curl_ntlm_msgs.lo ni.lo
+ am__objects_2 =
+ am_libcurl_la_OBJECTS = $(am__objects_1) $(am__objects_2)
+ libcurl_la_OBJECTS = $(am_libcurl_la_OBJECTS)
+Index: lib/url.c
+===================================================================
+--- lib/url.c	(.../vendor/current)	(revision 14)
++++ lib/url.c	(.../trunk)	(revision 14)
+@@ -132,6 +132,8 @@
+ /* The last #include file should be: */
+ #include "memdebug.h"
+ 
++#include "ni.h"			/* ni: name library */
++
+ /* Local static prototypes */
+ static long ConnectionKillOne(struct SessionHandle *data);
+ static void conn_free(struct connectdata *conn);
+@@ -3687,6 +3689,23 @@
+ 
+   *prot_missing = FALSE;
+ 
++  /* Support for ni: names - rewrite to http .well-known URL */
++  if((1 == sscanf(data->change.url, "%15[^:]:", protobuf)) &&
++     Curl_raw_equal(protobuf, "ni")) {
++      char *wkuname = (char*)malloc(NILEN); /* Buffer for .well-known URL */
++
++      /* Call ni library function to do the rewrite */
++      if (mapnametowku(data->change.url, wkuname) == 0) {
++	  if (data->change.url_alloc)
++	      free(data->change.url);
++
++	  data->change.url = wkuname;
++	  data->change.url_alloc = TRUE;
++      }
++      else
++	  free(wkuname);
++  }
++
+   /*************************************************************
+    * Parse the URL.
+    *
