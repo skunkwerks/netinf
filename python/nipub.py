@@ -29,7 +29,7 @@ import os.path
 import  random
 from optparse import OptionParser
 import urllib2
-import mimetypes
+import magic
 import json
 
 import mimetools
@@ -150,7 +150,10 @@ def main():
         sys.exit(-1)
 
     # Guess the mimetype of the file
-    ctype, encoding = mimetypes.guess_type(options.file_name)
+    m = magic.Magic(mime=True)
+    print m.__dict__
+    ctype = m.from_file(options.file_name)
+    debug("Content-Type: %s" % ctype)
     if ctype is None:
         # Guessing didn't work - default
         ctype = "application/octet-stream"

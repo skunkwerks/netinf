@@ -61,7 +61,7 @@ def main():
     """
     
     # Options parsing and verification stuff
-    usage = "%prog [-q] [-m|-v] [-f <pathname of content file>] <ni name>\n" + \
+    usage = "%prog [-q] [-l] [-m|-v] [-f <pathname of content file>] <ni name>\n" + \
             "<ni name> must include location (netloc) from which to retrieve object."
     parser = OptionParser(usage)
     
@@ -71,6 +71,9 @@ def main():
     parser.add_option("-q", "--quiet", default=False,
                       action="store_true", dest="quiet",
                       help="Suppress textual output")
+    parser.add_option("-l", "--lax", default=False,
+                      action="store_true", dest="lax",
+                      help="Store returned content even if digest doesn't validate")
     parser.add_option("-m", "--metadata", default=False,
                       action="store_true", dest="metadata",
                       help="Output returned metedata as JSON string")
@@ -80,7 +83,7 @@ def main():
 
     (options, args) = parser.parse_args()
 
-    # Check command line options - -q, -f, -m and -v are optional, <ni name> is mandatory
+    # Check command line options - -q, -f, -l, -m and -v are optional, <ni name> is mandatory
     if len(args) != 1:
         parser.error("URL <ni name> not specified.")
         sys.exit(-1)
@@ -141,6 +144,7 @@ def main():
     # if the object is large we will run into problems here
     payload = http_object.read()
     http_object.close()
+    debug(payload)
 
     # The results may be either:
     # - a single application/json MIME item carrying metadata of object
@@ -179,6 +183,7 @@ def main():
 
     # Extract JSON values from message
     # Check the message is a application/json
+    debug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
         print("First or only component (metadata) of result is not of type application/json")
         sys.exit(-8)
@@ -205,10 +210,14 @@ def main():
         # Check the digest
         rv = NIproc.checknib(ni_url, ct_msg.get_payload())
         if (rv != ni_errs.niSUCCESS):
+            verified = False
             if verbose:
                 print("Error: digest of received data does not match digest in URL %s: %s" %
                       (ni_url.get_url(), ni_errs_txt[rv]))
-            sys.exit(-10)
+            if not options.lax:
+                sys.exit(-10)
+        else:
+            verified = True
 
         # Write to file
         try:
@@ -231,12 +240,25 @@ def main():
         
         if (http_result == 200):
             if verbose:
-                print("Success: file %s written with verified contents "
-                      "(length %d) resulting from 'get' from URL %s" %
-                      (os.path.abspath(options.file_name),
-                       len(ct_msg.get_payload()),
-                       ni_url.get_url()))
-        sys.exit(0)
+                if verified:
+                    print("Success: file %s written with verified contents "
+                          "(length %d) resulting from 'get' from URL %s" %
+                          (os.path.abspath(options.file_name),
+                           len(ct_msg.get_payload()),
+                           ni_url.get_url()))
+                    rv = 0
+                else:
+                    print("File %s written length %d) resulting from 'get' "
+                          "from URL %s but content does not match digest" %
+                          (os.path.abspath(options.file_name),
+                           len(ct_msg.get_payload()),
+                           ni_url.get_url()))
+                    rv = -13
+        else:
+            print("Why did we get here?")
+            rv = -14
+
+        sys.exit(rv)
                                                                                                     
 if __name__ == "__main__":
     main()

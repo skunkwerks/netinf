@@ -23,6 +23,10 @@ the loopback address).  Can be downloaded from
 http://pydns.sourceforge.net/downloads.html.  Install the appropriate version
 for the major release of Python you are using.
 
+Requires the Python 'python-magic' module to determine the content type of
+files that are to be published. Can be downloaded from
+http://pypi.python.org/pypi/python-magic/.
+
 (In each case the modules can be installed using:
 sudo python setup.py install
 assuming you have the distutils module installed).
