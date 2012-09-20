@@ -169,7 +169,7 @@ include "N-dirs.php";
 
 		// reduce jmsg
 		$rjmsg="";
-		$rv=jreduce($jmsg,$rjmsg,$msgidval,200);
+		$rv=jreduce($jmsg,$rjmsg,$msgidval,203);
 		if ($rv==1) { // error, use original
 			$msg .= $jmsg;
 		} else { // nice - use reduced
