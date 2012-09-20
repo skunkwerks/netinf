@@ -278,6 +278,7 @@ lazy sequence containing the array of the URI components"
 
 (def get-path "/netinfproto/get")
 (def pub-path "/netinfproto/publish")
+(def search-path "/netinfproto/search")
 
 
 (defn ni-get [uri msgid & loc]
@@ -297,6 +298,19 @@ lazy sequence containing the array of the URI components"
                                        ["msgid" msgid]
                                        ["octets" data]
                                        ["fullPut" "yes"]]
+                           :retry-handler (fn [ex try-count http-context]
+                                            (println "Got:" ex)
+                                            (if (> try-count 4) false true))})))
+
+
+
+(defn ni-search [keywords msgid & loc]
+  (let [http-uri (str "http://" (first loc) search-path)]
+
+    (client/post http-uri {:multipart [["tokens" keywords]
+                                       ["msgid" msgid]
+                                       ["ext" "no extension"]
+                                       ]
                            :retry-handler (fn [ex try-count http-context]
                                             (println "Got:" ex)
                                             (if (> try-count 4) false true))})))

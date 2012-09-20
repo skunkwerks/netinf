@@ -116,6 +116,9 @@ create NI URI from binary representation (byteArray):
 Changes:
 --------
 
+[2012-09-20]
+* added SEARCH
+
 [2012-05-30]
 * updated to clj-http-0.4.1
 * added support for initial HTTP CL support (GET and PUBLISH client functionality)
