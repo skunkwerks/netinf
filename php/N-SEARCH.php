@@ -88,7 +88,7 @@ $wikistring="http://en.wikipedia.org/w/api.php?action=opensearch&search=$tokens&
 $xmlfile=simplexml_load_file($wikistring);
 if ($xmlfile === false ) {
     header('HTTP/1.0 500 Crappy Server error');
-    print "Can't search for $tokens \n";
+    print "Can't search for |$tokens| \n";
     exit(1);
 }
 
