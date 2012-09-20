@@ -144,6 +144,8 @@ if ($rform=="html") {
     print "</ul><t>Generated at: $timestamp</t></html>";
 }
 if ($rform=="json") {
+	header('MIME-Version: 1.0');
+	header("Content-Type: application/json");
     // print "coming soon!";
     print "{\"NetInf\":\"v0.1a Stephen\",\"status\":200,\"ts\":\"$timestamp\",\"msgid\":\"$msgidval\",";
     print "\"results\":[";
@@ -153,8 +155,8 @@ if ($rform=="json") {
         if ($i!=($resind-1)) print ",";
     }
     print "]}";
-    //print "\n\n\n<br/><br/>";
-    //print_r($results);
+    // print "\n\n\n<br/><br/>";
+    // print_r($results);
 }
 // $xml=$xmlfile->xpath("//page");
 // $page=$xml[0];
