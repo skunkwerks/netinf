@@ -36,32 +36,35 @@ Predis\Autoloader::register();
 // read request attrs or use test value
 
 // test for CLI
-$urival = "ni:///sha-256;ElI8UC-1uqkYzDbQ7x46GW8RmMai9Rgs_344rx7kx3E";
-$hint1 = "wikipedia.org";
-$hint2 = "tcd.ie";
-$loc1 = "http://wikipedia.org/bar";
-$loc2 = "http://example.com";
-$meta = "test content";
-$stage = "zero";
+// $urival = "ni:///sha-256;ElI8UC-1uqkYzDbQ7x46GW8RmMai9Rgs_344rx7kx3E";
+// $hint1 = "wikipedia.org";
+// $hint2 = "tcd.ie";
+// $loc1 = "http://wikipedia.org/bar";
+// $loc2 = "http://example.com";
+// $meta = "test content";
+// $stage = "zero";
 
 // read it from HTTP POST form data
-// $urival = filter_input(INPUT_POST, 'URI');
-// $hint1 = filter_input(INPUT_POST, 'hint1');
-// $hint2 = filter_input(INPUT_POST, 'hint2');
-// $loc1 = filter_input(INPUT_POST, 'loc1');
-// $loc2 = filter_input(INPUT_POST, 'loc2');
-// $meta = filter_input(INPUT_POST, 'meta');
-// $stage = filter_input(INPUT_POST, 'stage');
+$urival = filter_input(INPUT_POST, 'URI');
+$hint1 = filter_input(INPUT_POST, 'hint1');
+$hint2 = filter_input(INPUT_POST, 'hint2');
+$loc1 = filter_input(INPUT_POST, 'loc1');
+$loc2 = filter_input(INPUT_POST, 'loc2');
+$meta = filter_input(INPUT_POST, 'meta');
+$stage = filter_input(INPUT_POST, 'stage');
 
-print "Got it: URI = $urival\n";
+// print "Got it: URI = $urival\n";
 
+/*
 if ($stage=="zero") {
     print "you want me to register that\n";
 }
 if ($stage=="one") {
     print "you want me to look that up\n";
 }
+*/
 if ($stage!="zero" && $stage!="one") {
+    header('HTTP/1.0 404 stupid input');
     print "feck off\n";
 }
 
@@ -76,6 +79,7 @@ try {
     // print "Successfully connected to Redis\n";
 }
 catch (Exception $e) {
+    header('HTTP/1.0 500 stupid DB');
     print "Couldn't connected to Redis\n";
     print $e->getMessage();
 	print "\n";
@@ -97,6 +101,8 @@ if ($stage=="zero") {
 $stage="one";
 
 // retrieve the record and return some JSON
+header('MIME-Version: 1.0');
+header("Content-Type: application/json");
 $r->Netinf="v0.1a Stephen";
 $r->ni=$urival;
 $r->ts=date(DATE_ATOM);
