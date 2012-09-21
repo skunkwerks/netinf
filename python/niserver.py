@@ -102,7 +102,7 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
 from SocketServer import ThreadingMixIn
 import cgi
-import mimetypes
+import magic
 import urllib
 import hashlib
 import datetime
@@ -119,6 +119,7 @@ managed by this server.
 The code is essentially that from nilib/php/getputform.html.
 """
 GET_PUT_FORM_HTML = """
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
@@ -126,11 +127,15 @@ GET_PUT_FORM_HTML = """
 </head>
 <body>
 
-<h1>NetInf GET</h1>
+<p>Some forms to let you play NetInf games in a browser. The list 
+of things named with hashes on this site can be seen
+<a href="/netinfproto/list">here</a>.</p>
 
+<h1>NetInf GET</h1>
 <form name="fetchni" action="/netinfproto/get" method="post">
 <table border="1">
 <tbody>
+<input type="hidden" name="stage" value="zero"/>
 <tr> <td>NI name:</td> <td><input type="text" name="URI" /></td> </tr>
 <tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
 <tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
@@ -154,6 +159,13 @@ GET_PUT_FORM_HTML = """
 <tr><td>Locator1</td> <td><input type="text" name="loc1"/> </tr>
 <tr><td>Locator2</td> <td><input type="text" name="loc2"/> </tr>
 <tr><td>Full PUT?</td><td><input type="checkbox" name="fullPut"/></td></tr>
+
+<tr> <td>Response format (html/json/plain text):</td>
+<td>
+<input type="radio" name="rform" value="html"/> html
+<input type="radio" name="rform" value="json" checked/> json
+<input type="radio" name="rform" value="plain" checked/> text
+</td</tr>
 <tr><td><input type="submit" value="Submit"/> </tr>
 
 </tbody>
@@ -161,9 +173,13 @@ GET_PUT_FORM_HTML = """
 
 </form>
 
+
 <h1>NetInf SEARCH</h1>
 
-<p>This will search Wikipedia (when it works!)</p>
+<p>This will search Wikipedia for the terms entered, get the first 10
+hits, retrieve those and generate ni URIs for them and store meta-data
+for that ni URI with the wikipedia and local .well-known locators.
+ </p>
 
 <form name="searchni" action="/netinfproto/search" method="post">
 <table border="1">
@@ -172,6 +188,13 @@ GET_PUT_FORM_HTML = """
 <tr> <td>Keywords:</td> <td><input type="text" name="tokens" /></td> </tr>
 <tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
 <tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
+
+<tr> <td>Response format (html/json):</td>
+<td>
+<input type="radio" name="rform" value="html"/> html
+<input type="radio" name="rform" value="json" checked/> json
+</td</tr>
+
 <tr>
 <td/>
 <td><input type="submit" value="Submit"/> </td>
@@ -508,7 +531,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             
         if have_content:
             # Return two part multipart/mixed MIME message
-            # Part 1 - appliction/json encoded metedata
+            # Part 1 - application/json encoded metedata
             # Part 2 - content according to type
 
             # Assemble body for message and calculate length
@@ -926,6 +949,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         msgid:  an identifier used by the source to correlate replies
 
         It may also contain
+        rform:  Value indicating the form of the response (html, json or plain)
         fullPut:boolean value indicating if octets should be expected
         octets: the file to be published (with a filename attribute)
         ext:    placeholder for extension fields (no values currently defined)
@@ -956,10 +980,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Validate form data
         # Check only expected keys and no more
         mandatory_publish_fields = ["URI",  "msgid"]
-        optional_publish_fields = ["ext", "loc2", "fullPut", "octets", "loc1"]
+        optional_publish_fields = ["ext", "loc2", "fullPut", "octets", "loc1", "rform"]
         for field in mandatory_publish_fields:
             if field not in form.keys():
-                self.logdebug("Missing mandatory field %s in get form")
+                self.logerror("Missing mandatory field %s in get form" % field)
                 self.send_error(412, "Missing mandatory field %s in form." % field)
                 return
         ofc = 0
@@ -972,14 +996,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 fov[field] = "(not supplied)"
                 
         if (len(form.keys()) > (len(mandatory_publish_fields) + ofc)):
-            self.logdebug("NetInf publish form has too many fields: %s" % str(form.keys()))
+            self.logerror("NetInf publish form has too many fields: %s" % str(form.keys()))
             self.send_error(412, "Form has unxepected extra fields beyond %s" % (str(mandatory_publish_fields)+
                                                                                  str(optional_publish_fields)))
             return
 
         # Either fullPut must be set or loc1 or loc2 must be present
         if not ( "fullPut" in form.keys() or "loc1" in form.keys() or "loc2" in form.keys()):
-            self.logdebug("NetInf publish form must contain at least one of fullPut, loc1 and loc2.")
+            self.logerror("NetInf publish form must contain at least one of fullPut, loc1 and loc2.")
             self.send_error(412, "Form must have at least one of fields 'fullPut', 'loc1' and 'loc2'.")
             return
             
@@ -988,12 +1012,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         timestamp = None
         if "fullPut" in form.keys() and form.getvalue("fullPut"):
             if not "octets" in form.keys():
-                self.logdebug("Expected 'octets' form field to be present with 'fullPut' set")
-                seld.send_error(412, "Form field 'octets' not present when 'fullPut' set.")
+                self.logerror("Expected 'octets' form field to be present with 'fullPut' set")
+                self.send_error(412, "Form field 'octets' not present when 'fullPut' set.")
                 return
             if form["octets"].filename is None:
-                self.logdebug("Expected 'octets' form field to be a file but has no filename attribute")
-                seld.send_error(412, "Form field 'octets' does not contain an uploaded file")
+                self.logerror("Expected 'octets' form field to be a file but has no filename attribute")
+                self.send_error(412, "Form field 'octets' does not contain an uploaded file")
                 return
             # Record that there is a file ready
             file_uploaded = True
@@ -1001,15 +1025,40 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             timestamp = self.date_time_string()
         elif "octets" in form.keys():
             self.logwarn("Unexpected 'octets' form field present with 'fullPut' is not set")
-            
 
+        # Extract extra metadata if present
+        if "ext" in form.keys():
+            em_str = form["ext"].value
+            if em_str == "":
+                extrameta = None
+            else:
+                try:
+                    extrameta = json.loads(em_str)
+                except Exception, e:
+                    self.logerror("Valud of form field 'ext' '%s' is not a valid JSON string." % em_str)
+                    self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
+                    return
+        else:
+            extrameta = None
+        # Check that the response type is one we expect - default is JSON if not explicitly requested
+        if "rform" in form.keys():
+            rform = fov["rform"].lower()
+            if not((rform == "json") or (rform == "html") or (rform == "plain")):
+                self.logerror("Unhandled response format requested '%s'." % rform)
+                self.send_error(412, "Response format '%s' not available." % rform)
+                return
+        else:
+            # Default of json
+            rform = "json"
+            self.logdebug("Using default rform - json")                
         
         self.logdebug("NetInf publish for "
-                      "URI %s, fullPut %s octets %s, msgid %s, ext %s,"
+                      "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
                       "loc1 %s, loc2 %s at %s" % (form["URI"].value,
                                                   fov["fullPut"],
                                                   fov["octets"],
                                                   form["msgid"].value,
+                                                  fov["rform"],
                                                   fov["ext"],
                                                   fov["loc1"],
                                                   fov["loc2"],
@@ -1068,7 +1117,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Check the file was completely sent (not interrupted or cancelled by user
             if form["octets"].done == -1:
                 self.logdebug("File referenced by 'octets' form field incompletely uploaded")
-                seld.send_error(412, "Upload of file referenced by 'octets' form field cancelled or interrupted by user")
+                self.send_error(412, "Upload of file referenced by 'octets' form field cancelled or interrupted by user")
                 return
          
             # Get binary digest and convert to urlsafe base64 encoding
@@ -1087,18 +1136,20 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             # Check digest matches with digest in ni name in URI field
             if (digest != ni_name.get_digest()):
-                self.loginfo("Digest calculated from incoming file does not match digest in ni; name")
-                self.send_error(401, "Digest of incoming file does match specified ni;  URI")
+                self.loginfo("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
+                self.send_error(401, "Digest of incoming file does not match digest in URI: %s" % form["URI"].value)
                 os.remove(temp_name)
                 return
 
             # Work out content type for received file
             ctype = form["octets"].type
-            self.logdebug("Supplied content type from form is %s" % ctype)
 
             if ctype is None:
-                (ctype, encoding) = mimetypes.guess_type(temp_name, strict=False)
-            
+                ctype = magic.from_file(temp_name, mime=True)
+                self.logdebug("Guessed content type from file is %s" % ctype)
+            else:
+                self.logdebug("Supplied content type from form is %s" % ctype)
+
         # If ct= query string supplied in URL field..
         #   Override type got via received file if there was one but log warning if different
         qs = ni_name.get_query_string()
@@ -1149,14 +1200,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             # New metadata file needed
             first_store = True
-
-            # Extract extra metadata if present
-            if "ext" in form.keys():
-                em_str = "{ %s }" % form["ext"].value
-                em = json.loads(em_str)
-            else:
-                em = None
-            md = self.store_metadata(meta_path, form, timestamp, ctype, em)
+            md = self.store_metadata(meta_path, form, timestamp, ctype, extrameta)
             if md is None:
                 self.logerror("Unable to create metadata file %s" % meta_path)
                 self.send_error(500, "Unable to create metadata file for %s" % \
@@ -1177,7 +1221,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                     
             fs = os.stat(ndo_path)
 
-            self.send_publish_report("updated metadata", True,
+            self.send_publish_report("updated metadata", rform, True,
                                      True, first_store, form,
                                      md, ni_name.get_url(), fs)
 
@@ -1197,14 +1241,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             fs = os.stat(ndo_path)
 
-            self.send_publish_report("stored_all", True,
+            self.send_publish_report("stored_all", rform, True,
                                      False, first_store, form,
                                      md, ni_name.get_url(), fs)
 
             return
 
         # Otherwise report we just stored the metadata
-        self.send_publish_report("stored_metadata", False,
+        self.send_publish_report("stored_metadata", rform, False,
                                  False, first_store, form,
                                  md, ni_name.get_url(), None)
 
@@ -1315,9 +1359,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         f.close()        
         return md
 
-    def send_publish_report(self, status, ndo_in_cache, ignored_upload,
+    def send_publish_report(self, status, rform, ndo_in_cache, ignored_upload,
                             first_store, form, metadata, url, ndo_status):
-        mb = self.mime_boundary()
 
         if ndo_in_cache and ignored_upload:
             info1 = ("File %s is already in cache as '%s' (%d octets);" + \
@@ -1325,47 +1368,48 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                              url,
                                              ndo_status[6])
             info2 = "Object already in cache; metadata updated."
+            status = 202
         elif ndo_in_cache:
             info1 = ("File %s and metadata stored in cache" + \
                      " as '%s' (%d octets)") % (form["octets"].filename,
                                                 url,
                                                 ndo_status[6])
             info2 = "Object and metadata cached."
+            status = 201
         elif first_store:
             info1 = "Metadata only for '%s' stored in cache" % url
             info2 = "Metadata for object stored in cache."
+            status = 204
         else:
             info1 = "Metadata for '%s' updated in cache (NDO not present)" % url
             info2 = "Metadata for object updated - object not present."
+            status = 204
         f = StringIO()
-        # Starting MIME boundary
-        f.write("--" + mb + "\n")
-        # Part 0: Metadata as JSON string
-        f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
-        json.dump({ "status": "updated", "msgid" : form["msgid"].value,
-                    "loclist" : metadata.get_loclist() }, f)
-        # MIME boundary
-        f.write("\n\n--" + mb + "\n")
-        # Textual from report (used by publish command line applications
-        f.write("Content-Type: text/plain\nMIME-Version: 1.0\n\n")
-        f.write(info1)
-        # MIME boundary
-        f.write("\n\n--" + mb + "\n")
-        # HTML formatted report intended to be outputted by web browsers
-        f.write("Content-Type: text/html\nMIME-Version: 1.0\n\n")
-        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
-        f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
-        f.write("<h2>NetInf PUBLISH Report</h2>\n")
-        f.write("\n<p>%s</p>" % info1)
-        f.write("\n</body>\n</html>\n")
-        # Output final MIME boundary
-        f.write("\n--" + mb + "--")
+        # Select reponse format
+        if rform == "json":
+            # JSON format: Metadata as JSON string        
+            ct = "application/json"
+            json.dump({ "status": status, "msgid" : form["msgid"].value,
+                        "loclist" : metadata.get_loclist() }, f)
+        elif rform == "plain":
+            # Textual form report (useful for publish command line applications)
+            ct = "text/plain"
+            f.write(info1)
+        elif rform == "html":
+            # HTML formatted report intended to be outputted by web browsers
+            ct = "text/html"
+            f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
+            f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
+            f.write("<h2>NetInf PUBLISH Report</h2>\n")
+            f.write("\n<p>%s</p>" % info1)
+            f.write("\n</body>\n</html>\n")
                 
         length = f.tell()
         f.seek(0)
+        
         self.send_response(200, info2)
         self.send_header("MIME-Version", "1.0")
-        self.send_header("Content-Type", "multipart/mixed; boundary=%s" % mb)
+        self.send_header("Content-Type", ct)
         self.send_header("Content-Disposition", "inline")
         self.send_header("Content-Length", str(length))
         # Ensure response not cached
