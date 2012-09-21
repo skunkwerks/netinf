@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+
+#
+# regnrs -- register routing hints in name resolution service
+#
+# This is the NI URI library developed as
+# part of the SAIL project. (http://sail-project.eu)
+#
+# Specification(s) - note, versions may change::
+# * http://tools.ietf.org/html/farrell-decade-ni
+# * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
+#
+# Author:: Dirk Kutscher <kutscher@neclab.eu>
+# Copyright:: Copyright (c) 2012 Dirk Kutscher <kutscher@neclab.eu>
+#
+# License:: http://www.apache.org/licenses/LICENSE-2.0.html
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+$: << File.dirname(__FILE__)
+
+require 'getoptlong'
+require 'json'
+require 'nrs'
+
+loc=nil
+ni=nil
+rh=nil
+
+def printUsage
+  print "Usage: regnrs -n <name> -r <routing hints> [-l <FQDN>] -- query NRS\n"
+  print "       regnrs -h -- print usage info\n"
+end
+
+
+opts = GetoptLong.new(
+                      ['--help', '-h', GetoptLong::NO_ARGUMENT ],
+                      ['--ni', '-n', GetoptLong::REQUIRED_ARGUMENT ],
+                      ['--rh', '-r', GetoptLong::REQUIRED_ARGUMENT ],
+                      ['--loc', '-l', GetoptLong::REQUIRED_ARGUMENT ]
+)
+
+opts.each do |opt, arg|
+  case opt
+  when "--help"
+    printUsage
+    exit 0
+  when "--loc"
+    loc=arg
+  when "--rh"
+    rh=arg
+  when "--ni"
+    ni=arg
+  end
+end
+
+
+if(!ni)
+  printUsage
+  exit 1
+end
+
+hints=rh.split(',').map{|r| r.split}
+
+l=NRS.reg(ni,hints)
+print l

@@ -72,6 +72,19 @@ class NetInfHTTP < NetInf
   end
 
 
+  def getWithHints(niUri, msgId, hints, loc=nil) # for now: loc=FQDN -- hints is a list that is transformed to JSON
+    
+    httpuri= if loc
+               URI::parse("http://#{loc}/netinfproto/get")
+             else
+               URI::parse(niUri.to_wellknownURI)
+             end
+
+    res=Net::HTTP.post_form(httpuri, 'URI'  => niUri.to_s, 'msgid' => msgId, 'hints' => hints.to_json, 'ext' => "no extension")
+  end
+
+
+
   def createMeta(name, msgId, fullObj, ext, status, details)
     {
       "NetInf" => "Dirk-0.01",
