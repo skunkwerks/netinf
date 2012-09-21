@@ -1,0 +1,61 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>SAIL "ni" PHP NetInf Routing Registration</title>
+</head>
+<body>
+
+<p>A form to let you play NetInf NRS games in a browser. The list 
+of things named with hashes on this site can be seen
+<a href="/netinfproto/list">here</a>.</p>
+
+<h1>NetInf NRS Routing Hint Registration</h1>
+<form name="fetchni" action="/netinfproto/rr" method="post">
+<table border="1">
+<tbody>
+<input type="hidden" name="stage" value="zero"/>
+<tr> <td>NI name or authority:</td> <td><input type="text" name="URI" /></td> </tr>
+<tr> <td>hint1:</td> <td><input type="text" name="hint1" /></td> </tr>
+<tr> <td>hint2:</td> <td><input type="text" name="hint2" /></td> </tr>
+<tr> <td>loc1:</td> <td><input type="text" name="loc1" /></td> </tr>
+<tr> <td>loc2:</td> <td><input type="text" name="loc2" /></td> </tr>
+<tr> <td>meta:</td> <td><input type="text" name="meta" /></td> </tr>
+<tr>
+<td/>
+<td><input type="submit" value="Submit"/> </td>
+</tr>
+</tbody>
+</table>
+</form>
+
+<h1>NetInf NRS Routing Hint Lookup</h1>
+<form name="fetchni" action="/netinfproto/rr" method="post">
+<table border="1">
+<tbody>
+<input type="hidden" name="stage" value="one"/>
+<tr> <td>NI name or authority: </td> <td><input type="text" name="URI" /></td> </tr>
+<tr>
+<td/>
+<td><input type="submit" value="Submit"/> </td>
+</tr>
+</tbody>
+</table>
+</form>
+
+<h1>NetInf NRS Routing Hint List</h1>
+<table border="1">
+<tbody>
+<tr>
+<td>The list of known things: </td>
+<td>
+<form name="fetchni" action="/netinfproto/rr" method="post">
+<input type="hidden" name="stage" value="two"/>
+<input type="submit" value="Submit"/> 
+</form>
+</td></tr></tbody></table>
+
+</body>
+</html>
+
+
