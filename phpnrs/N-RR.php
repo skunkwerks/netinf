@@ -31,8 +31,6 @@
 require "../../predis/autoload.php";
 Predis\Autoloader::register();
 
-
-
 // read request attrs or use test value
 
 // test for CLI
@@ -63,7 +61,7 @@ if ($stage=="one") {
     print "you want me to look that up\n";
 }
 */
-if ($stage!="zero" && $stage!="one") {
+if ($stage!="zero" && $stage!="one" && $stage!="two") {
     header('HTTP/1.0 404 stupid input');
     print "feck off\n";
 }
@@ -83,6 +81,19 @@ catch (Exception $e) {
     print "Couldn't connected to Redis\n";
     print $e->getMessage();
 	print "\n";
+}
+
+if ($stage=="two") {
+    $listofkeys=$redis->keys('*');
+    
+    header('MIME-Version: 1.0');
+    header("Content-Type: application/json");
+    $tmp=json_encode($listofkeys);
+    $jout=str_replace('\/','/',$tmp);
+    print $jout;
+
+    exit(0);
+
 }
 
 // update/add a record
@@ -116,7 +127,6 @@ $r->meta=$redis->hmget($urival,"meta");
 
 $tmp=json_encode($r);
 $jout=str_replace('\/','/',$tmp);
-
 print $jout;
 // test
 print "\n";

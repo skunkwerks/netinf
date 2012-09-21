@@ -34,7 +34,7 @@ of things named with hashes on this site can be seen
 <table border="1">
 <tbody>
 <input type="hidden" name="stage" value="one"/>
-<tr> <td>NI name or authority:</td> <td><input type="text" name="URI" /></td> </tr>
+<tr> <td>NI name or authority: </td> <td><input type="text" name="URI" /></td> </tr>
 <tr>
 <td/>
 <td><input type="submit" value="Submit"/> </td>
@@ -42,6 +42,18 @@ of things named with hashes on this site can be seen
 </tbody>
 </table>
 </form>
+
+<h1>NetInf NRS Routing Hint List</h1>
+<table border="1">
+<tbody>
+<tr>
+<td>The list of known things: </td>
+<td>
+<form name="fetchni" action="/netinfproto/rr" method="post">
+<input type="hidden" name="stage" value="two"/>
+<input type="submit" value="Submit"/> 
+</form>
+</td></tr></tbody></table>
 
 </body>
 </html>
