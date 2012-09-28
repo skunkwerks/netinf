@@ -146,7 +146,23 @@ if (!$fullPut) {
     $respstatus=204; // no content
 }
 
-$extrameta="{ \"publish\" : \"php\" }";
+if ($extval!="") {
+	$jstr=json_decode($extval);
+	if ($jstr==NULL) {
+        $extrameta="{ \"publish\" : \"php\" }";
+    } else {
+        $ojstr->publish="php";
+	    $ojstr->meta=$jstr->meta;
+		$tmp=json_encode($ojstr);
+		if ($tmp===false) {
+            $extrameta="{ \"publish\" : \"php\" }";
+        } else {
+            $extrameta=$tmp;
+        }
+    }
+} else {
+    $extrameta="{ \"publish\" : \"php\" }";
+}
 $store_rv=storeMeta($hstr,$hashval,$urival,$loc1,$loc2,$extrameta);
 if ($store_rv) {
 	$ni_err=true;
