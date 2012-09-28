@@ -58,7 +58,13 @@ include "N-dirs.php";
 	function retErr($errval,$errstr) {
 		// handle $errval values later
 		header('HTTP/1.0 404 Not Found');
-		print $errstr;
+	    header("Content-Type: text/html");
+        print "<html><head><title>NetInf Error</title></head><body>";
+        print "<h1>NetInf Error</h1>";
+        print "<br/>";
+        print "<t>";
+		print "$errstr";
+        print "</t>";
 		return(true);
 	}
 
@@ -92,9 +98,9 @@ include "N-dirs.php";
 		$rjmsg="";
 		$rv=jreduce($jmsg,$rjmsg,$msgid,$respstatus);
 		if ($rv==1) { // error, use original
-			$metastr .= $jmsg;
+			$metastr = $jmsg;
 		} else { // nice - use reduced
-			$metastr .= $rjmsg;
+			$metastr = $rjmsg;
 		}
         return($metastr);
     }

@@ -42,7 +42,14 @@ $rform = $_REQUEST['rform'];
 if ($rform == "") $rform="json";
 if ($rform != "html" && $rform!="json") {
     header('HTTP/1.0 404 Malformed response format');
+	header("Content-Type: text/html");
+    print "<html><head><title>NetInf PUBLISH results</title></head><body>";
+    print "<h1>NetInf PUBLISH results</h1>";
+    print "<br/>";
+    print "<t>";
     print "Can't respond with \"$rform\" use \"html\" or \"json\" only.\n";
+    print "</t>";
+    print "</html>";
     exit(1);
     
 }
@@ -85,7 +92,7 @@ if (getAlg($urival,$algfound,$hstr,$hashval)===false) {
 	$ni_err=true;
 	$ni_errno=490;
 	$ni_errstr="Bummer: $ni_errno I don't have $urival \nBad algorithm, no good alg found.";
-	retErr($ni_errno,$nistr);
+	retErr($ni_errno,$ni_errstr);
 	exit(1);
 }
 
@@ -118,21 +125,24 @@ if ($fullPut && $gotfile) {
 		// outcome is good, file present, verified and I don't have it already
 		// HTTP: 200, 
 	} else {
-		header('HTTP/1.0 404 Not Found');
-		print "Bad - feck off";
+        // dunno how to get a 404 really, need php 5.4 and I don't have that
+        // header(':',true,404);
+        header('HTTP/1.0 404 bad request');
+	    header("Content-Type: text/html");
+        print "<html><head><title>NetInf PUBLISH results</title></head><body>";
+        print "<h1>NetInf PUBLISH results</h1>";
+        print "<br/>";
+        print "<t>";
+		print "Bad hash (probably) - feck off";
+        print "</t>";
+        print "</html>";
 		exit("done");
 	} 
 
 	// $filename = $GLOBALS["cfg_wkd"] . "/" . $hstr . "/" . $hashval ;
 	$filename = getNDOfname($hstr,$hashval);
 	if (file_exists($filename)) {
-        if ($rform=="html") {
-		    header('HTTP/1.0 404 Not Found');
-		    print "I already have $urival \n";
-        }
-        if ($rform=="json") {
-            $respstatus=202; // accepted, not for the first time
-        }
+        $respstatus=202; // accepted, not for the first time
 	} else {
 		// print "File; $filename\n";
 		move_uploaded_file($ftmp,$filename);
@@ -151,8 +161,8 @@ if ($extval!="") {
 	if ($jstr==NULL) {
         $extrameta="{ \"publish\" : \"php\" }";
     } else {
+	    $ojstr=$jstr->meta;
         $ojstr->publish="php";
-	    $ojstr->meta=$jstr->meta;
 		$tmp=json_encode($ojstr);
 		if ($tmp===false) {
             $extrameta="{ \"publish\" : \"php\" }";
@@ -173,17 +183,23 @@ if ($store_rv) {
 
 
 if ($rform=="html") {
-    print "<html><head><title>NetInf Search results</title></head><body>";
-    print "<h1>NetInf Search results</h1>";
+	header("Content-Type: text/html");
+    print "<html><head><title>NetInf PUBLISH results</title></head><body>";
+    print "<h1>NetInf PUBLISH results</h1>";
     print "<br/>";
-    print "<t>Ok, I've put that there. (for now!)</t>";
+    if ($respstatus==200) {
+        print "<t>Ok, I've put that there. (for now!)</t>";
+    } else {
+        print "<t>I probably had that already ($respstatus)</t>";
+    }
     print "</html>";
 }
-if ($rform="json") {
+if ($rform=="json") {
     // what to do?
     // respond with version, ts, msgid, status, name, [ meta ]
     // $timestamp= date(DATE_ATOM);
     // print "{\"NetInf\":\"v0.1a Stephen\",\"status\":$respstatus,\"ts\":\"$timestamp\",\"msgid\":\"$msgidval\",\"name\":\"$urival\"}";
+	header("Content-Type: application/json");
 	$metastr=getMeta($hstr,$hashval,$msgidval,$respstatus);
     print $metastr;
 }
