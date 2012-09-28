@@ -491,7 +491,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.logdebug("send_get_header for path %s" % meta_path)
         # Check if the path corresponds to an actual file
         if not os.path.isfile(meta_path):
-            self.loginfo("File does not exist: %s" % path)
+            self.loginfo("File does not exist: %s" % meta_path)
             self.send_error(404, "Object not found in cache")
             return None
 
@@ -1001,16 +1001,30 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                                                                  str(optional_publish_fields)))
             return
 
+        """
         # Either fullPut must be set or loc1 or loc2 must be present
         if not ( "fullPut" in form.keys() or "loc1" in form.keys() or "loc2" in form.keys()):
             self.logerror("NetInf publish form must contain at least one of fullPut, loc1 and loc2.")
             self.send_error(412, "Form must have at least one of fields 'fullPut', 'loc1' and 'loc2'.")
             return
-            
-        # If fullPut is supplied then there must be octets which is a file
+        """
+        # Convert textual fullPut value to boolean
+        if "fullPut" in form.keys():
+            fp_val = form["fullPut"].value.lower()
+            self.logdebug("fullPut: %s" % fp_val)
+            if fp_val in ["true", "yes", "1"]:
+                full_put = True
+            else:
+                full_put = False
+                if not (fp_val in ["false", "no", "0"]):
+                    self.logwarn("fullPut has value '%s'which is not a good boolean representation." % fp_val)
+        else:
+            full_put = False
+        
+        # If fullPut is supplied and equivalent to True then there must be octets which is a file
         file_uploaded = False
         timestamp = None
-        if "fullPut" in form.keys() and form.getvalue("fullPut"):
+        if full_put:
             if not "octets" in form.keys():
                 self.logerror("Expected 'octets' form field to be present with 'fullPut' set")
                 self.send_error(412, "Form field 'octets' not present when 'fullPut' set.")
@@ -1027,19 +1041,21 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logwarn("Unexpected 'octets' form field present with 'fullPut' is not set")
 
         # Extract extra metadata if present
+        extrameta = None
         if "ext" in form.keys():
-            em_str = form["ext"].value
-            if em_str == "":
-                extrameta = None
-            else:
+            ext_str = form["ext"].value
+            if ext_str != "":
                 try:
-                    extrameta = json.loads(em_str)
+                    ext_json = json.loads(ext_str)
+                    if "meta" in ext_json.keys():
+                        extrameta = {}
+                        extrameta["meta"] = ext_json["meta"]
+                        self.logdebug("Metadata: %s" % json.dumps(extrameta))
                 except Exception, e:
-                    self.logerror("Valud of form field 'ext' '%s' is not a valid JSON string." % em_str)
+                    self.logerror("Value of form field 'ext' '%s' is not a valid JSON string." % em_str)
                     self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
                     return
-        else:
-            extrameta = None
+
         # Check that the response type is one we expect - default is JSON if not explicitly requested
         if "rform" in form.keys():
             rform = fov["rform"].lower()
