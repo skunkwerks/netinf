@@ -216,23 +216,24 @@ class NetInfMetaData:
         self.json_obj = {}
         self.json_obj["NetInf"] = "v0.1a Elwyn"
         self.json_obj["ni"]     = ni_uri
-        self.json_obj["detail"] = {}
-
-        detail = self.json_obj["detail"]
-        self.set_timestamp(timestamp)
         if ctype is None:
-            detail["ct"]        = ""
+            self.json_obj["ct"] = ""
         else:
-            detail["ct"]        = ctype
-        detail["loc"]           = []
-        self.append_locs(myloc, loc1, loc2)
-        if extrameta is None:
-            detail["extrameta"] = {}
-        else:
-            detail["extrameta"] = extrameta
-        detail["extrameta"]["publish"] = "python"
+            self.json_obj["ct"] = ctype
+        self.json_obj["details"] = []
+
 
         return
+    def add_new_details(self, timestamp, myloc, loc1, loc2, extrameta):
+        self.curr_detail = {}
+        self.set_timestamp(timestamp)
+        self.append_locs(myloc, loc1, loc2)
+        metadata = {}
+        self.curr_detail["metadata"] = metadata
+        if extrameta != None:
+            for k in extrameta.keys():
+                metadata[k] = extrameta[k]
+        metadata["publish"] = "python"
 
     def __repr__(self):
         return json.dumps(self.json_obj, separators=(',',':'))
@@ -245,9 +246,11 @@ class NetInfMetaData:
     
     def set_json_val(self, json_val):
         self.json_obj = json_val
+        self.curr_detail = 
 
     def append_locs(self, myloc=None, loc1=None, loc2=None):
-        loclist = self.json_obj["detail"]["loc"]
+        loclist = []
+        self.curr_detail["loc"] = loclist
         if myloc is not None and myloc is not "":
             if not myloc in loclist: 
                 loclist.append(myloc)
@@ -263,27 +266,27 @@ class NetInfMetaData:
         return self.json_obj["ni"]
     
     def get_timestamp(self):
-        return self.json_obj["detail"]["ts"]
+        return self.curr_detail["ts"]
 
     def set_timestamp(self, timestamp):
         if timestamp is None:
-            self.json_obj["detail"]["ts"] = "(unknown)"
+            self.curr_detail["ts"] = "(unknown)"
         else:
-            self.json_obj["detail"]["ts"] = timestamp
+            self.curr_detail["ts"] = timestamp
         return
 
     def get_ctype(self):
-        return self.json_obj["detail"]["ct"]
+        return self.json_obj["ct"]
 
     def set_ctype(self, ctype):
         if ctype is not None:
-            self.json_obj["detail"]["ct"] = ctype
+            self.json_obj["ct"] = ctype
         return
 
     def get_loclist(self):
         return self.json_obj["detail"]["loc"]
         
-    def get_extrameta(self):
+    def get_metadata(self):
         return self.json_obj["detail"]["extrameta"]        
 
 NDO_DIR        = "/ndo_dir/"
