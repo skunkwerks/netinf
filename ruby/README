@@ -109,6 +109,9 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-09-21]
+* added initial NRS interface
+
 [2012-09-19]
 * added client and server support for SEARCH
 

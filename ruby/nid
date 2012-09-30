@@ -128,6 +128,12 @@ server.mount_proc("/netinfproto/get") do |request, response|
        end 
   msgId = request.query["msgid"]
   ext = request.query["extension"]
+  jHints = request.query["hints"]
+  hints=nil
+  if jHints
+    hints=JSON::parse(jHints)
+  end
+  print "Hints: #{hints}\n" if hints
 
   foundObj=false
 
