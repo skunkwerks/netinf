@@ -233,9 +233,14 @@ class NetInfMetaData:
         self.append_locs(myloc, loc1, loc2)
         metadata = {}
         self.curr_detail["metadata"] = metadata
+        
         if extrameta != None:
-            for k in extrameta.keys():
-                metadata[k] = extrameta[k]
+            try:
+                for k in extrameta.keys():
+                    metadata[k] = extrameta[k]
+            except AttributeError, e:
+                print("Error: extrameta not a dictionary (%s)" % type(extrameta))
+                pass
         metadata["publish"] = "python"
 
     def __repr__(self):
@@ -1081,6 +1086,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logwarn("Unexpected 'octets' form field present with 'fullPut' is not set")
 
         # Extract extra metadata if present
+        # The metadata is to be held in a JSON object labelled "meta" in the "ext"
+        # form field.  The following code extracts this object which is represented
+        # by a Python dictionary, checking that it is a dictionary (object) in case
+        # the user has supplied a garbled piece of JSON.
         extrameta = None
         if "ext" in form.keys():
             ext_str = form["ext"].value
@@ -1089,6 +1098,11 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                     ext_json = json.loads(ext_str)
                     if "meta" in ext_json.keys():
                         extrameta = ext_json["meta"]
+                        if type(extrameta) is not dict:
+                            self.logerror("Value of 'meta' item in JSON form field "
+                                          "'ext' '%s' is not a JSON object." % str(extrameta))
+                            self.send_error(412, "'meta' item in form field 'ext' is not a JSON object")
+                            return                        
                         self.logdebug("Metadata: %s" % json.dumps(extrameta))
                 except Exception, e:
                     self.logerror("Value of form field 'ext' '%s' is not a valid JSON string." % em_str)
@@ -1121,7 +1135,21 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         
         # Generate NIname and validate it (it should have a Params field).
         ni_name = ni.NIname(form["URI"].value)
-        rv = ni_name.validate_ni_url()
+        rv = ni_name.validate_ni_url(has_params=True)
+        if rv is not ni.ni_errs.niSUCCESS:
+            self.loginfo("URI format of %s inappropriate: %s" % (self.path,
+                                                                 ni.ni_errs_txt[rv]))
+            self.send_error(406, "ni: scheme URI not in appropriate format: %s" % ni.ni_errs_txt[rv])
+            return
+
+        # Save netloc and query string (if any) so we can canonicalize ni_name
+        # but setting netloc and query sting to empty string
+        # Revalidate - should not cause any problems but...!
+        netloc = ni_name.get_netloc()
+        qs = ni_name.get_query_string()
+        ni_name.set_netloc("")
+        ni_name.set_query_string("")
+        rv = ni_name.validate_ni_url(has_params=True)
         if rv is not ni.ni_errs.niSUCCESS:
             self.loginfo("URI format of %s inappropriate: %s" % (self.path,
                                                                  ni.ni_errs_txt[rv]))
@@ -1129,7 +1157,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return
 
         # Turn the ni_name into NDO and metadate file paths
-        (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root, ni_name)
+        (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root,
+                                                          ni_name)
 
         # We don't know what the content type is yet
         ctype = None
@@ -1182,12 +1211,20 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Calculated binary digest has wrong length")
                 os.remove(temp_name)
                 return
-            digest = ni.NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
-            if digest is None:
-                self.logdebug("Failed to create urlsafe bas64 encoded digest")
-                self.send_error(500, "Failed to create urlsafe bas64 encoded digest")
-                os.remove(temp_name)
-                return
+            if ni_name.get_scheme() == "ni":
+                digest = ni.NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
+                if digest is None:
+                    self.logdebug("Failed to create urlsafe base64 encoded digest")
+                    self.send_error(500, "Failed to create urlsafe base64 encoded digest")
+                    os.remove(temp_name)
+                    return
+            else:
+                digest = ni.NIproc.make_human_digest(bin_dgst[:ni_name.get_truncated_length()])
+                if digest is None:
+                    self.logdebug("Failed to create human readable encoded digest")
+                    self.send_error(500, "Failed to create human readable encoded digest")
+                    os.remove(temp_name)
+                    return
 
             # Check digest matches with digest in ni name in URI field
             if (digest != ni_name.get_digest()):
@@ -1207,7 +1244,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # If ct= query string supplied in URL field..
         #   Override type got via received file if there was one but log warning if different
-        qs = ni_name.get_query_string()
         if not (qs == ""):
             ct = re.search(r'ct=([^&]+)', qs)
             if not (ct is  None or ct.group(1) == ""):
@@ -1255,7 +1291,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             # New metadata file needed
             first_store = True
-            md = self.store_metadata(meta_path, form, timestamp, ctype, extrameta)
+            md = self.store_metadata(meta_path, form, ni_name.get_url(),
+                                     timestamp, ctype, extrameta)
             if md is None:
                 self.logerror("Unable to create metadata file %s" % meta_path)
                 self.send_error(500, "Unable to create metadata file for %s" % \
@@ -1310,11 +1347,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return
 
-    def store_metadata(self, meta_path, form, timestamp, ctype, extrameta):
+    def store_metadata(self, meta_path, form, uri, timestamp, ctype, extrameta):
         """
         @brief Create new metadata file for a cached NDO from form data etc
         @param File name for metadata file
         @param processed form data
+        @param canonicalized uri
         @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
         @param Dictionary with 'meta' values from 'ext' parameter (or None)
@@ -1342,13 +1380,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             loc2 = None
 
-        md = NetInfMetaData(form["URI"].value, timestamp, ctype,
+        md = NetInfMetaData(uri, timestamp, ctype,
                             self.server.authority, loc1, loc2, extrameta)
         print "stored:", md
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
-            self.logerror("Write to metatdata file %s failed: %s." % (meta_path, str(e)))
+            self.logerror("Write to metadata file %s failed: %s." % (meta_path, str(e)))
             md = None
 
         f.close()

@@ -46,7 +46,7 @@ def debug(string):
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    #print string
+    print string
     return
 
 def main():
@@ -88,37 +88,42 @@ def main():
                       help="HTTP URL for content to be published.")
     parser.add_option("-d", "--digest", dest="hash_alg",
                       type="string",
-                      help="Digest algorithm to be used to hash content and create NI URI. Defaults to sha-256.")
+                      help="Digest algorithm to be used to hash content "
+                           "and create NI URI. Defaults to sha-256.")
     parser.add_option("-n", "--name", dest="ni_name",
                       type="string",
-                      help="Complete ni name. If specified with a file or HTTP URL, the digest will be checked against name.")
+                      help="Complete ni name. If specified with a file or "
+                           "HTTP URL, the digest generated from the content "
+                           "will be checked against th digest in the name.")
     parser.add_option("-e", "--ext", dest="ext",
                       type="string",
-                      help="A JSON encoded object to be sent as the 'ext' parameter for the Publish message.")
-    """
-    parser.add_option("-a", "--authority", dest="authority",
-                      type="string",
-                      help="FQDN to be placed in authority component of NI name published. Also where HTTP is sent if specified.")
-    """
+                      help="A JSON encoded object to be sent as the 'ext' "
+                           "parameter for the Publish message.")
     parser.add_option("-l", "--loc", dest="locs", action="append",
                       type="string",
-                      help="An FQDN where NI might be retrieved. Maybe be zero to two if -n is present and has a non-empty netloc. "
-                           "Otherwise must be one or two. HTTP is sent to first loc if no authority in -n.")
+                      help="An FQDN where NI might be retrieved. Maybe be "
+                           "zero to two if -n is present and has a non-empty netloc. "
+                           "Otherwise must be one or two. HTTP is sent to first "
+                           "loc if no authority in -n.")
     parser.add_option("-q", "--quiet", default=False,
                       action="store_true", dest="quiet",
                       help="Suppress textual output")
     parser.add_option("-j", "--json", default=False,
                       action="store_true", dest="json_raw",
-                      help="Request response as JSON string and print raw JSON string returned.")
+                      help="Request response as JSON string and output raw JSON "
+                           "string returned on stdout.")
     parser.add_option("-v", "--view", default=False,
                       action="store_true", dest="json_pretty",
-                      help="Request response as JSON string and pretty print JSON string returned.")
+                      help="Request response as JSON string and pretty print "
+                           "JSON string returned on stdout.")
     parser.add_option("-w", "--web", default=False,
                       action="store_true", dest="html",
-                      help="Request response as HTML document and print HTML returned returned.")
+                      help="Request response as HTML document and output HTML "
+                           "returned on stdout.")
     parser.add_option("-p", "--plain", default=False,
                       action="store_true", dest="plain",
-                      help="Request response as plain text document and print HTML returned returned.")
+                      help="Request response as plain text document and output text "
+                           "returned on stdout.")
 
 
     (options, args) = parser.parse_args()
@@ -190,7 +195,8 @@ def main():
                 print("Error: value of -n/--name option '%s' is not a valid ni name" % options.ni_name)
             sys.exit(-3)
 
-        # Extract the hash algorithm form the name
+        # Extract the scheme and hash algorithm from the name
+        scheme = ni_name.get_scheme()
         hash_alg = ni_name.get_alg_name()
 
         # If the ni name has a netloc in it then that is where to send; if not must have a loc
@@ -206,9 +212,11 @@ def main():
             authority = ""
     else:
         # No ni name given.. where to send must be locs[0] and there must be a -d option
+        # Default to ni scheme
         destination = options.locs[0]
         authority = ""
         hash_alg = options.hash_alg
+        scheme = "ni"
         
     # Check if the ext parameter is a valid json string
     if options.ext is not None:
@@ -216,7 +224,8 @@ def main():
             ext_json = json.loads(options.ext)
         except Exception, e:
             if verbose:
-                print("Error: the -e/--ext parameter value '%s' is not a valid JSON encoded object." % options.ext)
+                print("Error: the -e/--ext parameter value '%s' is not "
+                      "a valid JSON encoded object." % options.ext)
             sys.exit(-3)
         ext = options.ext
     else:
@@ -240,8 +249,8 @@ def main():
         # Create NIdigester for use with form encoder and StreamingHTTP
         ni_digester = NIdigester()
 
-        # Install the template URL built from the authority and the digest algorithm
-        rv = ni_digester.set_url(("ni", authority, hash_alg))
+        # Install the template URL built from the scheme, the authority and the digest algorithm
+        rv = ni_digester.set_url((scheme, authority, "/%s" % hash_alg))
         if rv != ni_errs.niSUCCESS:
             print("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
             sys.exit(-4)
@@ -313,7 +322,8 @@ def main():
         req = urllib2.Request(http_url, datagen, headers)
     except Exception, e:
         if verbose:
-            print("Error: Unable to create request for http URL %s: %s" % (http_url, str(e)))
+            print("Error: Unable to create request for http URL %s: %s" %
+                  (http_url, str(e)))
         f.close()
         sys.exit(-4)
 
@@ -351,7 +361,8 @@ def main():
     # Report outcome
     if (http_result != 200):
         if verbose:
-            print("Unsuccessful publish request returned HTTP code %d" % http_result) 
+            print("Unsuccessful publish request returned HTTP code %d" %
+                  http_result) 
         sys.exit(-3)
 
     # Check content type of returned message matches requested response type
@@ -359,17 +370,20 @@ def main():
     if rform == "plain":
         if ct != "text/plain":
             if verbose:
-                print("Error: Expecting plain text (text/plain) response but received Content-Type: %s" % ct)
+                print("Error: Expecting plain text (text/plain) response "
+                      "but received Content-Type: %s" % ct)
             sys.exit(-4)
     elif rform == "html":
         if ct != "text/html":
             if verbose:
-                print("Error: Expecting HTML document (text/html) response but received Content-Type: %s" % ct)
+                print("Error: Expecting HTML document (text/html) response "
+                      "but received Content-Type: %s" % ct)
             sys.exit(-5)
     else:
         if ct != "application/json":
             if verbose:
-                print("Error: Expecting JSON coded (application/json) response but received Content-Type: %s" % ct)
+                print("Error: Expecting JSON coded (application/json) "
+                      "response but received Content-Type: %s" % ct)
             sys.exit(-6)
 
     # If output of response is expected, print in the requested format

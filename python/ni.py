@@ -326,11 +326,28 @@ class NIname:
         """
         return self.netloc
         
+    def set_netloc(self, netloc):
+        """
+        @brief set the netloc component of the url
+        @return niSUCCESS or niNOAUTHORITY 
+        The value of the netloc is not checked except that if the scheme is
+        'nih' then the netloc must be empty.
+        """
+        if self.scheme == "nih" and not ((netloc == "") or (netloc == None)):
+            return ni_errs.niNOAUTHORITY
+        if netloc == None:
+            self.netloc = ""
+        else:
+            self.netloc = netloc
+        self.regen_url()
+        return ni_errs.niSUCCESS
+        
     def validate_ni_url(self, has_params = True):
         """
         @brief Check URL is in the expected form - right scheme and valid alg name.
         @param has_params Indicates if expecting params in URL (templates have empty params)
-        @return returns niSUCCESS, niBADSCHEME, niBADALG, niBADPARAMS, niNOFRAG or niBADURL.
+        @return returns niSUCCESS, niBADSCHEME, niBADALG, niBADPARAMS, niNOAUTHORITY,
+                        niNOFRAG or niBADURL.
 
         Check scheme is "ni" or "nih"
 
@@ -453,6 +470,22 @@ class NIname:
         @return query
         """
         return self.query
+        
+    def set_query_string(self, qs):
+        """
+        @brief set the query string component of the url
+        @return niSUCCESS 
+        The value of the query string is not checked except that if the scheme is
+        'nih' then the query string must be empty.
+        """
+        if self.scheme == "nih" and not ((qs == "") or (qs == None)):
+            return ni_errs.niNOAUTHORITY
+        if qs == None:
+            self.query = ""
+        else:
+            self.query = qs
+        self.regen_url()
+        return ni_errs.niSUCCESS
         
     def get_hash_function(self):
         """
