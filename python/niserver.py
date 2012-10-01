@@ -211,21 +211,24 @@ for that ni URI with the wikipedia and local .well-known locators.
 
 import ni
 
+NETINF_VER = "v0.1a Elwyn"
+
 class NetInfMetaData:
     def __init__(self, ni_uri="", timestamp=None, ctype=None, myloc=None, loc1=None, loc2=None, extrameta=None):
         self.json_obj = {}
-        self.json_obj["NetInf"] = "v0.1a Elwyn"
+        self.json_obj["NetInf"] = NETINF_VER
         self.json_obj["ni"]     = ni_uri
         if ctype is None:
             self.json_obj["ct"] = ""
         else:
             self.json_obj["ct"] = ctype
         self.json_obj["details"] = []
-
-
+        self.add_new_details(timestamp, myloc, loc1, loc2, extrameta)
         return
+    
     def add_new_details(self, timestamp, myloc, loc1, loc2, extrameta):
         self.curr_detail = {}
+        self.json_obj["details"].append(self.curr_detail)
         self.set_timestamp(timestamp)
         self.append_locs(myloc, loc1, loc2)
         metadata = {}
@@ -246,7 +249,9 @@ class NetInfMetaData:
     
     def set_json_val(self, json_val):
         self.json_obj = json_val
-        self.curr_detail = 
+        # Set the current details to be the last entry
+        self.curr_detail = self.json_obj["details"][-1]
+        return
 
     def append_locs(self, myloc=None, loc1=None, loc2=None):
         loclist = []
@@ -284,10 +289,37 @@ class NetInfMetaData:
         return
 
     def get_loclist(self):
-        return self.json_obj["detail"]["loc"]
+        # Scan all the details entry and get the set of all
+        # distinct entries in loc entries
+        loclist = []
+        for d in self.json_obj["details"]:
+            for l in d["loc"]:
+                if not l in loclist:
+                    loclist.append(l)
+        #print("Summarized loclist: %s" % str(loclist))
+        
+        return loclist
         
     def get_metadata(self):
-        return self.json_obj["detail"]["extrameta"]        
+        # Scan all the details entry and get the set of all
+        # distinct entries in metadata entries
+        metadict = {}
+        for d in self.json_obj["details"]:
+            curr_meta = d["metadata"]
+            for k in curr_meta.keys():
+                metadict[k] = curr_meta[k]
+        #print("Summarized metadata: %s" % str(metadict))
+        
+        return metadict
+
+    def summary(self):
+        sd = {}
+        for k in ["NetInf", "ni", "ct"]:
+            sd[k] = self.json_obj[k]
+        sd["ts"] = self.get_timestamp()
+        sd["loclist"] = self.get_loclist()
+        sd["metadata"] = self.get_metadata()
+        return sd
 
 NDO_DIR        = "/ndo_dir/"
 META_DIR       = "/meta_dir/"
@@ -306,6 +338,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     NETINF_PUT     = "/netinfproto/put"
     NETINF_SEARCH  = "/netinfproto/search"
     NETINF_LIST    = "/netinfproto/list"
+    # Default mimetype to use when we don't know.
+    DFLT_MIME_TYPE = "application/octet-stream"
 
     # Type introducer string in cached file names
     TI             = "?ct="
@@ -546,8 +580,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             f.write("--" + mb + "\n")
             # Part 0 - Metadata as JSON string
             f.write("Content-Type: application/json\nMIME-Version: 1.0\n\n")
-            json_obj = md.json_val()
-            json_obj["status"] = "content_and_metadata"
+            json_obj = md.summary()
+            json_obj["status"] = 200
             if msgid is not None:
                 json_obj["msgid"] = msgid
             json.dump(json_obj, f)
@@ -555,6 +589,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             f.write("\n\n--" + mb + "\n")
             # Headers for NDO content file
             f.write("Content-Type: %s\nMIME-Version: 1.0\n" % md.get_ctype())
+            f.write("Content-Disposition: inline\n")
             f.write("Content-Length: %d\n\n" % ct_length)
             # Complete data to be returned consists of three parts
             # - data now in StringIO object
@@ -589,8 +624,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             # No content so just send the metadata as an application/json object
             f = StringIO()
-            json_obj = md.json_val()
-            json_obj["status"] = "metadata_only"
+            json_obj = md.summary()
+            json_obj["status"] = 203
             if msgid is not None:
                 json_obj["msgid"] = msgid
             json.dump(json_obj, f)
@@ -897,8 +932,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
         # Validate form data
         # Check only expected keys and no more
+        # NOTE: 'stage' is unused and is a hangover from testing - left in for consistency with PHP
         mandatory_get_fields = ["URI", "msgid"]
-        optional_get_fields = ["ext"]
+        optional_get_fields = ["ext", "stage"]
         for field in mandatory_get_fields:
             if field not in form.keys():
                 self.logdebug("Missing mandatory field %s in get form")
@@ -1015,18 +1051,20 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if "fullPut" in form.keys():
             fp_val = form["fullPut"].value.lower()
             self.logdebug("fullPut: %s" % fp_val)
-            if fp_val in ["true", "yes", "1"]:
+            if fp_val in ["true", "yes", "on", "1"]:
                 full_put = True
             else:
                 full_put = False
-                if not (fp_val in ["false", "no", "0"]):
+                if not (fp_val in ["false", "no", "off", "0"]):
                     self.logwarn("fullPut has value '%s'which is not a good boolean representation." % fp_val)
         else:
             full_put = False
+
+        # Record timestamp for this operation
+        timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
         
         # If fullPut is supplied and equivalent to True then there must be octets which is a file
         file_uploaded = False
-        timestamp = None
         if full_put:
             if not "octets" in form.keys():
                 self.logerror("Expected 'octets' form field to be present with 'fullPut' set")
@@ -1038,8 +1076,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 return
             # Record that there is a file ready
             file_uploaded = True
-            fov["octets"] = form["octets"].filename
-            timestamp = self.date_time_string()
+            fov["octets"] = form["octets"].filename            
         elif "octets" in form.keys():
             self.logwarn("Unexpected 'octets' form field present with 'fullPut' is not set")
 
@@ -1051,8 +1088,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     ext_json = json.loads(ext_str)
                     if "meta" in ext_json.keys():
-                        extrameta = {}
-                        extrameta["meta"] = ext_json["meta"]
+                        extrameta = ext_json["meta"]
                         self.logdebug("Metadata: %s" % json.dumps(extrameta))
                 except Exception, e:
                     self.logerror("Value of form field 'ext' '%s' is not a valid JSON string." % em_str)
@@ -1163,7 +1199,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Work out content type for received file
             ctype = form["octets"].type
 
-            if ctype is None:
+            if ((ctype is None) or (ctype == self.DFLT_MIME_TYPE)):
                 ctype = magic.from_file(temp_name, mime=True)
                 self.logdebug("Guessed content type from file is %s" % ctype)
             else:
@@ -1184,13 +1220,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # If we haven't got a file then we just leave it unassigned
         if ctype is None and file_uploaded:
             # Default..
-            ctype = self.default_mime_type
+            ctype = self.DFLT_MIME_TYPE
 
         # Check if the metadata file exists - i.e., if this is an update
         if os.path.isfile(meta_path):
             # It does - had previous publish so update metadata
             first_store = False
-            md = self.update_metadata(meta_path, form, timestamp, ctype)
+            md = self.update_metadata(meta_path, form, timestamp, ctype, extrameta)
             if md is None:
                 self.logerror("Unable to update metadata file %s" % meta_path)
                 self.send_error(500, "Unable to update metadata file for %s" % \
@@ -1281,6 +1317,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         @param processed form data
         @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
+        @param Dictionary with 'meta' values from 'ext' parameter (or None)
         @return NetInfMetaData instance that was written to file or None if a problem
 
         The file contains JSON encoded metadata created by writing
@@ -1305,11 +1342,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             loc2 = None
 
-        em = {}
-        em["ext"] = extrameta
-
         md = NetInfMetaData(form["URI"].value, timestamp, ctype,
-                            self.server.authority, loc1, loc2, em)
+                            self.server.authority, loc1, loc2, extrameta)
         print "stored:", md
         try:
             json.dump(md.json_val(), f)
@@ -1321,13 +1355,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return md
     
-    def update_metadata(self, meta_path, form, timestamp, ctype):
+    def update_metadata(self, meta_path, form, timestamp, ctype, extrameta):
         """
         @brief Update existing metadata file for a cached NDO from form data etc
         @param File name for metadata file
         @param processed form data
         @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
+        @param Dictionary with 'meta' values from 'ext' parameter (or None)
         @return NetInfMetaData instance that was written to file or None if a problem
 
         The file contains JSON encoded metadata created by writing
@@ -1362,17 +1397,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         
         f.seek(0)
 
-        # Update info in metadata structure
-        md.append_locs(loc1 = loc1_val, loc2 = loc2_val)
-        md.set_timestamp(timestamp)
+        # Update info in metadata structure and set content type if appropriate
+        md.add_new_details(timestamp, None, loc1_val, loc2_val, extrameta)
         md.set_ctype(ctype)
-
         # Write metadata back to file
         print "updated: ", md
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
-            self.logerror("Write to metatdata file %s failed.", meta_path)
+            self.logerror("Write to metadata file %s failed.", meta_path)
             md = None
 
         f.close()        
@@ -1408,8 +1441,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if rform == "json":
             # JSON format: Metadata as JSON string        
             ct = "application/json"
-            json.dump({ "status": status, "msgid" : form["msgid"].value,
-                        "loclist" : metadata.get_loclist() }, f)
+            rd = metadata.summary()
+            rd["status"]  = status
+            rd["msgid"] = form["msgid"].value
+            json.dump(rd, f)
         elif rform == "plain":
             # Textual form report (useful for publish command line applications)
             ct = "text/plain"
@@ -1454,9 +1489,6 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         
         self.running_threads = set()
         self.next_server_num = 1
-
-        # Default mimetype to use when we don't know.
-        self.default_mime_type = 'application/octet-stream'
 
         # Setup to produce a daemon thread for each incoming request
         # and be able to reuse address

@@ -46,7 +46,7 @@ def debug(string):
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    print string
+    #print string
     return
 
 def main():

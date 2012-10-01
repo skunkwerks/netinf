@@ -23,8 +23,10 @@ the loopback address).  Can be downloaded from
 http://pydns.sourceforge.net/downloads.html.  Install the appropriate version
 for the major release of Python you are using.
 
-Requires the Python 'python-magic' module to determine the content type of
-files that are to be published. Can be downloaded from
+Requires the Python 'python-magic' module (version 0.4.3 or later) to determine 
+the content type of files that are to be published. Note that the version of
+the magic module that is distributed with Ubuntu is out of date and does not
+provide the funtion used.  The latest version can be downloaded from
 http://pypi.python.org/pypi/python-magic/.
 
 (In each case the modules can be installed using:
@@ -79,13 +81,22 @@ Limitations
  - niget should work on chunks of request rather than whole file
 
 CHANGES
-  2012-0917
+  2012-10-01
+	- Added handling of metadata string supplied by PUBLISH to niserver
+	  and nipub.  Updated nipub to specify format of response (rform) 
+          and  niserver to handle the response format.  The PUBLISH response
+          now contains a single MIME part of a type that depends on the requested
+	  response (JSON, HTML or plain text).  nipub can print out the response;
+	  if it is JSON it can be printed either raw or prettily formatted.
+	  Allowed nipub to publish metadata alone or combination of metadata and 
+	  content.  
+  2012-09-17
         - Completed implementation of addition of storing and returning
           metadata in niserver, nipub and niget.  Current implementation
           now allows publication of both complete NDOs (content and metadata)
           and also metadata alone.  The metadata can be updated when 
           repeated publication attempts are made - this just adds additional
-          locators.  The GET function will now return just the metedata if
+          locators.  The GET function will now return just the metadata if
           that is all that is available or both when both are available.
           The response from a (successful) PUBLISH is now a three part
           MIME multipart/mixed object.  The first part is a subset of the 
