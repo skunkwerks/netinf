@@ -80,10 +80,12 @@ or can be generated externally and tied into the cache.
 Revision History
 ================
 Version   Date       Author         Notes
+0.3       03/10/2012 Elwyn Davies   Response format handling modified. Search added.
 0.2	  01/09/2012 Elwyn Davies   Metadata handling added.
 0.1       11/07/2012 Elwyn Davies   Added 307 redirect for get from .well_known.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
+NISERVER_VER = "0.3"
 
 import os
 import socket
@@ -104,8 +106,10 @@ from SocketServer import ThreadingMixIn
 import cgi
 import magic
 import urllib
+import urllib2
 import hashlib
 import datetime
+import xml.etree.ElementTree as ET
 
 """
 @brief In browser form HTML source for doing NetInf GET and PUBLISH.
@@ -196,8 +200,8 @@ for that ni URI with the wikipedia and local .well-known locators.
 </td</tr>
 
 <tr>
-<td/>
 <td><input type="submit" value="Submit"/> </td>
+<td></td>
 </tr>
 </tbody>
 </table>
@@ -241,7 +245,7 @@ class NetInfMetaData:
             except AttributeError, e:
                 print("Error: extrameta not a dictionary (%s)" % type(extrameta))
                 pass
-        metadata["publish"] = "python"
+        return
 
     def __repr__(self):
         return json.dumps(self.json_obj, separators=(',',':'))
@@ -308,11 +312,37 @@ class NetInfMetaData:
     def get_metadata(self):
         # Scan all the details entry and get the set of all
         # distinct entries in metadata entries
+        # Treat 'search' key specially - combine any search keys
+        # recorded into an array.  For others, just take the most
+        # recent one (they are recorded in time order)
         metadict = {}
+        srchlist = []
+        n = -1
         for d in self.json_obj["details"]:
             curr_meta = d["metadata"]
+            n += 1
             for k in curr_meta.keys():
-                metadict[k] = curr_meta[k]
+                if k == "search":
+                    # In case somebody put in a non-standard search entry
+                    try:
+                        se = curr_meta[k]
+                        eng = se["engine"]
+                        tok = se["tokens"]
+                        dup = False
+                        for s in srchlist:
+                            if ((s["engine"] == eng) and (s["tokens"] == tok)):
+                                dup = True
+                                break
+                        if not dup:
+                            srchlist.append(se)
+                    except:
+                        # Non-standard search entry - leave it in place
+                        metadict[k] = curr_meta[k]
+                else:
+                    metadict[k] = curr_meta[k]
+        if len(srchlist) > 0:
+            metadict["searches"] = srchlist
+            
         #print("Summarized metadata: %s" % str(metadict))
         
         return metadict
@@ -331,23 +361,35 @@ META_DIR       = "/meta_dir/"
 
 class NIHTTPHandler(BaseHTTPRequestHandler):
 
+    # Publisher version string
+    PUBLISH_REF     = ("Python niserver.py %s" % NISERVER_VER)
+    
     # Fixed strings used in NI HTTP translations and requests
-    WKN            = "/.well-known/"
-    WKDIR          = "/ni_wkd/"
-    NI_HTTP        = WKN + "ni"
-    NI_ACCESS_FORM = "/getputform.html"    
-    #NI_SHOWCACHE   = "/showcache.html"
-    ALG_QUERY      = "?alg="
-    NETINF_GET     = "/netinfproto/get"
-    NETINF_PUBLISH = "/netinfproto/publish" 
-    NETINF_PUT     = "/netinfproto/put"
-    NETINF_SEARCH  = "/netinfproto/search"
-    NETINF_LIST    = "/netinfproto/list"
+    WKN             = "/.well-known/"
+    WKDIR           = "/ni_wkd/"
+    NI_HTTP         = WKN + "ni"
+    NIH_HTTP        = WKN + "nih"
+    NI_ACCESS_FORM  = "/getputform.html"    
+    ALG_QUERY       = "?alg="
+    NETINF_GET      = "/netinfproto/get"
+    NETINF_PUBLISH  = "/netinfproto/publish" 
+    NETINF_PUT      = "/netinfproto/put"
+    NETINF_SEARCH   = "/netinfproto/search"
+    NETINF_LIST     = "/netinfproto/list"
     # Default mimetype to use when we don't know.
-    DFLT_MIME_TYPE = "application/octet-stream"
+    DFLT_MIME_TYPE  = "application/octet-stream"
 
     # Type introducer string in cached file names
-    TI             = "?ct="
+    TI              = "?ct="
+
+    # Search related info
+    WIKI_LOC        = "en.wikipedia.org"
+    WIKI_SRCH_API   = ("http://%s/w/api.php?action=opensearch&search=%s&" + \
+                       "limit=10&namespace=0&format=xml")
+    SRCH_NAMESPACE  = "http://opensearch.org/searchsuggest2"
+    SEARCH_REF      = ("Python niserver.py %s" % NISERVER_VER)
+    SRCH_CACHE_SCHM = "ni"
+    SRCH_CACHE_DGST = "sha-256"
 
     def end_run(self):
         self.request_close()
@@ -718,14 +760,16 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         @return either (niSUCCESS. NIname instance, NDO path, metadata path) or
                        (error code from ni_errs, None, None, None) if errors found.
 
-        Strips off the expected '/.well-know/ni' prefix and builds
+        Strips off the expected '/.well-known/ni[h]' prefix and builds
         an ni name corresponding to the http: form. Validates the
-        form of the ni name and then builds it into a local file name.
+        form of the ni[h] name and then builds it into a local file name.
         The path is expected to have the form:
-        /.well-known/ni/<digest name>/<url encoded digest>[?<query]
+        /.well-known/ni[h]/<digest name>/<encoded digest>[?<query]
 
         If this is found, then it is turned into:
          - ni URI:        ni://<authority>/<digest name>;<url encoded digest>[?<query]
+           or
+           nih URI:       nih:/<digest name>;<hex encoded digest>
          - NDO filename:  <storage_root>/ndo_dir/<digest name>/<url encoded digest>
          - META filename:<storage_root>/meta_dir/<digest name>/<url encoded digest>
         Both are returned.
@@ -733,17 +777,29 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
 
         # Note: 'path' may contain param and query (nut not fragment) components
-        if not path.startswith(self.NI_HTTP):
+        if path.startswith(self.NI_HTTP):
+            path = path[len(self.NI_HTTP):]
+            if (len(path) == 0) or not path.startswith("/"):
+                return (ni.ni_errs.niBADURL, None, None, None)
+            dgstrt = path.find("/", 1)
+            if dgstrt == -1:
+                return (ni.ni_errs.niBADURL, None, None, None)
+                
+            url = "ni://%s%s;%s" % (authority, path[:dgstrt], path[dgstrt+1:])
+            self.logdebug("path %s converted to url %s" % (path, url))
+        elif path.startswith(self.NIH_HTTP):
+            path = path[len(self.NIH_HTTP):]
+            if (len(path) == 0) or not path.startswith("/"):
+                return (ni.ni_errs.niBADURL, None, None, None)
+            dgstrt = path.find("/", 1)
+            if dgstrt == -1:
+                return (ni.ni_errs.niBADURL, None, None, None)
+                
+            url = "nih:%s;%s" % (path[:dgstrt], path[dgstrt+1:])
+            self.logdebug("path %s converted to url %s" % (path, url))
+        else:
             return (ni.ni_errs.niBADURL, None, None, None)
-        path = path[len(self.NI_HTTP):]
-        if (len(path) == 0) or not path.startswith("/"):
-            return (ni.ni_errs.niBADURL, None, None, None)
-        dgstrt = path.find("/", 1)
-        if dgstrt == -1:
-            return (ni.ni_errs.niBADURL, None, None, None)
-            
-        url = "ni://%s%s;%s" % (authority, path[:dgstrt], path[dgstrt+1:])
-        self.logdebug("path %s converted to url %s" % (path, url))
+        
         ni_name = ni.NIname(url)
         rv = ni_name.validate_ni_url()
         if (rv != ni.ni_errs.niSUCCESS):
@@ -890,7 +946,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
         
         # The NetInf proto uses a very limited set of requests..
-        if not ((self.path == self.NETINF_GET) or (self.path == self.NETINF_PUBLISH)):
+        if not ((self.path == self.NETINF_GET) or
+                (self.path == self.NETINF_PUBLISH) or
+                (self.path == self.NETINF_SEARCH)):
             self.logdebug("Unrecognized POST request: %s" % self.path)
             self.send_error(404, "POST %s is not used by NetInf" % self.path)
             return
@@ -909,6 +967,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.netinf_get(form)
         elif (self.path == self.NETINF_PUBLISH):
             self.netinf_publish(form)
+        elif (self.path == self.NETINF_SEARCH):
+            self.netinf_search(form)
         else:
             raise ValueError()
 
@@ -1027,7 +1087,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         optional_publish_fields = ["ext", "loc2", "fullPut", "octets", "loc1", "rform"]
         for field in mandatory_publish_fields:
             if field not in form.keys():
-                self.logerror("Missing mandatory field %s in get form" % field)
+                self.logerror("Missing mandatory field %s in publish form" % field)
                 self.send_error(412, "Missing mandatory field %s in form." % field)
                 return
         ofc = 0
@@ -1045,13 +1105,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                                                                  str(optional_publish_fields)))
             return
 
-        """
-        # Either fullPut must be set or loc1 or loc2 must be present
-        if not ( "fullPut" in form.keys() or "loc1" in form.keys() or "loc2" in form.keys()):
-            self.logerror("NetInf publish form must contain at least one of fullPut, loc1 and loc2.")
-            self.send_error(412, "Form must have at least one of fields 'fullPut', 'loc1' and 'loc2'.")
-            return
-        """
         # Convert textual fullPut value to boolean
         if "fullPut" in form.keys():
             fp_val = form["fullPut"].value.lower()
@@ -1090,7 +1143,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # form field.  The following code extracts this object which is represented
         # by a Python dictionary, checking that it is a dictionary (object) in case
         # the user has supplied a garbled piece of JSON.
-        extrameta = None
+        extrameta = {}
+        extrameta["publish"] = self.PUBLISH_REF
         if "ext" in form.keys():
             ext_str = form["ext"].value
             if ext_str != "":
@@ -1113,7 +1167,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if "rform" in form.keys():
             rform = fov["rform"].lower()
             if not((rform == "json") or (rform == "html") or (rform == "plain")):
-                self.logerror("Unhandled response format requested '%s'." % rform)
+                self.logerror("Unhandled publish response format requested '%s'." % rform)
                 self.send_error(412, "Response format '%s' not available." % rform)
                 return
         else:
@@ -1132,6 +1186,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                                   fov["loc1"],
                                                   fov["loc2"],
                                                   timestamp))
+        
+        # Extract the locators form the form
+        (loc1, loc2) = self.form_to_locs(form)
         
         # Generate NIname and validate it (it should have a Params field).
         ni_name = ni.NIname(form["URI"].value)
@@ -1204,31 +1261,32 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(412, "Upload of file referenced by 'octets' form field cancelled or interrupted by user")
                 return
          
-            # Get binary digest and convert to urlsafe base64 encoding
+            # Get binary digest and convert to urlsafe base64 or hex
+            # encoding depending on URI scheme
             bin_dgst = hash_function.digest()
             if (len(bin_dgst) != ni_name.get_digest_length()):
-                self.logdebug("Binary digest has unexpected length")
+                self.logerror("Binary digest has unexpected length")
                 self.send_error(500, "Calculated binary digest has wrong length")
                 os.remove(temp_name)
                 return
             if ni_name.get_scheme() == "ni":
                 digest = ni.NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
                 if digest is None:
-                    self.logdebug("Failed to create urlsafe base64 encoded digest")
+                    self.logerror("Failed to create urlsafe base64 encoded digest")
                     self.send_error(500, "Failed to create urlsafe base64 encoded digest")
                     os.remove(temp_name)
                     return
             else:
                 digest = ni.NIproc.make_human_digest(bin_dgst[:ni_name.get_truncated_length()])
                 if digest is None:
-                    self.logdebug("Failed to create human readable encoded digest")
+                    self.logerror("Failed to create human readable encoded digest")
                     self.send_error(500, "Failed to create human readable encoded digest")
                     os.remove(temp_name)
                     return
 
             # Check digest matches with digest in ni name in URI field
             if (digest != ni_name.get_digest()):
-                self.loginfo("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
+                self.logerror("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
                 self.send_error(401, "Digest of incoming file does not match digest in URI: %s" % form["URI"].value)
                 os.remove(temp_name)
                 return
@@ -1262,7 +1320,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if os.path.isfile(meta_path):
             # It does - had previous publish so update metadata
             first_store = False
-            md = self.update_metadata(meta_path, form, timestamp, ctype, extrameta)
+            md = self.update_metadata(meta_path, loc1, loc2, timestamp, ctype, extrameta)
             if md is None:
                 self.logerror("Unable to update metadata file %s" % meta_path)
                 self.send_error(500, "Unable to update metadata file for %s" % \
@@ -1291,7 +1349,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         else:
             # New metadata file needed
             first_store = True
-            md = self.store_metadata(meta_path, form, ni_name.get_url(),
+            md = self.store_metadata(meta_path, loc1, loc2, ni_name.get_url(),
                                      timestamp, ctype, extrameta)
             if md is None:
                 self.logerror("Unable to create metadata file %s" % meta_path)
@@ -1344,14 +1402,459 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                  False, first_store, form,
                                  md, ni_name.get_url(), None)
 
-
         return
 
-    def store_metadata(self, meta_path, form, uri, timestamp, ctype, extrameta):
+    def netinf_search(self, form):
+        
+        # Validate form data
+        # Check only expected keys and no more
+        mandatory_search_fields = ["tokens",  "msgid"]
+        optional_search_fields = ["ext", "rform", "stage"]
+        for field in mandatory_search_fields:
+            if field not in form.keys():
+                self.logerror("Missing mandatory field %s in search form" % field)
+                self.send_error(412, "Missing mandatory field %s in form." % field)
+                return
+        ofc = 0
+        fov = {}
+        for field in optional_search_fields:
+            if field in form.keys():
+                ofc += 1
+                fov[field] = form[field].value
+            else:
+                fov[field] = "(not supplied)"
+                
+        if (len(form.keys()) > (len(mandatory_search_fields) + ofc)):
+            self.logerror("NetInf search form has too many fields: %s" % str(form.keys()))
+            self.send_error(412, "Form has unxepected extra fields beyond %s" % (str(mandatory_search_fields)+
+                                                                                 str(optional_search_fields)))
+            return
+
+        # Check that the response type is one we expect - default is JSON if not explicitly requested
+        if "rform" in form.keys():
+            rform = fov["rform"].lower()
+            if not((rform == "json") or (rform == "html") or (rform == "plain")):
+                self.logerror("Unhandled search response format requested '%s'." % rform)
+                self.send_error(412, "Response format '%s' not available." % rform)
+                return
+        else:
+            # Default of json
+            rform = "json"
+            self.logdebug("Using default rform - json")                
+        
+        # Record timestamp for this operation
+        op_timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+
+        self.logdebug("NetInf search for "
+                      "tokens %s, msgid %s, rform %s, ext %s at %s" % (form["tokens"].value,
+                                                                       form["msgid"].value,
+                                                                       fov["rform"],
+                                                                       fov["ext"],
+                                                                       op_timestamp))
+
+        # Formulate request for Wikipaedia
+        tokens = form["tokens"].value
+        self.logdebug("Search token string: |%s|" % tokens)
+        if tokens == "":
+            self.logwarn("Empty search token string received.")
+            self.send_error(418, "Empty search token string received.")
+            return
+            
+        wikireq=self.WIKI_SRCH_API % (self.WIKI_LOC, urllib.quote(tokens, safe=""))    
+
+        # Send GET request to Wikipaedia server
+        try:
+            http_object = urllib2.urlopen(wikireq)
+        except Exception, e:
+            self.logerror("Error: Unable to access Wikipaedia URL %s: %s" % (wikireq, str(e)))
+            self.send_error(404, "Unable to access Wikipaedia URL: %s" % str(e))
+            return
+
+        # Get HTTP result code
+        http_result = http_object.getcode()
+
+        # Get message headers - an instance of email.Message
+        http_info = http_object.info()
+        self.logdebug("Response type: %s" % http_info.gettype())
+        self.logdebug("Response info:\n%s" % http_info)
+
+        obj_length_str = http_info.getheader("Content-Length")
+        if (obj_length_str != None):
+            obj_length = int(obj_length_str)
+        else:
+            obj_length = None
+
+        # Read results into buffer
+        # Would be good to try and do this better...
+        # if the object is large we will run into problems here
+        payload = http_object.read()
+        http_object.close()
+        self.logdebug("Wikipaedia: result string: %s" % payload)
+
+        # The results are expected to be a single object with MIME type text/xml
+
+        # Verify length and digest if HTTP result code was 200 - Success
+        if (http_result != 200):
+                self.logerror("Wikipaedia request returned HTTP code %d" % http_result)
+                self.send_error(http_result, "Wikipaedia non-success response")
+                return
+
+        if ((obj_length != None) and (len(payload) != obj_length)):
+            self.logwarn("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
+
+        # Check returned results are in appropriate form
+        ct = http_info.getheader("Content-Type").lower()
+        if not ct.startswith("text/xml"):
+            self.logerror("Wikipaedia returned doucument that was of type '%s' rather than 'text/xml'" %
+                          ct)
+            self.send_error(415, "Wikipaedia returned results in a form '%s' other than 'text/xml'" % ct)
+            return
+
+        # Try to decode results - expect that there should be an array of up to ten result 'Item'
+        # elements inside a 'Section' element.  Extract text part of 'Url' (where to get document),
+        # 'Text' (matched text in item) and 'Desxription' (header of article).
+        # The results should be a single root element specifying almost everything to be in the
+        # XML namespace 'http://opensearch.org/searchsuggest2'
+        try:
+            root = ET.fromstring(payload)
+        except Exception, e:
+            self.logerror("Unable to parse returned Wikipaedia document as XML element: %s" % str(e))
+            self.send_error(422, "Unable to parse returned Wikpaedia document: %s" % str(e))
+            return
+
+        # Set up qualified names for elements we are interested in
+        section_name = str(ET.QName(self.SRCH_NAMESPACE, "Section"))
+        item_name    = str(ET.QName(self.SRCH_NAMESPACE, "Item"))
+        url_name     = str(ET.QName(self.SRCH_NAMESPACE, "Url"))
+        text_name    = str(ET.QName(self.SRCH_NAMESPACE, "Text"))
+        desc_name    = str(ET.QName(self.SRCH_NAMESPACE, "Description"))
+
+        # Extract interesting parts of results - these are bodies (.text value) of
+        # Url, Text and Description elements
+        results = []
+        try:
+            for sect in root.iter(tag=section_name):
+                for item in sect.iter(tag=item_name):
+                    r = {}
+                    r["url"] = item.find(url_name).text
+                    r["text"] = item.find(text_name).text
+                    r["desc"] = item.find(desc_name).text
+                    results.append(r)
+        except Exception, e:
+            self.logerror("Extraction of elements from Wikipaedia results failed: %s" % str(e))
+            self.send_error(422, "Extraction of elements from Wikipaedia results failed: %s" % str(e))
+            return
+
+        # Record the tokens for placing in the metadata of items found as a result
+        srch_dict = {}
+        srch_dict["searcher"] = self.SEARCH_REF
+        srch_dict["engine"]   = self.WIKI_LOC
+        srch_dict["tokens"]   = tokens
+        extrameta = { "search": srch_dict }
+
+        # Retrieve the results and cache them
+        # If retrieval fails discard the result
+        cached_results = []
+        for item in results:
+            # Construct a template canonicalized ni name for this result
+            # => No authority; No query string
+            ni_name = ni.NIname((self.SRCH_CACHE_SCHM, "", self.SRCH_CACHE_DGST))
+            # The validation should be a formality but has to be done
+            # otherwise can't get hash function...
+            rv = ni_name.validate_ni_url(has_params = False)
+            if rv != ni.ni_errs.niSUCCESS:
+                self.logerror("Validation of ni_name failed after setting digest: %s" %
+                              ni.ni_errs_txt[rv])
+                continue
+
+            # Record timestamp for this get operation
+            timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+
+            # Access the item and get the data - this might be a bit slow.. live with it for now
+            url = item["url"]
+            try:
+                http_req = urllib2.Request(url, headers={'User-Agent' : "NetInf Browser"})
+                http_object = urllib2.urlopen(http_req)
+            except Exception, e:
+                self.logwarn("Warning: Unable to access results URL %s - ignoring: %s" %
+                             (url, str(e)))
+                continue
+
+            http_info = http_object.info()
+
+            self.logdebug("Response type: %s" % http_info.gettype())
+            self.logdebug("Response info:\n%s" % http_info)
+
+            # Verify access was successful and ignore result if not
+            if (http_result != 200):
+                    self.logwarn("Result access request returned HTTP code %d - ignoring result" % http_result)
+                    # Flush any octets that came with the failed request and close the http request object
+                    payload = http_object.read()
+                    http_object.close()
+                    continue
+
+            # Get content type for received object
+            ctype = http_info.gettype()
+
+            # Get content length for received object
+            obj_length_str = http_info.getheader("Content-Length")
+            if (obj_length_str != None):
+                obj_length = int(obj_length_str)
+            else:
+                obj_length = None
+
+            # The results are expected to be a single object with MIME as announced in headers
+
+            # Copy the file from the network to a temporary name in the right
+            # subdirectory of the storage_root.  This makes it trivial to rename it
+            # once the digest has been verified.
+            # This file name is unique to this thread and because it has # in it
+            # should never conflict with a digested file name which doesn't use #.
+            temp_name = "%s%s%s/search#temp#%d" % (self.server.storage_root,
+                                                   NDO_DIR,
+                                                   ni_name.get_alg_name(),
+                                                   self.thread_num)
+            self.logdebug("Copying and digesting to temporary file %s" % temp_name)
+
+            # Prepare hashing mechanisms
+            hash_function = ni_name.get_hash_function()()
+
+            # Copy file from incoming stream and generate digest
+            try:
+                f = open(temp_name, "wb");
+            except Exception, e:
+                self.logerror("Failed to open temp file %s for writing: %s)" % (temp_name, str(e)))
+                continue
+            read_length = 0
+            try:
+                while 1:
+                    buf = http_object.read(16 * 1024)
+                    if not buf:
+                        break
+                    f.write(buf)
+                    hash_function.update(buf)
+                    read_length += len(buf)
+            except Exception, e:
+                self.logerror("Error while reading returned data for URL '%s' - ignoring result: %s" %
+                              (url, str(e)))
+                f.close()
+                http_object.close()
+                continue
+            f.close()
+            http_object.close()
+            self.logdebug("Finished copying")
+
+            # Check length read and length in HTTP header, if any, match
+            # (warning only if they don't)
+            if not ((obj_length is None) or (read_length == obj_length)):
+                self.logwarn(("Warning: Length of data read from network (%d) does not match " + \
+                              "length in HTTP header (%d) for URL '%s'") % (read_length, obj_length,
+                                                                            url))
+         
+            # Get binary digest and convert to urlsafe base64 or
+            # hex encoding depending on URI scheme
+            bin_dgst = hash_function.digest()
+            if (len(bin_dgst) != ni_name.get_digest_length()):
+                self.logerror("Binary digest for '%s' has unexpected length" % url)
+                os.remove(temp_name)
+                continue
+            if ni_name.get_scheme() == "ni":
+                digest = ni.NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
+                if digest is None:
+                    self.logerror("Failed to create urlsafe base64 encoded digest for URL '%s'")
+                    os.remove(temp_name)
+                    continue
+            else:
+                digest = ni.NIproc.make_human_digest(bin_dgst[:ni_name.get_truncated_length()])
+                if digest is None:
+                    self.logerror("Failed to create human readable encoded digest for URL '%s'")
+                    os.remove(temp_name)
+                    continue
+
+            # Guess the content type if the header didn't say
+            if ((ctype is None) or (ctype == "") or(ctype == self.DFLT_MIME_TYPE)):
+                ctype = magic.from_file(temp_name, mime=True)
+                self.logdebug("Guessed content type from file for URL '%s' is %s" %
+                              (url, ctype))
+            else:
+                self.logdebug("Supplied content type from HTTP header for URL '%s' is %s" %
+                              (url, ctype))
+
+            # Synthesize the ni URL name for the URL
+            ni_name.set_params(digest)
+            # The validation should be a formality...
+            rv = ni_name.validate_ni_url(has_params = True)
+            if rv != ni.ni_errs.niSUCCESS:
+                self.logerror("Validation of ni_name failed after setting digest: %s" %
+                              ni.ni_errs_txt[rv])
+                continue
+
+            # Determine file names for metadata and content
+            (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root,
+                                                              ni_name)
+
+            # Check if metadata file exists already - then either store new or update
+            if os.path.isfile(meta_path):
+                # It does - had previous publish so update metadata
+                first_store = False
+                md = self.update_metadata(meta_path, url, None, timestamp, ctype, extrameta)
+                if md is None:
+                    self.logerror("Unable to update metadata file %s" % meta_path)
+                    continue
+
+                # Check the ni is the same - only affects query string
+                # Assume for the time being that we expect exactly the same string
+                # This is not really right as the query string need not be present
+                # and there could be variations in white space
+                if ni_name.get_url() != md.get_ni():
+                    self.logerror("Update uses different URI - old: %s; new: %s" % \
+                                  (md.get_ni(), ni_name.get_url()))
+                    continue
+
+                # Check if ctype in existing metadata is consistent with new ctype
+                if not((ctype is None) or (md.get_ctype() == ctype)):
+                    self.logerror("Update uses different content type - old: %s; new: %s" % \
+                                  (md.get_ctype(), ctype))
+                    continue
+                    
+            else:
+                # New metadata file needed
+                first_store = True
+                md = self.store_metadata(meta_path, url, None, ni_name.get_url(),
+                                         timestamp, ctype, extrameta)
+                if md is None:
+                    self.logerror("Unable to create metadata file %s" % meta_path)
+                    continue
+
+            # Check if content file exists - if not rename temp file; otherwise delete temp file
+            if os.path.isfile(ndo_path):
+                self.loginfo("Content file already exists: %s" % ndo_path)
+                # Discarding uploaded temporary filr
+                try:
+                    os.remove(temp_name)
+                except Exception, e:
+                    # This is fatal - need to abort whole process
+                    self.logerror("Failed to unlink temp file %s: %s)" % (temp_name, str(e)))
+                    self.send_error(500, "Cannot unlink temporary file")
+                    return
+            else:
+                # Rename the temporary file to be the NDO content file name
+                try:
+                    os.rename(temp_name, ndo_path)
+                except:
+                    # This is fatal - need to abort whole process
+                    os.remove(temp_name)
+                    self.logerror("Unable to rename tmp file %s to %s: %s" % (temp_name, ndo_path, str(e)))
+                    self.send_error(500, "Unable to rename temporary file")
+                    return
+                
+            # FINALLY... record cached item ready to generate response
+            item["ni_obj"]    = ni_name
+            item["meta_path"] = meta_path
+            item["ndo_path"]  = ndo_path
+            item["metadata"]  = md
+            cached_results.append(item)
+            self.logdebug("Successfully cached URL '%s' as '%s'" % (url, ni_name.get_url()))
+
+        self.logdebug("Finished caching results - %d items cached" % len(cached_results))
+            
+        # Construct response
+        f = StringIO()
+        # Select reponse format
+        if rform == "json":
+            # JSON format: add basic items         
+            ct = "application/json"
+            rd = {}
+            rd["NetInf"] = NETINF_VER
+            rd["status"]  = 200
+            rd["msgid"] = form["msgid"].value
+            rd["ts"] = op_timestamp
+            rd["search"] = srch_dict
+
+            # Iterate through cached results
+            sr_list = []
+            for item in cached_results:
+                sr_list.append( { "ni" : item["ni_obj"].get_url() } )
+            rd["results"] = sr_list
+            
+            json.dump(rd, f)
+            
+        elif rform == "plain":
+            # Textual form report (useful for publish command line applications)
+            ct = "text/plain"
+            f.write("Plain text\n")
+        elif rform == "html":
+            # HTML formatted report intended to be outputted by web browsers
+            # Output header
+            ct = "text/html"
+            f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
+            f.write("<html>\n<body>\n<title>NetInf Search Results</title>\n")
+            f.write("<h1>NetInf Search Results</h1>\n")
+            f.write("\n<br/>\n<ul>\n")
+
+            # Iterate through cached results outputting link and information
+            for item in cached_results:
+                f.write("<li>\n")
+                ni_name = item["ni_obj"]
+                ni_name.set_netloc(self.server.authority)
+                cl = "http://%s%s%s/%s" % (self.server.authority,
+                                           self.WKDIR,
+                                           ni_name.get_alg_name(),
+                                           ni_name.get_digest())
+                f.write('<a href="%s">%s</a>\n' % (cl, ni_name.get_url()))
+                f.write("<blockquote>\n<b>%s</b>\n<br/>\n" % item["text"])
+                f.write("%s\n</blockquote>\n" % item["desc"])
+                f.write("</li>\n")
+                    
+            f.write("</ul>\n<br/>\n<t>Generated at %s</t>" % self.date_time_string())
+            f.write("\n</body>\n</html>\n")
+                
+        length = f.tell()
+        f.seek(0)
+        
+        self.send_response(200, "Search for |%s| successful" % tokens)
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        # Ensure response not cached
+        self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
+        self.send_header("Last-Modified", self.date_time_string())
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        # IE extensions - extra header
+        self.send_header("Cache-Control", "post-check=0, pre-check=0")
+        # This seems irrelevant to a response
+        self.send_header("Pragma", "no-cache")
+        self.end_headers()
+        self.wfile.write(f.read())
+        f.close
+
+        return
+        
+    def form_to_locs(self, form):
+        """
+        @brief Extract locator items (loc1, loc2)from form and return a tuple of loc values
+        @param processed form data
+        @return two item tuple of locators - either None or value from form
+        """
+        if "loc1" in form.keys():
+            loc1 = form["loc1"].value
+        else:
+            loc1 = None
+
+        if "loc2" in form.keys():
+            loc2 = form["loc1"].value
+        else:
+            loc2 = None
+
+        return (loc1, loc2)
+
+    def store_metadata(self, meta_path, loc1, loc2, uri, timestamp, ctype, extrameta):
         """
         @brief Create new metadata file for a cached NDO from form data etc
         @param File name for metadata file
-        @param processed form data
+        @param locator #1 - None or string
+        @param locator #2 - None or string
         @param canonicalized uri
         @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
@@ -1370,16 +1873,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logerror("Unable to create metadata file %s: %s" % (meta_path, str(e)))
             return None
 
-        if "loc1" in form.keys():
-            loc1 = form["loc1"].value
-        else:
-            loc1 = None
-
-        if "loc2" in form.keys():
-            loc2 = form["loc1"].value
-        else:
-            loc2 = None
-
         md = NetInfMetaData(uri, timestamp, ctype,
                             self.server.authority, loc1, loc2, extrameta)
         print "stored:", md
@@ -1393,11 +1886,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return md
     
-    def update_metadata(self, meta_path, form, timestamp, ctype, extrameta):
+    def update_metadata(self, meta_path, loc1, loc2, timestamp, ctype, extrameta):
         """
         @brief Update existing metadata file for a cached NDO from form data etc
         @param File name for metadata file
-        @param processed form data
+        @param locator #1 - None or string
+        @param locator #2 - None or string
         @param timestamp when file written (maybe None if not entering NDO this time)
         @param content type (maybe None if no uploaded file)
         @param Dictionary with 'meta' values from 'ext' parameter (or None)
@@ -1415,16 +1909,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logerror("Unable to open metadata file %s: %s" % (meta_path, str(e)))
             return None
 
-        if "loc1" in form.keys():
-            loc1_val = form["loc1"].value
-        else:
-            loc1_val = None
-
-        if "loc2" in form.keys():
-            loc2_val = form["loc2"].value
-        else:
-            loc2_val = None
-
         # Create empty metadata object
         md = NetInfMetaData()
         try:
@@ -1436,7 +1920,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         f.seek(0)
 
         # Update info in metadata structure and set content type if appropriate
-        md.add_new_details(timestamp, None, loc1_val, loc2_val, extrameta)
+        md.add_new_details(timestamp, None, loc1, loc2, extrameta)
         md.set_ctype(ctype)
         # Write metadata back to file
         print "updated: ", md
@@ -1514,6 +1998,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(f.read())
+        f.close()
 
         return
 
