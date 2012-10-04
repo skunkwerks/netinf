@@ -80,12 +80,14 @@ or can be generated externally and tied into the cache.
 Revision History
 ================
 Version   Date       Author         Notes
+0.4       04/10/2012 Elwyn Davies   Search completed..  Handling of nih using .well-known
+                                    added.
 0.3       03/10/2012 Elwyn Davies   Response format handling modified. Search added.
 0.2	  01/09/2012 Elwyn Davies   Metadata handling added.
 0.1       11/07/2012 Elwyn Davies   Added 307 redirect for get from .well_known.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
-NISERVER_VER = "0.3"
+NISERVER_VER = "0.4"
 
 import os
 import socket
@@ -777,17 +779,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
 
         # Note: 'path' may contain param and query (nut not fragment) components
-        if path.startswith(self.NI_HTTP):
-            path = path[len(self.NI_HTTP):]
-            if (len(path) == 0) or not path.startswith("/"):
-                return (ni.ni_errs.niBADURL, None, None, None)
-            dgstrt = path.find("/", 1)
-            if dgstrt == -1:
-                return (ni.ni_errs.niBADURL, None, None, None)
-                
-            url = "ni://%s%s;%s" % (authority, path[:dgstrt], path[dgstrt+1:])
-            self.logdebug("path %s converted to url %s" % (path, url))
-        elif path.startswith(self.NIH_HTTP):
+        # Must do nih first as ni is a substring of nih!
+        if path.startswith(self.NIH_HTTP):
             path = path[len(self.NIH_HTTP):]
             if (len(path) == 0) or not path.startswith("/"):
                 return (ni.ni_errs.niBADURL, None, None, None)
@@ -797,7 +790,20 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 
             url = "nih:%s;%s" % (path[:dgstrt], path[dgstrt+1:])
             self.logdebug("path %s converted to url %s" % (path, url))
+        elif path.startswith(self.NI_HTTP):
+            path = path[len(self.NI_HTTP):]
+            if (len(path) == 0) or not path.startswith("/"):
+                return (ni.ni_errs.niBADURL, None, None, None)
+            dgstrt = path.find("/", 1)
+            if dgstrt == -1:
+                return (ni.ni_errs.niBADURL, None, None, None)
+                
+            url = "ni://%s%s;%s" % (authority, path[:dgstrt], path[dgstrt+1:])
+            self.logdebug("path %s converted to url %s" % (path, url))
         else:
+            self.logdebug("path '%s' does not start with %s or %s" % (path,
+                                                                      self.NI_HTTP,
+                                                                      self.NIH_HTTP))
             return (ni.ni_errs.niBADURL, None, None, None)
         
         ni_name = ni.NIname(url)
