@@ -80,14 +80,17 @@ or can be generated externally and tied into the cache.
 Revision History
 ================
 Version   Date       Author         Notes
-0.4       04/10/2012 Elwyn Davies   Search completed..  Handling of nih using .well-known
+0.5       05/10/2012 Elwyn Davies   Added metadata to listing and improved sorting and format
+                                    Fixed expiry time for search listing.
+                                    Corrected bug with search info that wasn't ascii.
+0.4       04/10/2012 Elwyn Davies   Search completed.  Handling of nih using .well-known
                                     added.
 0.3       03/10/2012 Elwyn Davies   Response format handling modified. Search added.
 0.2	  01/09/2012 Elwyn Davies   Metadata handling added.
 0.1       11/07/2012 Elwyn Davies   Added 307 redirect for get from .well_known.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
-NISERVER_VER = "0.4"
+NISERVER_VER = "0.5"
 
 import os
 import socket
@@ -96,6 +99,7 @@ import logging
 import shutil
 import json
 import re
+import time
 import DNS
 try:
     from cStringIO import StringIO
@@ -368,7 +372,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     
     # Fixed strings used in NI HTTP translations and requests
     WKN             = "/.well-known/"
-    WKDIR           = "/ni_wkd/"
+    CONT_PRF        = "/ni_cache/"
+    META_PRF        = "/ni_meta/"
     NI_HTTP         = WKN + "ni"
     NIH_HTTP        = WKN + "nih"
     NI_ACCESS_FORM  = "/getputform.html"    
@@ -489,9 +494,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         - Returning the NETINF favicon
 
         Otherwise, we expect either
-        - a path that starts with the WKDIR prefix
-          which is a direct acces for one of the cached files, or
-        - a path that starts /.well-known/ni/
+        - a path that starts with the CONT_PRF prefix
+          which is a direct acces for one of the cached files,
+        - a path that starts with the META_PRF prefix
+          which is a direct acces for the metadata of one of the
+          cached files, or
+        - a path that starts /.well-known/ni[h]/
 
         """
         self.logdebug("GET or HEAD with path %s" % self.path)
@@ -507,28 +515,48 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return f
 
+        # Display a cache listing
         if self.path.lower().startswith(self.NETINF_LIST):
             return self.showcache(self.path.lower())
-
+        
+        # Return the 'favicon' usually displayed in browser headers 
         if (self.path.lower() == "/favicon.ico") :
             self.logdebug("Getting favicon")
-            f = open("favicon.ico", 'rb')
-            f.seek(0, os.SEEK_END)
-            file_len = f.tell()
-            f.seek(0, os.SEEK_SET)
-            self.send_response(200)
-            self.send_header("Content-type", "image/x-icon")
-            self.send_header("Content-Length", str(file_len))
-            self.end_headers()
+            # TODO: Should have a configuration paramater for where to find this
+            try:
+                f = open("favicon.ico", 'rb')
+            except Exception:
+                self.logerror("Cannot open 'favicon.ico' file")
+                self.send_error(404, "No favicon.ico available")
+                return None
+            try:
+                f.seek(0, os.SEEK_END)
+                file_len = f.tell()
+                f.seek(0, os.SEEK_SET)
+                self.send_response(200)
+                self.send_header("Content-type", "image/x-icon")
+                self.send_header("Content-Length", str(file_len))
+                self.end_headers()
+            except:
+                self.logerror("Unable to read 'favicon.ico' file")
+                self.send_error(404, "Cannot read favicon.ico file")
+                f.close()
+                f = None
             return f
-
-        if (self.path.lower().startswith(self.WKDIR)):
+        
+        # Return content from http:///ni_cache/<alg>;<digest> URL
+        if (self.path.lower().startswith(self.CONT_PRF)):
             ndo_path, meta_path = self.redirect_name_to_file_names( \
                                                 self.server.storage_root,
                                                 self.path)
             # Really ought to get msgid as a query string?
-            return self.send_get_header(ndo_path, meta_path, None)           
+            return self.send_get_header(ndo_path, meta_path, None)
 
+        # Return metadata from http:///ni_meta/<alg>;<digest> URL
+        if (self.path.lower().startswith(self.META_PRF)):
+            return self.send_meta_header(self.path, self.server.storage_root) 
+
+        # Process /.well-known/ni[h]/<alg name>/<digest>
         rv, ni_name, ndo_path, meta_path = self.translate_path(self.server.authority,
                                                                self.server.storage_root,
                                                                self.path)
@@ -568,7 +596,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             - if so, then
                 - open the file and find out how large it is
                     - send 404 error if opening for reading fails
-        - send 200 OK and appropriate headers (application/json if only metatdata,
+        - send 200 OK and appropriate headers (application/json if only metadata,
           multipart/mixed if both metadata and NDO content)
         - send the JSON
         - if sending content send MIME boundaries and content file.
@@ -594,7 +622,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             md = NetInfMetaData()
             md.set_json_val(json.load(f))
         except Exception, e:
-            self.logerror("JSON decode of metatdata file %s failed: %s" % (meta_path, str(e)))
+            self.logerror("JSON decode of metadata file %s failed: %s" % (meta_path, str(e)))
             self.send_error(500, "Metadata is corrupt")
             f.close()
             return None
@@ -707,12 +735,70 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         self.send_response(307)
         self.send_header("Location", "http://%s%s%s/%s" % (self.server.authority,
-                                                            self.WKDIR,
+                                                            self.CONT_PRF,
                                                             ni_name.get_alg_name(),
                                                             ni_name.get_digest()))
         self.end_headers()
         
         return None
+
+    def send_meta_header(self, path, storage_root):
+        # expecting /ni_meta/<alg>;<digest>
+        if not path.startswith(self.META_PRF):
+            self.logerror("Path '%s' does not start with %s." %
+                          (path, self.META_PRF))
+            self.send_error(412, "HTTP Path does not start with %s" %
+                            self.META_PRF)
+            return None
+
+        # Remove prefix and find location of first semicolon
+        path = path[len(self.META_PRF):]
+        if len(path) == 0:
+            self.logerror("Path '%s' does not have characters after %s." %
+                          (path, self.META_PRF))
+            self.send_error(412, "HTTP Path ends after %s" %
+                            self.META_PRF)
+            return None
+
+        dgstrt = path.find(";", 1)
+        if dgstrt == -1:
+            self.logerror("Path '%s' does not contain';' after %s." %
+                          (path, self.META_PRF))
+            self.send_error(412, "HTTP Path does not have ';' after %s" %
+                            self.META_PRF)
+            return None
+
+        meta_path = "%s%s%s/%s" % (storage_root, META_DIR,
+                                   path[:dgstrt], path[dgstrt+1:])
+        self.logdebug("path %s converted to file name %s" % (path, meta_path))
+
+        # Open file if it exists
+        if not os.path.isfile(meta_path):
+            self.loginfo("Request for non-existent metadata file '%s'." % self.path)
+            self.send_error(404, "Metadata file for '%s' is not in cache" % self.path)
+            return None
+        try:
+            f = open(meta_path, 'rb')
+        except Exception, e:
+            self.logerror("Unable to open metadata path '%s'" % meta_path)
+            self.send_error(500, "Uable to open existing metadata file.")
+            return None
+
+        # Find out how big it is and generate headers
+        try:
+            f.seek(0, os.SEEK_END)
+            file_len = f.tell()
+            f.seek(0, os.SEEK_SET)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(file_len))
+            self.end_headers()
+        except:
+            self.logerror("Unable to seek in metadata file '%s'" % meta_path)
+            self.send_error(500, "Cannot seek in metadata file")
+            f.close()
+            f = None
+        return f
 
     def ni_name_to_file_name(self, storage_root, ni_name):
         """
@@ -741,14 +827,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         @param pathname as supplied to redirect for ni: .well-known name
         @return pathnames for NDO file and metadata file
 
-        Generate <storage root>/[ndo_dir|meta_dir]/<redirect_name less WKDIR prefix>
+        Generate <storage root>/[ndo_dir|meta_dir]/<redirect_name less CONT_PRF prefix>
         """
         ndo_name =  "%s%s%s" % (storage_root,
                                 NDO_DIR,
-                                redirect_name[len(self.WKDIR):])
+                                redirect_name[len(self.CONT_PRF):])
         meta_name =  "%s%s%s" % (storage_root,
                                  META_DIR,
-                                 redirect_name[len(self.WKDIR):])
+                                 redirect_name[len(self.CONT_PRF):])
         return (ndo_name, meta_name)
 
 
@@ -772,8 +858,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
          - ni URI:        ni://<authority>/<digest name>;<url encoded digest>[?<query]
            or
            nih URI:       nih:/<digest name>;<hex encoded digest>
-         - NDO filename:  <storage_root>/ndo_dir/<digest name>/<url encoded digest>
-         - META filename:<storage_root>/meta_dir/<digest name>/<url encoded digest>
+         - NDO filename:  <storage_root>/ndo_dir/<digest name>;<url encoded digest>
+         - META filename:<storage_root>/meta_dir/<digest name>;<url encoded digest>
         Both are returned.
         
         """
@@ -862,8 +948,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         is a.s. unique, although there may be some issues with heavily
         truncated hashes where uniqueness is a smaller concept.
 
-        This code dynamically builds some HTTP in a fixed width font to
-        display the selected directory listing.
+        This code dynamically builds some HTTP to display the selected
+        directory listing.
         """
         # Determine which directories to list - assume all by default
         algs_list = ni.NIname.get_all_algs()
@@ -886,8 +972,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         f = StringIO()
         f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
         f.write("<html>\n<title>Named Data Object Cache Listing for server %s</title>\n" % self.server.server_name)
-        f.write("<body>\n<h2>Named Data Object Cache Listing for server %s</h2>\n" % self.server.server_name)
-        f.write("<hr>\n<ul>\n")
+        f.write("<body>\n<h1>Named Data Object Cache Listing for server %s</h1>\n" % self.server.server_name)
+        f.write("<hr>\n<ul>")
 
         # Server access netloc
         if (self.server.server_port == 80):
@@ -897,26 +983,66 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             netloc = "%s:%d" % (self.server.server_name, self.server.server_port)
 
         # List all the algorithms selected as HTTP style URLs
+        # Within each pair of selected algorithm directories
+        # - Read the lists of files in each directory and convert to sets
+        #   Expect that generally the ndo list will be a subset of meta list
+        #   because can upload just metadata and/or have content expired.
+        # - Create union of sets
         for alg in algs_list:
-            dirpath = "%s%s%s" % (self.server.storage_root, NDO_DIR, alg)
+            meta_dirpath = "%s%s%s" % (self.server.storage_root, META_DIR, alg)
             try:
-                list = os.listdir(dirpath)
+                meta_set = set(os.listdir(meta_dirpath))
             except os.error:
                 self.send_error(404, "No permission to list directory for algorithm %s" % alg)
                 return None
-            f.write("<h3>Cache Listing for Algorithm %s</h3>\n" % alg)
-            list.sort(key=lambda a: a.lower())
-            http_prefix = "%s/%s/" % (self.NI_HTTP, alg)
-            for name in list:
-                f.write('<li><a href="%s">%s</a>\n'
-                        % ((http_prefix + name), cgi.escape(name)))
+            
+            ndo_dirpath = "%s%s%s" % (self.server.storage_root, NDO_DIR, alg)
+            try:
+                ndo_set = set(os.listdir(ndo_dirpath))
+            except os.error:
+                self.send_error(404, "No permission to list directory for algorithm %s" % alg)
+                return None
+
+            all_ordered = sorted(meta_set.union(ndo_set),
+                                 key = lambda k:
+                                 ("0"+k).lower() if ';' in k else ("1"+k).lower())
+            
+            f.write("</ul>\n<h2>Cache Listing for Algorithm %s</h2>\n<ul>\n" % alg)
+            ni_http_prefix   = "http://%s%s/%s/" % (netloc, self.NI_HTTP, alg)
+            nih_http_prefix  = "http://%s%s/%s/" % (netloc, self.NIH_HTTP, alg)
+            meta_http_prefix = "http://%s%s%s;" % (netloc, self.META_PRF, alg)
+            ni_prefix        = "ni:///%s;" % alg
+            nih_prefix       = "nih:/%s;" % alg
+            for name in all_ordered:
+                if ';' in name:
+                    # It is an nih case
+                    if name in ndo_set:
+                        f.write('<li><a href="%s%s">%s%s</a> ' %
+                                (nih_http_prefix, name, nih_prefix, name))
+                    else:
+                        f.write('<li>%s%s ' % (nih_prefix, name))
+                else:
+                    # It is an ni case
+                    if name in ndo_set:
+                        f.write('<li><a href="%s%s">%s%s</a> ' %
+                                (ni_http_prefix, name, ni_prefix, name))
+                    else:
+                        f.write('<li>%s%s ' % (ni_prefix, name))
+                if name in meta_set:
+                    f.write('(<a href="%s%s">meta</a>)</li>\n' %
+                            (meta_http_prefix, name))
+                else:
+                    f.write('(no metadata available)</li>\n')
             f.write("\n")
         f.write("</ul>\n<hr>\n</body>\n</html>\n")
         length = f.tell()
         f.seek(0)
         self.send_response(200)
         self.send_header("Content-type", "text/html")
+        self.send_header("Content-Disposition", "inline")
         self.send_header("Content-Length", str(length))
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+        self.send_header("Last-Modified", self.date_time_string())
         self.end_headers()
         return f              
 
@@ -1080,7 +1206,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             - sends a 406 error if the validation fails
         - maps the ni: URI into file names (for content and metadata)
             - if the content file already exists updates the metadata
-            - if the metatdats update succeeds send a 304 response(with the mod time here)
+            - if the metadats update succeeds send a 304 response(with the mod time here)
             - if the metedata update fails send a 401 error 
         - if fullPut is set saves the file using the filetype and creating the file
           with the digest name; updates/cretes the metadata file
@@ -1543,8 +1669,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 for item in sect.iter(tag=item_name):
                     r = {}
                     r["url"] = item.find(url_name).text
-                    r["text"] = item.find(text_name).text
-                    r["desc"] = item.find(desc_name).text
+                    r["text"] = item.find(text_name).text.encode('ascii','replace')
+                    r["desc"] = item.find(desc_name).text.encode('ascii','replace')
                     results.append(r)
         except Exception, e:
             self.logerror("Extraction of elements from Wikipaedia results failed: %s" % str(e))
@@ -1803,11 +1929,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 f.write("<li>\n")
                 ni_name = item["ni_obj"]
                 ni_name.set_netloc(self.server.authority)
-                cl = "http://%s%s%s/%s" % (self.server.authority,
-                                           self.WKDIR,
-                                           ni_name.get_alg_name(),
-                                           ni_name.get_digest())
-                f.write('<a href="%s">%s</a>\n' % (cl, ni_name.get_url()))
+                cl = "http://%s%s%s/%s/%s" % (self.server.authority,
+                                              self.WKN,
+                                              ni_name.get_scheme(),
+                                              ni_name.get_alg_name(),
+                                              ni_name.get_digest())
+                ml = "http://%s%s%s;%s" % (self.server.authority,
+                                             self.META_PRF,
+                                             ni_name.get_alg_name(),
+                                             ni_name.get_digest())
+                f.write('<a href="%s">%s</a> ' % (cl, ni_name.get_url()))
+                f.write('(<a href="%s">meta</a>)\n' % ml)
                 f.write("<blockquote>\n<b>%s</b>\n<br/>\n" % item["text"])
                 f.write("%s\n</blockquote>\n" % item["desc"])
                 f.write("</li>\n")
@@ -1823,14 +1955,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ct)
         self.send_header("Content-Disposition", "inline")
         self.send_header("Content-Length", str(length))
-        # Ensure response not cached
-        self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
         self.send_header("Last-Modified", self.date_time_string())
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
-        # IE extensions - extra header
-        self.send_header("Cache-Control", "post-check=0, pre-check=0")
-        # This seems irrelevant to a response
-        self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(f.read())
         f.close
