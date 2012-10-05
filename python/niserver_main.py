@@ -34,6 +34,8 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+0.2	  06/10/2012 Elwyn Davies   Added getputform and nreform options, and
+                                    tests that the files referred to are readable.
 0.1	  16/02/2012 Elwyn Davies   Fixed usage string.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
@@ -81,7 +83,8 @@ def main(default_config_file):
     # Command line parameters overrule config file
     usage = "%prog [-f <config file>] [-p <server port>] [-l <log config file>]\n" + \
             "                [-n <logger name>] [-s <storage root>] [-a <authority>]\n" + \
-            "                [-b <logging base directory>] [-c <control port>]"
+            "                [-b <logging base directory>] [-c <control port>]\n" + \
+            "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]"
 
     parser = OptionParser(usage=usage, prog="niserver")
     
@@ -100,9 +103,15 @@ def main(default_config_file):
     parser.add_option("-a", "--authority", dest="authority",
                       type="string",
                       help="FQDN to be placed in authority component of NI names published.")
-    parser.add_option("-b", "--log-base", dest="log_base",
+    parser.add_option("-b", "--log_base", dest="log_base",
                       type="string",
                       help="Directory path name used to hold log file.")
+    parser.add_option("-g", "--getputform", dest="getputform",
+                      type="string",
+                      help="Name of file containing HTML code for web GET/PUT/SEARCH form.")
+    parser.add_option("-r", "--nrsform", dest="nrsform",
+                      type="string",
+                      help="Name of file containing HTML code for web NRS configuration form.")
     # CTRL_PORT is used as a fallback if neither command line nor config file specify
     parser.add_option("-c", "--control-port", dest="ctrl_port",
                       type="int", default=None,
@@ -111,6 +120,9 @@ def main(default_config_file):
     parser.add_option("-p", "--server-port", dest="server_port",
                       type="int", default=None,
                       help="Control port for sending server stop instruction.")
+    parser.add_option("-u", "--nrs-server", dest="provide_nrs",
+                      default=0, action="count",
+                      help="If present, offer NRS services from server.")
 
     (options, args) = parser.parse_args()
 
@@ -127,13 +139,18 @@ def main(default_config_file):
     ctrl_port = options.ctrl_port
     server_port =options.server_port
     authority = options.authority
+    getputform = options.getputform
+    nrsform = options.nrsform
+    provide_nrs = None if (options.provide_nrs == 0) else True 
 
-    # Can do without config file if -l, -n and -s are specified
+    # Can do without config file if -l, -n, -s, -g and -r are specified
     if not ((log_config_file is not None) and
             (logger is not None) and
-            (storage_root is not None)):
+            (storage_root is not None) and
+            (getputform is not None) and
+            (nrsform is not None)):
         if (config_file is None):
-            parser.error("Must specify a configuration file if not specifying -l, -n and -s.")
+            parser.error("Must specify a configuration file if not specifying -l, -n, -s, -g and -r.")
             sys.exit(-1)
 
     # Get the configuration file if there is one
@@ -151,7 +168,7 @@ def main(default_config_file):
                 os._exit(1)
         except Exception, inst:
             parser.error("Unable to parse configuration file %s: %s" %
-                  (options.config_file, str(inst)))
+                         (options.config_file, str(inst)))
             os._exit(1)
 
         # Get entries from config file
@@ -160,12 +177,12 @@ def main(default_config_file):
         conf_option = "conf_base"
         if not config.has_option(conf_section, conf_option):
             parser.error("No option for %s in section %s in configuration file %s" %
-                  (conf_option, conf_section, config_file))
+                         (conf_option, conf_section, config_file))
             os._exit(1)
         conf_option = "storage_base"
         if not config.has_option(conf_section, conf_option):
             parser.error("No option for %s in section %s in configuration file %s" %
-                  (conf_option, conf_section, config_file))
+                         (conf_option, conf_section, config_file))
             os._exit(1)
                 
         # Retrieve logger configuration from master config file if needed
@@ -174,7 +191,7 @@ def main(default_config_file):
         conf_section = "logger"
         if ((log_config_file is None) or (logger is None)) and (not config.has_section(conf_section)):
             parser.error("No section named %s in configuration file %s" %
-                  (conf_section, config_file))
+                         (conf_section, config_file))
             os._exit(1)
         else:
             if (log_config_file is None):
@@ -183,7 +200,7 @@ def main(default_config_file):
                     log_config_file = config.get(conf_section, conf_option)
                 else:
                     parser.error("No option for %s in section %s in configuration file %s" %
-                          (conf_option, conf_section, config_file))
+                                 (conf_option, conf_section, config_file))
                     os._exit(1)
             if (logger is None):
                 conf_option = "niserver_logger_name"
@@ -191,13 +208,14 @@ def main(default_config_file):
                     logger = config.get(conf_section, conf_option)
                 else:
                     parser.error("No option for %s in section %s in configuration file %s" %
-                          (conf_option, conf_section, config_file))
+                                 (conf_option, conf_section, config_file))
                     os._exit(1)
 
         conf_section = "locations"
-        if ((log_base is None) or (storage_root is None)) and (not config.has_section(conf_section)):
+        if ((log_base is None) or (storage_root is None) or
+            (getputform is None) or (nrsform is None)) and (not config.has_section(conf_section)):
             parser.error("No section named %s in configuration file %s" %
-                  (conf_section, config_file))
+                         (conf_section, config_file))
         else:
             if (log_base is None):
                 conf_option = "log_base"
@@ -209,7 +227,23 @@ def main(default_config_file):
                     storage_root = config.get(conf_section, conf_option)
                 else:
                     parser.error("No option for %s in section %s in configuration file %s" %
-                          (conf_option, conf_section, config_file))
+                                 (conf_option, conf_section, config_file))
+                    os._exit(1)
+            if (getputform is None):
+                conf_option = "getputform_code"
+                if config.has_option(conf_section, conf_option):
+                    getputform = config.get(conf_section, conf_option)
+                else:
+                    parser.error("No option for %s in section %s in configuration file %s" %
+                                (conf_option, conf_section, config_file))
+                    os._exit(1)
+            if (nrsform is None):
+                conf_option = "nrs_config_code"
+                if config.has_option(conf_section, conf_option):
+                    nrsform = config.get(conf_section, conf_option)
+                else:
+                    parser.error("No option for %s in section %s in configuration file %s" %
+                                 (conf_option, conf_section, config_file))
                     os._exit(1)
 
         conf_section = "ports"
@@ -229,12 +263,29 @@ def main(default_config_file):
         conf_section = "authority"
         if (authority is None) and (not config.has_section(conf_section)):
             parser.error("No section named %s in configuration file %s" %
-                  (conf_section, config_file))
+                         (conf_section, config_file))
         else:
             if (authority is None):
                 conf_option = "auth_fqdn"
                 if config.has_option(conf_section, conf_option):
                     authority = config.get(conf_section, conf_option)
+
+        conf_section = "nrs"
+        print provide_nrs
+        if (provide_nrs is None) and (not config.has_section(conf_section)):
+            parser.error("No section named %s in configuration file %s" %
+                         (conf_section, config_file))
+        else:
+            if (provide_nrs is None):
+                conf_option = "provide_nrs"
+                if config.has_option(conf_section, conf_option):
+                    try:
+                        provide_nrs = config.getboolean(conf_section,
+                                                        conf_option)
+                    except ValueError:
+                        parser.error("Value supplied for %s is not an "
+                                     "acceptable boolean representation" %
+                                     conf_option)
 
     # Check we have all the configuration we need and apply fallback
     # defaults for others
@@ -262,6 +313,10 @@ def main(default_config_file):
     if server_port is None:
         server_port = SERVER_PORT
 
+    # Default to not providing NRS service
+    if (provide_nrs is None):
+        provide_nrs = False
+                
     # Check log configuration file exists and is readable (the error messages
     # from logging.config.fileConfig() are confusing if the file does not exist).
     if not os.access(log_config_file, os.R_OK):
@@ -288,7 +343,8 @@ def main(default_config_file):
     loginfo("%s: Main started" % parser.get_prog_name())
     
     loginfo("Serving for authority %s on port %s" % (authority, server_port))
-    #print log_config_file, storage_root, log_base, logger, ctrl_port, server_port
+    #print log_config_file, storage_root, log_base, logger, ctrl_port, \
+    #      server_port, getputform, nrsform, provide_nrs
 
     #====================================================================#
     # Check object cache directories exist and create them if necessary
@@ -317,8 +373,34 @@ def main(default_config_file):
                     sys.exit(-1)
                     
     #====================================================================#
+    # Check getput and nrs configuration HTML files exist and are readable.
+    if not os.path.isfile(getputform):
+        logerror("Code file for getputform.html (%s) is missing." % getputform)
+        sys.exit(-1)
+    if not os.access(getputform, os.R_OK):
+        logerror("Code file for getputform.html (%s) is not readable." % getputform)
+        sys.exit(-1)
+    if not os.path.isfile(nrsform):
+        logerror("Code file for getputform.html (%s) is missing." % nrsform)
+        sys.exit(-1)
+    if not os.access(nrsform, os.R_OK):
+        logerror("Code file for getputform.html (%s) is not readable." % nrsform)
+        sys.exit(-1)
+        
+    #====================================================================#
+    # If NRS server is required, check if redis module is available.
+    if provide_nrs:
+        try:
+            import redis
+        except ImportError:
+            logerror("Unable to import redis module to support NRS server")
+            sys.exit(-1)
+       
+    #====================================================================#
     # Create server to handle HTTP requests
-    ni_server = ni_http_server(storage_root, authority, server_port, niserver_logger)
+    ni_server = ni_http_server(storage_root, authority, server_port,
+                               niserver_logger, getputform, nrsform,
+                               provide_nrs)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request

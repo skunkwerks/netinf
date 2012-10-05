@@ -80,6 +80,8 @@ or can be generated externally and tied into the cache.
 Revision History
 ================
 Version   Date       Author         Notes
+0.6       06/10/2012 Elwyn Davies   Moved form HTML code to separate file accessed via config variable.
+                                    Added NRS setup from code and initial access to Redis database.
 0.5       05/10/2012 Elwyn Davies   Added metadata to listing and improved sorting and format
                                     Fixed expiry time for search listing.
                                     Corrected bug with search info that wasn't ascii.
@@ -90,9 +92,10 @@ Version   Date       Author         Notes
 0.1       11/07/2012 Elwyn Davies   Added 307 redirect for get from .well_known.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
-NISERVER_VER = "0.5"
+NISERVER_VER = "0.6"
 
 import os
+import sys
 import socket
 import threading
 import logging
@@ -116,108 +119,11 @@ import urllib2
 import hashlib
 import datetime
 import xml.etree.ElementTree as ET
-
-"""
-@brief In browser form HTML source for doing NetInf GET and PUBLISH.
-
-This form is displayed by accessing the document  getputform.html in the
-document root of the mini server.  It is (currently) the only piece
-of static HTML accessible through this server.  Everything else is about
-getting showing and publishing Named Data Objects (NDOs) in the cache
-managed by this server.
-
-The code is essentially that from nilib/php/getputform.html.
-"""
-GET_PUT_FORM_HTML = """
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>SAIL "ni" name fetcher and putter</title>
-</head>
-<body>
-
-<p>Some forms to let you play NetInf games in a browser. The list 
-of things named with hashes on this site can be seen
-<a href="/netinfproto/list">here</a>.</p>
-
-<h1>NetInf GET</h1>
-<form name="fetchni" action="/netinfproto/get" method="post">
-<table border="1">
-<tbody>
-<input type="hidden" name="stage" value="zero"/>
-<tr> <td>NI name:</td> <td><input type="text" name="URI" /></td> </tr>
-<tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
-<tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
-<tr>
-<td/>
-<td><input type="submit" value="Submit"/> </td>
-</tr>
-</tbody>
-</table>
-</form>
-
-<h1>NetInf PUBLISH</h1>
-
-<form name="fetchni" action="/netinfproto/publish" enctype="multipart/form-data" method="post">
-<table border="1">
-<tbody>
-<tr><td>NI name</td> <td><input type="text" name="URI"/> </tr>
-<tr><td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
-<tr><td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
-<tr><td>File (optional): </td><td><input type="file" name="octets" size="20"/></td></tr>
-<tr><td>Locator1</td> <td><input type="text" name="loc1"/> </tr>
-<tr><td>Locator2</td> <td><input type="text" name="loc2"/> </tr>
-<tr><td>Full PUT?</td><td><input type="checkbox" name="fullPut"/></td></tr>
-
-<tr> <td>Response format (html/json/plain text):</td>
-<td>
-<input type="radio" name="rform" value="html"/> html
-<input type="radio" name="rform" value="json" checked/> json
-<input type="radio" name="rform" value="plain" checked/> text
-</td</tr>
-<tr><td><input type="submit" value="Submit"/> </tr>
-
-</tbody>
-</table>
-
-</form>
-
-
-<h1>NetInf SEARCH</h1>
-
-<p>This will search Wikipedia for the terms entered, get the first 10
-hits, retrieve those and generate ni URIs for them and store meta-data
-for that ni URI with the wikipedia and local .well-known locators.
- </p>
-
-<form name="searchni" action="/netinfproto/search" method="post">
-<table border="1">
-<tbody>
-<input type="hidden" name="stage" value="zero"/>
-<tr> <td>Keywords:</td> <td><input type="text" name="tokens" /></td> </tr>
-<tr> <td>msg-id</td> <td><input type="text" name="msgid" /></td> </tr>
-<tr> <td>ext (optional)</td> <td><input type="text" name="ext" /></td> </tr>
-
-<tr> <td>Response format (html/json):</td>
-<td>
-<input type="radio" name="rform" value="html"/> html
-<input type="radio" name="rform" value="json" checked/> json
-</td</tr>
-
-<tr>
-<td><input type="submit" value="Submit"/> </td>
-<td></td>
-</tr>
-</tbody>
-</table>
-</form>
-
-</body>
-</html>
-
-"""
-
+try:
+    import redis
+    redis_loaded = True
+except ImportError:
+    redis_loaded = False
 
 import ni
 
@@ -398,6 +304,12 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     SRCH_CACHE_SCHM = "ni"
     SRCH_CACHE_DGST = "sha-256"
 
+    # NRS server related info
+    NRS_CONF_FORM   = "/nrsconfig.html"
+    NRS_CONF        = "/netinfproto/nrsconf"
+    NRS_LOOKUP      = "/netinfproto/nrslookup"
+    NRS_VALS        = "/netinfproto/nrsvals"
+
     def end_run(self):
         self.request_close()
 
@@ -488,8 +400,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         and must be closed by the caller under all circumstances), or
         None, in which case the caller has nothing further to do.
 
-        There are three special cases:
-        - Returning the form code
+        There are four special cases:
+        - Returning the form code for GET/PUT/SEARCH form
+        - If running NRS server, return the form for NRS configuration 
         - Getting a listing of the cache
         - Returning the NETINF favicon
 
@@ -503,16 +416,57 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         """
         self.logdebug("GET or HEAD with path %s" % self.path)
-        # Display the put/get form for this server.
+        # Display the PUT/GET/SEARCH form for this server.
         if (self.path.lower() == self.NI_ACCESS_FORM):
-            f = StringIO()
-            f.write(GET_PUT_FORM_HTML)
-            file_len = f.tell()
-            f.seek(0, os.SEEK_SET)
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.send_header("Content-Length", str(file_len))
-            self.end_headers()
+            try:
+                f = open(self.server.getputform, 'rb')
+            except Exception:
+                self.logerror("Cannot open '%s' file" %
+                              self.server.getputform)
+                self.send_error(404, "Form file not available")
+                return None
+            try:
+                f.seek(0, os.SEEK_END)
+                file_len = f.tell()
+                f.seek(0, os.SEEK_SET)
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.send_header("Content-Length", str(file_len))
+                self.end_headers()
+            except:
+                self.logerror("Unable to read '%s' file" % self.server.getputform)
+                self.send_error(404, "Cannot read form definition file")
+                f.close()
+                f = None
+            return f
+
+        # Display the NRS form for this server, if running NRS server.
+        if (self.path.lower() == self.NRS_CONF_FORM):
+            if not self.server.provide_nrs:
+                self.loginfo("Request for NRS configuration form when not running NRS server")
+                self.send_error(404, "NRS server not running at this location")
+                return None
+            # Display the form
+            try:
+                f = open(self.server.nrsform, 'rb')
+            except Exception:
+                self.logerror("Cannot open '%s' file" %
+                              self.server.nrsform)
+                self.send_error(404, "Form file not available")
+                return None
+            try:
+                f.seek(0, os.SEEK_END)
+                file_len = f.tell()
+                f.seek(0, os.SEEK_SET)
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.send_header("Content-Length", str(file_len))
+                self.end_headers()
+            except:
+                self.logerror("Unable to read '%s' file" % self.server.nrsform)
+                self.send_error(404, "Cannot read form definition file")
+                f.close()
+                f = None
             return f
 
         # Display a cache listing
@@ -1055,7 +1009,11 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         messages on the HTTP convergence layer.
         The URLS are of the form
         http://<destination netloc>/netinfproto/<msg type>
-        where <msg_type> is 'get', 'publish' (alias 'put') ('search' to follow)
+        where <msg_type> is:
+            For the basic NetInf protocol:
+                'get', 'publish' (alias 'put'), 'search'
+            Only if functioning as an NRS server:
+                'nrsconf', 'nrslookup', 'nrsvals'
 
         This routine processes the form data ready to either retrieve a
         Named Data Object (NDO) from the local cache ('get' case) or
@@ -1075,12 +1033,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         the cache are named using the url-safe base64 encoded
         digest used in ni: URIs. (NOTE: There is a small probability of
         clashing names for truncated hashes.)
+
+        The NRS database is held in a Redis database.
         """
         
         # The NetInf proto uses a very limited set of requests..
-        if not ((self.path == self.NETINF_GET) or
-                (self.path == self.NETINF_PUBLISH) or
-                (self.path == self.NETINF_SEARCH)):
+        if self.path not in [ self.NETINF_GET, self.NETINF_PUBLISH,
+                              self.NETINF_PUT, self.NETINF_SEARCH,
+                              self.NRS_CONF, self.NRS_LOOKUP,
+                              self.NRS_VALS ]:
             self.logdebug("Unrecognized POST request: %s" % self.path)
             self.send_error(404, "POST %s is not used by NetInf" % self.path)
             return
@@ -1097,13 +1058,40 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Call subsidiary routines to do the work
         if (self.path == self.NETINF_GET):
             self.netinf_get(form)
-        elif (self.path == self.NETINF_PUBLISH):
+        elif ((self.path == self.NETINF_PUBLISH) or
+              (self.path == self.NETINF_PUT)):
             self.netinf_publish(form)
         elif (self.path == self.NETINF_SEARCH):
             self.netinf_search(form)
+        elif self.server.provide_nrs:
+            if (self.path == self.NRS_CONF):
+                self.nrs_conf(form)
+            elif (self.path == self.NRS_LOOKUP):
+                self.nrs_lookup(form)
+            elif (self.path == self.NRS_VALS):
+                self.nrs_vals(form)
+            else:
+                raise ValueError
+        elif self.path in [ self.NRS_CONF, self.NRS_LOOKUP, self.NRS_VALS ]:
+            self.logerror("NRS request '%s' sent to server not providing NRS" %
+                          self.path)
+            self.send_error(404, "NetInf server is not providing NRS services")
+            return
         else:
-            raise ValueError()
+            raise ValueError
 
+        return
+
+    def nrs_conf(self, form):
+        self.send_error(418, "NRS conf")
+        return
+
+    def nrs_lookup(self, form):
+        self.send_error(418, "NRS lookup")
+        return
+
+    def nrs_vals(self, form):
+        self.send_error(418, "NRS vals")
         return
 
     def netinf_get(self, form):
@@ -2135,12 +2123,25 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return
 
 class NIHTTPServer(ThreadingMixIn, HTTPServer):
-    def __init__(self, addr, storage_root, authority, logger):
+    def __init__(self, addr, storage_root, authority,
+                 logger, getputform, nrsform, provide_nrs):
         # These are used  by individual requests
         # accessed via self.server in the handle function
         self.storage_root = storage_root
         self.authority = authority
         self.logger = logger
+        self.getputform = getputform
+        self.nrsform = nrsform
+        self.provide_nrs = provide_nrs
+
+        # If an NRS server is wanted, create a Redis client instance
+        # Assume it is the default local_host, port 6379 for the time being
+        if provide_nrs:
+            try:
+                self.nrs_redis = redis.StrictRedis()
+            except Exception, e:
+                logger.error("Unable to connect to Redis server: %s" % str(e))
+                sys.exit(-1)
         
         self.running_threads = set()
         self.next_server_num = 1
@@ -2170,7 +2171,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         del self.running_threads
         self.shutdown()
 
-def ni_http_server(storage_root, authority, server_port, logger):
+def ni_http_server(storage_root, authority, server_port,
+                   logger, getputform, nrsform, provide_nrs):
     #HOST, PORT = "mightyatom.folly.org.uk", 8080
     # Get an honest-to-goodness routable IP address for authority
     # Python tends to give you the loopback address which
@@ -2183,11 +2185,19 @@ def ni_http_server(storage_root, authority, server_port, logger):
         try:
             ipaddr = DNS.dnslookup(authority, "A")[0]
         except:
-            self.logger.warn("Cannot get IP address for authority from DNS")
+            logger.warn("Cannot get IP address for authority from DNS")
             ipaddr = socket.gethostbyname(authority)
     print authority, ipaddr, server_port
+
+    if provide_nrs:
+        if not redis_loaded:
+            logger.error("Unable to import redis module needed for NRS server")
+            sys.exit(-1)
+        logger.info("Succesfully loaded redis module for NRS server")
+    
     return NIHTTPServer((ipaddr, server_port), storage_root,
-                         "%s:%d" % (authority, server_port), logger)
+                         "%s:%d" % (authority, server_port),
+                        logger, getputform, nrsform, provide_nrs)
 
 #=========================================================================
 
