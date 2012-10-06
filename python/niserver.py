@@ -98,6 +98,7 @@ import os
 import sys
 import socket
 import threading
+import itertools
 import logging
 import shutil
 import json
@@ -308,6 +309,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     NRS_CONF_FORM   = "/nrsconfig.html"
     NRS_CONF        = "/netinfproto/nrsconf"
     NRS_LOOKUP      = "/netinfproto/nrslookup"
+    NRS_DELETE      = "/netinfproto/nrsdelete"
     NRS_VALS        = "/netinfproto/nrsvals"
 
     def end_run(self):
@@ -1040,8 +1042,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # The NetInf proto uses a very limited set of requests..
         if self.path not in [ self.NETINF_GET, self.NETINF_PUBLISH,
                               self.NETINF_PUT, self.NETINF_SEARCH,
-                              self.NRS_CONF, self.NRS_LOOKUP,
-                              self.NRS_VALS ]:
+                              self.NRS_CONF,   self.NRS_LOOKUP,
+                              self.NRS_DELETE, self.NRS_VALS ]:
             self.logdebug("Unrecognized POST request: %s" % self.path)
             self.send_error(404, "POST %s is not used by NetInf" % self.path)
             return
@@ -1068,11 +1070,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 self.nrs_conf(form)
             elif (self.path == self.NRS_LOOKUP):
                 self.nrs_lookup(form)
+            elif (self.path == self.NRS_DELETE):
+                self.nrs_delete(form)
             elif (self.path == self.NRS_VALS):
                 self.nrs_vals(form)
             else:
                 raise ValueError
-        elif self.path in [ self.NRS_CONF, self.NRS_LOOKUP, self.NRS_VALS ]:
+        elif self.path in [ self.NRS_CONF, self.NRS_LOOKUP,
+                            self.NRS_DELETE, self.NRS_VALS ]:
             self.logerror("NRS request '%s' sent to server not providing NRS" %
                           self.path)
             self.send_error(404, "NetInf server is not providing NRS services")
@@ -1082,17 +1087,35 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return
 
-    def nrs_conf(self, form):
-        self.send_error(418, "NRS conf")
-        return
-
-    def nrs_lookup(self, form):
-        self.send_error(418, "NRS lookup")
-        return
-
-    def nrs_vals(self, form):
-        self.send_error(418, "NRS vals")
-        return
+    def check_form_data(self, form, mandatory_fields,
+                        optional_fields, field_values, form_name):
+        # Validate form data
+        # Check only expected keys and no more
+        for field in mandatory_fields:
+            if field not in form.keys():
+                self.logerror("Missing mandatory field %s in %s form" %
+                              (field, form_name))
+                self.send_error(412, "Missing mandatory field %s in %s form." %
+                                (field, form_name))
+                return False
+            field_values[field] = form[field].value
+            
+        ofc = 0
+        for field in optional_fields:
+            if field in form.keys():
+                ofc += 1
+                field_values[field] = form[field].value
+            else:
+                field_values[field] = "(not supplied)"
+                
+        if (len(form.keys()) > (len(mandatory_fields) + ofc)):
+            self.logerror("NetInf %s form has too many fields: %s" %
+                          (form_name, str(form.keys())))
+            self.send_error(412, "Form has unxepected extra fields beyond %s" %
+                            (str(mandatory_fields) + str(optional_publish_fields)))
+            return False
+                          
+        return True
 
     def netinf_get(self, form):
         """
@@ -1951,6 +1974,247 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         return
         
+    def read_nrs_entry(self, redis_key, val_names):
+        # Check if there is any entry
+        try:
+            all_vals = self.server.nrs_redis.hgetall(redis_key)
+        except Exception, e:
+            return None
+
+        if len(all_vals) == 0:
+            return None
+        
+        try:
+            vals = self.server.nrs_redis.hmget(redis_key, val_names)
+        except Exception, e:
+            return None
+
+        # Combine hints and locs into lists
+        hints = []
+        locs = []
+        meta = None
+        for pair in itertools.imap(None, val_names, vals):
+            if pair[1] is not None:
+                if pair[0].startswith("hint"):
+                    hints.append(pair[1])
+                elif pair[0].startswith("loc"):
+                    locs.append(pair[1])
+                elif pair[0] == "meta":
+                    meta = pair[1]
+
+        # Return the results as a dictionary 
+        return { "hints" : hints, "locs": locs, "meta": meta }
+
+    def nrs_conf(self, form):
+        # Validate form data
+        # Check only expected keys and no more
+        fov = {}
+        mandatory = ["URI"]
+        optional = ["hint1", "hint2", "loc1", "loc2", "meta"]
+        if not self.check_form_data(form, mandatory, optional, fov, "nrsconf"):
+            return
+
+        # Make Redis entry
+        redis_key = fov["URI"]
+        redis_vals = {}
+        for field in optional:
+            if field in form.keys():
+                redis_vals[field] = fov[field]
+        # Check there were some fields non-empty
+        if len(redis_vals.keys()) == 0:
+            self.logerror("No values given when entering key '%s' in Redis" % redis_key)
+            self.send_error(412, "Must have at least one value field non-empty")
+            return
+
+        # Do the database entry
+        try:
+            if not self.server.nrs_redis.hmset(redis_key, redis_vals):
+                self.logerror("Failed to update Redis entry for '%s' - vals |%s|" %
+                              (redis_key, str(redis_vals)))
+                self.send_error(412, "Unable to update NRS database entry")
+                return
+        except Exception, e:
+            self.logerror("Updating Redis entry for '%s' caused exception %s - vals |%s|" %
+                          (redis_key, str(e), str(redis_vals)))
+            self.send_error(412, "Updating NRS database entry caused exception: %s" % str(e))
+            return
+        
+        # Written successfully - send response
+        val_dict = self.read_nrs_entry(redis_key, optional)
+        if val_dict is None:
+            
+            self.logerror("Reading Redis entry for '%s' failed" % redis_key)
+            self.send_error(412, "Reading NRS database entry failed")
+            return
+
+        # Generate successful reponse output
+        f = StringIO()
+        f.write(json.dumps(val_dict))
+        length = f.tell()
+        f.seek(0)
+        
+        self.send_response(200, "NRS Entry for '%s' successful" % redis_key)
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+        self.send_header("Last-Modified", self.date_time_string())
+        self.end_headers()
+        self.wfile.write(f.read())
+        f.close
+          
+        return
+
+    def nrs_lookup(self, form):
+        # Validate form data
+        # Check only expected keys and no more
+        fov = {}
+        mandatory = ["URI"]
+        optional = []
+        expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
+        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+            return
+
+        # Lookup up URI value
+        redis_key = fov["URI"]
+        val_dict = self.read_nrs_entry(redis_key, expected)
+        if val_dict is None:
+            
+            self.loginfo("No Redis entry for '%s' looked up" % redis_key)
+            self.send_error(404, "No entry for key '%s'" % redis_key)
+            return
+
+        # Generate successful reponse output
+        f = StringIO()
+        f.write(json.dumps(val_dict))
+        length = f.tell()
+        f.seek(0)
+        
+        self.send_response(200, "NRS Entry lookup for '%s' successful" % redis_key)
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+        self.send_header("Last-Modified", self.date_time_string())
+        self.end_headers()
+        self.wfile.write(f.read())
+        f.close
+          
+        return
+
+    def nrs_delete(self, form):
+        # Validate form data
+        # Check only expected keys and no more
+        fov = {}
+        mandatory = ["URI"]
+        optional = []
+        expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
+        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+            return
+
+        # Lookup up URI value
+        redis_key = fov["URI"]
+        val_dict = self.read_nrs_entry(redis_key, expected)
+        if val_dict is None:            
+            self.loginfo("No Redis entry for '%s' to be deleted" % redis_key)
+            self.send_error(404, "No entry for key '%s'" % redis_key)
+            return
+
+        try:
+            if not self.server.nrs_redis.delete(redis_key):
+                self.loginfo("Deleting Redis entry for '%s' failed" % redis_key)
+                self.send_error(404, "Deleting entry for key '%s' failed" % redis_key)
+                return
+        except Exception, e:
+            self.logerror("Deleting Redis key '%s' caused exception %s" %
+                          (redis_key, str(e)))
+            self.send_error(412, "Deleting key in NRS database caused exception: %s" %
+                            str(e))
+            return
+
+            
+
+        # Generate successful reponse output
+        f = StringIO()
+        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
+        f.write("<html>\n<body>\n<title>NetInf NRS Deletion Report</title>\n")
+        f.write("<h2>NetInf NRS Deletion Report</h2>\n")
+        f.write("\n<p>Item with NI name or authority '%s' deleted.</p>" % redis_key)
+        f.write("\n</body>\n</html>\n")
+        length = f.tell()
+        f.seek(0)
+        
+        self.send_response(200, "NRS Entry lookup for '%s' successful" % redis_key)
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+        self.send_header("Last-Modified", self.date_time_string())
+        self.end_headers()
+        self.wfile.write(f.read())
+        f.close
+          
+        return
+
+    def nrs_vals(self, form):
+        # Validate form data
+        # Check only expected keys and no more
+        fov = {}
+        mandatory = []
+        optional = ["pattern"]
+        expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
+        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+            return
+
+        # Set up pattern 
+        if "pattern" not in form.keys():
+            redis_patt = "*"
+        else:
+            redis_patt = fov["pattern"]
+
+        # Find keys matching pattern
+        try:
+            key_list = self.server.nrs_redis.keys(redis_patt)
+        except Exception, e:
+            self.logerror("Reading Redis keys for pattern '%s' caused exception %s" %
+                          (redis_patt, str(e)))
+            self.send_error(412, "Reading key list in NRS database caused exception: %s" %
+                            str(e))
+            return
+
+        # Make a dictionary with all keys
+        results = {}
+        for redis_key in key_list:
+            val_dict = self.read_nrs_entry(redis_key, expected)
+            if val_dict is not None:
+                results[redis_key] = val_dict
+
+        response = {}
+        response["pattern"] = redis_patt
+        response["results"] = results
+
+        # Generate successful response output
+        f = StringIO()
+        f.write(json.dumps(response))
+        length = f.tell()
+        f.seek(0)
+        
+        self.send_response(200, "NRS Entry lookup for pattern '%s' successful" % redis_patt)
+        self.send_header("MIME-Version", "1.0")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+        self.send_header("Last-Modified", self.date_time_string())
+        self.end_headers()
+        self.wfile.write(f.read())
+        f.close
+          
+        return
+
     def form_to_locs(self, form):
         """
         @brief Extract locator items (loc1, loc2)from form and return a tuple of loc values
