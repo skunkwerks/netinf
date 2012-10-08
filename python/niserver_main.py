@@ -2,8 +2,7 @@
 """
 @package ni
 @file niserver_main.py
-@brief Main program for NI lightweight HTTP server.
-@version $Revision: 0.01 $ $Author: elwynd $
+@version $Revision: 0.03 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
@@ -26,18 +25,22 @@ limitations under the License.
 
 ===========================================================================
 
-Main program for NI lightweight HTTP server
+@brief Main program for NI lightweight HTTP server
 
+@details
 Sets up logging, creates NI HTTP listener thread and control socker
 Waits for shutdown comands or signals; shutsdown server on request.
-
+@code
 Revision History
 ================
 Version   Date       Author         Notes
-0.2	  06/10/2012 Elwyn Davies   Added getputform and nreform options, and
-                                    tests that the files referred to are readable.
+0.3	  07/10/2012 Elwyn Davies   Added favicon option. Improved doxygen stuff.
+0.2	  06/10/2012 Elwyn Davies   Added getputform and nrsform options, and
+                                    tests that the files referred to are
+                                    readable.
 0.1	  16/02/2012 Elwyn Davies   Fixed usage string.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+@endcode
 """
 
 import os
@@ -52,30 +55,49 @@ import logging.config
 import ConfigParser
 from optparse import OptionParser
 
-from niserver import ni_http_server, NDO_DIR, META_DIR
-from ni import NIname
+from niserver import ni_http_server, check_cache_dirs
 
+##@var CTRL_PORT
 # UDP port number used to send a shutdown control request.
 CTRL_PORT = 2114
 
-# Default port number for HTTP server to listen om
+##@var SERVER_PORT
+# Default port number for HTTP server to listen on
 SERVER_PORT = 8080
+
+##@var FAVICON_FILE
+# Default name for favicon file requested by browsers
+FAVICON_FILE = "/favicon.ico"
 
 def main(default_config_file):
     """
     @brief main program for lightweight NI HTTP server
-    @param Default to use for configuration file if not on command line.
+    @param default_config_file string Pathname of default to use for
+    configuration file if not on command line.
+    @return Exits to system with various return codes depending on reason.
 
     Functions:
     - Parse options and negotiate with configuration file
     - Setup logging
-    - check object cache directories exist and create if not present
-    - check authority for server
-    - create thread for main NI server listener (for incoming requests)
-    - start thread
-    - create control socket for shutdown instructions
-    - go to sleep waiting for shutdown command or signal
-    - on shutdown request or signal close down server and exit
+    - Check object cache directories exist and create if not present
+    - Check form and favicon files exist and are readable
+    - If NRS server to be provided, check Redis module can be loaded
+    - Check authority for server
+    - Create thread for main NI server listener (for incoming requests)
+    - Start thread
+    - Create control socket for shutdown instructions
+    - Go to sleep waiting for shutdown command or signal
+    - On shutdown request or signal close down server and exit
+
+    To check the command line parameters use@n
+    niserver_main.py -h
+
+    The default for the configuration file locations is /var/niserver
+    which is where the form and favicon.ico files will be placed
+    by default.
+
+    See the default configuration file (niserver.conf) for details of
+    all configuration file settings.
     """
 
     # Options parsing and verification stuff
@@ -83,7 +105,7 @@ def main(default_config_file):
     # Command line parameters overrule config file
     usage = "%prog [-f <config file>] [-p <server port>] [-l <log config file>]\n" + \
             "                [-n <logger name>] [-s <storage root>] [-a <authority>]\n" + \
-            "                [-b <logging base directory>] [-c <control port>]\n" + \
+            "                [-b <logging base directory>] [-c <control port>] [-i <favicon file>]\n" + \
             "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]"
 
     parser = OptionParser(usage=usage, prog="niserver")
@@ -123,6 +145,9 @@ def main(default_config_file):
     parser.add_option("-u", "--nrs-server", dest="provide_nrs",
                       default=0, action="count",
                       help="If present, offer NRS services from server.")
+    parser.add_option("-i", "--icon", dest="favicon",
+                      type="string",
+                      help="File containing favicon for browser display.")
 
     (options, args) = parser.parse_args()
 
@@ -141,8 +166,10 @@ def main(default_config_file):
     authority = options.authority
     getputform = options.getputform
     nrsform = options.nrsform
-    provide_nrs = None if (options.provide_nrs == 0) else True 
+    provide_nrs = None if (options.provide_nrs == 0) else True
+    favicon = options.favicon
 
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
     if not ((log_config_file is not None) and
             (logger is not None) and
@@ -245,6 +272,10 @@ def main(default_config_file):
                     parser.error("No option for %s in section %s in configuration file %s" %
                                  (conf_option, conf_section, config_file))
                     os._exit(1)
+            if (favicon is None):
+                conf_option = "favicon"
+                if config.has_option(conf_section, conf_option):
+                    favicon = config.get(conf_section, conf_option)
 
         conf_section = "ports"
         if ((ctrl_port is None) or (server_port is None)) and (not config.has_section(conf_section)):
@@ -287,6 +318,7 @@ def main(default_config_file):
                                      "acceptable boolean representation" %
                                      conf_option)
 
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Check we have all the configuration we need and apply fallback
     # defaults for others
     if ((log_config_file is None) or
@@ -313,10 +345,19 @@ def main(default_config_file):
     if server_port is None:
         server_port = SERVER_PORT
 
+    # Set fallback for favicon
+    if favicon is None:
+        if config_file is not None:
+            favicon = os.path.dirname(config_file) + FAVICON_FILE
+        else:
+            favicon = "." + FAVICON_FILE 
+
     # Default to not providing NRS service
     if (provide_nrs is None):
         provide_nrs = False
                 
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
+    # Setup logging...
     # Check log configuration file exists and is readable (the error messages
     # from logging.config.fileConfig() are confusing if the file does not exist).
     if not os.access(log_config_file, os.R_OK):
@@ -342,38 +383,19 @@ def main(default_config_file):
     logerror = niserver_logger.error
     loginfo("%s: Main started" % parser.get_prog_name())
     
-    loginfo("Serving for authority %s on port %s" % (authority, server_port))
     #print log_config_file, storage_root, log_base, logger, ctrl_port, \
-    #      server_port, getputform, nrsform, provide_nrs
+    #      server_port, getputform, nrsform, provide_nrs, favicon
 
-    #====================================================================#
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Check object cache directories exist and create them if necessary
     if not os.path.isdir(storage_root):
         logerror("Storage root directory %s does not exist." % storage_root)
         sys.exit(-1)
-    for tree_name in (NDO_DIR, META_DIR):
-        tree_root = "%s%s" % (storage_root, tree_name)
-        if not os.path.isdir(tree_root):
-            loginfo("Creating object cache tree directory: %s" % tree_root)
-            try:
-                os.mkdir(tree_root, 0755)
-            except Exception, e:
-                logerror("Unable to create tree directory %s : %s." % \
-                         (tree_root, str(e)))
-                sys.exit(-1)
-        for auth_name in NIname.get_all_algs():
-            dir_name = "%s%s" % (tree_root, auth_name)
-            if not os.path.isdir(dir_name):
-                loginfo("Creating object cache directory: %s" % dir_name)
-                try:
-                    os.mkdir(dir_name, 0755)
-                except Exception, e:
-                    logerror("Unable to create cache directory %s : %s." % \
-                             (dir_name, str(e)))
-                    sys.exit(-1)
+    if not check_cache_dirs(storage_root, niserver_logger):
+        sys.exit(-1)
                     
-    #====================================================================#
-    # Check getput and nrs configuration HTML files exist and are readable.
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
+    # Check getput and nrs configuration form HTML files exist and are readable.
     if not os.path.isfile(getputform):
         logerror("Code file for getputform.html (%s) is missing." % getputform)
         sys.exit(-1)
@@ -387,7 +409,16 @@ def main(default_config_file):
         logerror("Code file for getputform.html (%s) is not readable." % nrsform)
         sys.exit(-1)
         
-    #====================================================================#
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
+    # Check favicon file exists and is readable.
+    if not os.path.isfile(favicon):
+        logerror("File for favicon (%s) is missing." % favicon)
+        sys.exit(-1)
+    if not os.access(getputform, os.R_OK):
+        logerror("File for favicon (%s) is not readable." % favicon)
+        sys.exit(-1)
+
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # If NRS server is required, check if redis module is available.
     if provide_nrs:
         try:
@@ -396,11 +427,11 @@ def main(default_config_file):
             logerror("Unable to import redis module to support NRS server")
             sys.exit(-1)
        
-    #====================================================================#
+    #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port,
                                niserver_logger, getputform, nrsform,
-                               provide_nrs)
+                               provide_nrs, favicon)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request
@@ -410,13 +441,15 @@ def main(default_config_file):
     ni_server_listener.setDaemon(True)
     ni_server_listener.start()
     
+    loginfo("Serving for authority %s on port %s" % (authority, server_port))
+
     # Let everything have a chance to get going (old trick)
     time.sleep(0.1)
     loginfo("NI serverlistener running in thread: %s" %
             ni_server_listener.getName())
 
     # The main thread now goes to sleep until either an interrupt or incoming data
-    # (any incoming data) on CTRL_PORT (typically one more than the mail input port)
+    # (any incoming data) on CTRL_PORT (typically 2114).
     # Shutdown control is restricted to local machine.
     HOST = "localhost"
     ctrl_skt = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,0)
