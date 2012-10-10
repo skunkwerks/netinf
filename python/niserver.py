@@ -2,21 +2,22 @@
 """
 @package ni
 @file niserver.py
-@brief Lightweight dedicated NI HTTP server.
-@version $Revision: 0.07 $ $Author: elwynd $
+@brief Lightweight dedicated NI HTTP server and NRS server.
+@version $Revision: 0.08 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          http://tools.ietf.org/html/farrell-decade-ni-00
-          http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    
-       http://www.apache.org/licenses/LICENSE-2.0
+       - http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -45,24 +46,24 @@ Implements
 
 Creates a threaded HTTP server that responds to a limited set of URLs
 
-- GET/HEAD on paths:@n
-                   /.well-known/ni[h]/<digest algorithm id>/<digest>,@n
-                   /ni_cache/<digest algorithm id>;<digest>,@n
-                   /ni_meta/<digest algorithm id>;<digest>,@n
-                   /getputform.html,@n
-                   /nrsconfig.html, (wne running NRS server)@n
-                   /favicon.ico, and@n
-                   /netinfproto/list
-- POST on paths (basic system):@n
-                   /netinfproto/get,@n
-                   /netinfproto/publish,@n
-                   /netinfproto/put, and@n
-                   /netinf/search
-- POST on paths (when running NRS server):@n
-                   /netinfproto/nrsconf,@n
-                   /netinfproto/nrslookup,@n
-                   /netinfproto/nrsdelete, and@n
-                   /netinfproto/nrsvals@n
+- GET/HEAD on paths:
+                 - /.well-known/ni[h]/<digest algorithm id>/<digest>,
+                 - /ni_cache/<digest algorithm id>;<digest>,
+                 - /ni_meta/<digest algorithm id>;<digest>,
+                 - /getputform.html,
+                 - /nrsconfig.html, (wne running NRS server)
+                 - /favicon.ico, and<
+                 - /netinfproto/list
+- POST on paths (basic system):
+                 - /netinfproto/get,
+                 - /netinfproto/publish,
+                 - /netinfproto/put, and
+                 - /netinf/search
+- POST on paths (when running NRS server):
+                 - /netinfproto/nrsconf,
+                 - /netinfproto/nrslookup,
+                 - /netinfproto/nrsdelete, and
+                 - /netinfproto/nrsvals
 
 A new thread is created for each incoming request.  Most of the work is done
 by HTTP Server (effectively TCPServer) and BaseHTTPRequestHandler from the
@@ -76,7 +77,7 @@ on BaseHTTPServer in his Python Module of the Week series at
 http://www.doughellmann.com/PyMOTW/BaseHTTPServer/index.html
 
 Should be used with Python 2.x where x is 6 or greater (the TCP socket
-server up to version 2.5 is badly flawed (euphemism).
+server up to version 2.5 is badly flawed (euphemism)).
 
 The server uses a configuration file to specify various items (see
 niserver_main.py) and set up logging.  The items that are significant
@@ -98,12 +99,18 @@ TO DO: Add configuration to connect to non-default Redis server.
 
 The server manages a local cache of published information.  In the storage_root
 directory there are two parallel sub-directories: an ni_ndo and and an ni_meta
-sub-directory where the content and metadata of the content are stored,
-respectively.  In each sub-directory there is a sub-directory for each digest
-algorithm.  Each of these directories contains the file names are the digest of
-the content (i.e., the digest in the ni: or nih: name).  These directories are
-set up by niserver_main.py when the server is first started based on the list of
-available digest algorithms supplied by the ni.py library.
+sub-directory where the content and affiliated data of the content, respectively,
+are stored. In this program, the file storing the affiliated data is called
+the 'metadata file'. See the draft-kutscher-icnrg-netinfproto soecification for the
+relationship between the terms 'affiliated data' and 'metadata': broadly, the
+affiliated data represents all the extra attributes that need to be maintained
+in association with the NDO.
+
+In each sub-directory there is a sub-directory for each digest algorithm.  Each of
+these directories contains the file names are the digest of the content (i.e., the
+digest in the ni: or nih: name).  These directories are set up by niserver_main.py
+when the server is first started based on the list of available digest algorithms
+supplied by the ni.py library.
 
 Entries are inserted into the cache by the  NetInf 'publish' (or 'put') function
 or can be generated externally and tied into the cache.
@@ -133,9 +140,10 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
-0.8       07/10/2012 Elwyn Davies   Fixed bug in conversion between ni_cache names and file names
+0.8       10/10/2012 Elwyn Davies   Fixed bug in conversion between ni_cache names and file names
                                     (need to substitute ';' by '/'). Added favicon config variable.
-                                    Major updates to comments.
+                                    Major updates to comments. Routines reordered.
+                                    Code cleaned up and common parts factored out.
 0.7       06/10/2012 Elwyn Davies   Added NRS form implementation code.  Added NRS delete
                                     and pattern matching for NrS listing.
 0.6       06/10/2012 Elwyn Davies   Moved form HTML code to separate file accessed via config variable.
@@ -151,9 +159,12 @@ Version   Date       Author         Notes
 0.0       12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 @endcode
 """
+##@var NISERVER_VER
+# Version string for niserver
 NISERVER_VER = "0.8"
 
 import os
+import stat
 import sys
 import socket
 import threading
@@ -163,7 +174,7 @@ import shutil
 import json
 import re
 import time
-import DNS
+import datetime
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -172,12 +183,12 @@ except ImportError:
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
 from SocketServer import ThreadingMixIn
-import cgi2 as cgi
+import cgi
 import magic
 import urllib
 import urllib2
 import hashlib
-import datetime
+import DNS
 import xml.etree.ElementTree as ET
 
 ##@var redis_loaded
@@ -194,7 +205,7 @@ import ni
 #==============================================================================#
 # GLOBAL VARIABLES
 
-##@var NETINF_VAR
+##@var NETINF_VER
 # Version of NetInf implemented - written into metadata instances 
 NETINF_VER = "v0.1a Elwyn"
 
@@ -218,13 +229,11 @@ class NetInfMetaData:
     - ni        ni[h] name of NDO to which metadata applies
     - ct        MIME content type of NDO (if known)
     - details   Array of JSON objects containing:
-    @li
        - ts         UTC timestamp for object, format "%y-%m-%dT%H:%M:%S+00:00"
        - metadata   JSON object woith arbitrary contents
        - loc        Array of locators for this NDO
        - publish    Information about how this was published - string or object
-       - search     JSON object describing search that flagged this NDO with:
-       @li
+       - search     JSON object describing search that flagged this NDO with
           - searcher    The system that did the search (e.g., this code)
           - engine      The search engine used to peform the search
           - tokens      The search query run by the engine to flag this NDO
@@ -256,7 +265,7 @@ class NetInfMetaData:
         
         If all the parameters are omitted an empty object will be created
         that can be populated from a file using the 'set_json_val' method.
-        @param ni_url string The ni[h]: name to which the metadata applies
+        @param ni_uri string The ni[h]: name to which the metadata applies
         @param timestamp string initial creation timestamp (format: see class header)
         @param ctype string MIME type of NDO (may be empty string if not yet known)
         @param myloc string locator derived from authority in ni name (i.e., local server)
@@ -418,7 +427,7 @@ class NetInfMetaData:
     def set_ctype(self, ctype):
         """
         @brief Set the content type item ("ct") in json_obj.
-        @param string MIME content type for NDO
+        @param ctype string MIME content type for NDO
         @return (none)
 
         Setting is skipped if parameter is None.
@@ -549,8 +558,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     When the HTTPServer listener receives a connection request, it creates
     a new thread to handle the request(s) that is(are) passed over the
     connection. It then reads in the request headers of the furst request and
-    passes the request to the appropriate routine out of 'doHEAD', 'doGET' and
-    'doPost', depending on the request type.
+    passes the request to the appropriate routine out of 'do_HEAD', 'do_GET' and
+    'do_POST', depending on the request type.
 
     Depending on the value of the 'Connection' header in the request, the thread may
     remain active to receive additional requests ('keep-alive' value) or close
@@ -597,7 +606,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     ##@var FAVICON_FILE
     # Path value for accessing favicon file
     FAVICON_FILE    = "/favicon.ico"
-
+    ##@var METADATA_TIMESTAMP_TEMPLATE
+    # Template as used by datetime strftime for timestanps in metadata files
+    METADATA_TIMESTAMP_TEMPLATE = "%y-%m-%dT%H:%M:%S+00:00"
+    
     # === Content Type related items ===
     ##@var DFLT_MIME_TYPE
     # Default mimetype to use when we don't know.
@@ -706,7 +718,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         Generate convenience function variables for various levels of logging.
 
         Call superclass handle() function to manage requests -  farms out
-        requests to 'doGET', 'doHEAD' or 'doPUBLISH' according to request
+        requests to 'do_GET', 'do_HEAD' or 'do_POST' according to request
         type.  There may be several requests on a single connection if
         requests specify 'Connect: keep-alive'.
 
@@ -825,9 +837,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         None, in which case the caller has nothing further to do.
 
         None of the URLs recognized by niserver for GET use fragments.
-        Immediately reject reequests that have fragment modifiers.
+        Immediately reject requests that have fragment modifiers.
         
-        Only the cache listing URL for GET uses a query string
+        Only the cache listing URL for GET request uses a query string
         Reject any requests other than for cache listing that have a
         query string.
 
@@ -925,9 +937,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return self.send_meta_header(self.path, self.server.storage_root) 
 
         # Process /.well-known/ni[h]/<alg name>/<digest>
-        rv, ni_name, ndo_path, meta_path = self.translate_path(self.server.authority,
-                                                               self.server.storage_root,
-                                                               self.path)
+        rv, ni_name, ndo_path, meta_path = self.translate_wkn_path(self.server.authority,
+                                                                   self.server.storage_root,
+                                                                   self.path)
         if rv is not ni.ni_errs.niSUCCESS:
             self.loginfo("Path format for %s inappropriate: %s" % (self.path,
                                                                    ni.ni_errs_txt[rv]))
@@ -937,42 +949,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return self.send_get_redirect(ni_name, meta_path)
 
     #--------------------------------------------------------------------------#
-    def send_fixed_file(self, pathname, content_type, err_string):
-        """
-        @brief Send the contents of a fixed file back to the client
-        @param pathname string Full pathname for file to be sent
-        @param content_type string MIME type for file to be sent
-        @param err_string string Kind of file used in error messages
-        @return file object opened for reading of file or None if error
-        """
-        try:
-            f = open(pathname, 'rb')
-        except Exception:
-            self.logerror("Cannot open %s file '%s'" %
-                          (err_string, pathname))
-            self.send_error(404, "File for %s not available" % err_string)
-            return None
-        try:
-            f.seek(0, os.SEEK_END)
-            file_len = f.tell()
-            f.seek(0, os.SEEK_SET)
-            self.send_response(200)
-            self.send_header("Content-type", content_type)
-            self.send_header("Content-Length", str(file_len))
-            self.end_headers()
-        except:
-            self.logerror("Unable to read %s file '%s'" %
-                          (err_string, pathname))
-            self.send_error(404, "Cannot read %s file" % err_string)
-            f.close()
-            f = None
-        return f
-
-    #--------------------------------------------------------------------------#
     def showcache(self, path):
         """
         @brief Code to generate a cache listing for some or all of the NDO cache.
-        @param Path from original HTTP request (forced to lower case)
+        @param path string path from original HTTP request (forced to lower case)
         @return Pseudo-file object containing the HTML to display listing
 
         This function is invoked for GET requests when the path is
@@ -1115,19 +1095,54 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return f              
 
     #--------------------------------------------------------------------------#
+    def send_fixed_file(self, pathname, content_type, err_string):
+        """
+        @brief Send the contents of a fixed file back to the client
+        @param pathname string Full pathname for file to be sent
+        @param content_type string MIME type for file to be sent
+        @param err_string string kind of file description used in error messages
+        @return file object opened for reading of file or None if error
+        """
+        try:
+            f = open(pathname, 'rb')
+        except Exception:
+            self.logerror("Cannot open %s file '%s'" %
+                          (err_string, pathname))
+            self.send_error(404, "File for %s not available" % err_string)
+            return None
+        try:
+            f.seek(0, os.SEEK_END)
+            file_len = f.tell()
+            f.seek(0, os.SEEK_SET)
+            self.send_response(200)
+            self.send_header("Content-type", content_type)
+            self.send_header("Content-Length", str(file_len))
+            self.end_headers()
+        except:
+            self.logerror("Unable to read %s file '%s'" %
+                          (err_string, pathname))
+            self.send_error(404, "Cannot read %s file" % err_string)
+            f.close()
+            f = None
+        return f
+
+    #--------------------------------------------------------------------------#
     def send_get_header(self, ndo_path, meta_path, msgid):           
         """
         @brief Send headers and data for the response to a get request.
-        @param prospective paths of file
-        @param msgid or None (for well known accesses)
+        @param ndo_path string prospective pathname of NDO content file
+        @param meta_path string prospective pathname of NDO metadata file
+        @param msgid integer or None (for direct ni_cache accesses)
         @return None - see below for explanation.
 
-        This function is used both to handle GET requests of  
-        The path has been derived from an ni[h]: scheme URI but not yet
+        This function is used both to handle
+        - direct GET requests of HHTP URLS http://<netloc>/ni_cache/<alg>;<digest>, and
+        - PUBLISH requests of ni schem URIs using the NetInf GET form 
+        The file paths have been derived from an ni[h]: scheme URI but not yet
         verifed as extant.
         
         The cache of Named Data Objects contains files that have the
-        digest as file name.  This makes it impossible to determine
+        digest as file name.  This makes it impossible to guess
         what the content type of the file is from the name.
         The content type of the file is stored in the metadata for the
         NDO in the parallel directory. If we weren't told what sort of
@@ -1173,7 +1188,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Metadata not readable")
             return None
         try:
+            # Create empty metadata structure
             md = NetInfMetaData()
+            # Read in metadata
             md.set_json_val(json.load(f))
         except Exception, e:
             self.logerror("JSON decode of metadata file %s failed: %s" % (meta_path, str(e)))
@@ -1282,7 +1299,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             
     #--------------------------------------------------------------------------#
     def send_meta_header(self, path, storage_root):
-        # expecting /ni_meta/<alg>;<digest>
+        """
+        @brief Send HTTP headers and set up for sending metadata file for GET
+        request access to an HTTP URL starting ni_meta.
+        @param path string pathname received with HTTP GET request
+        @param storage_root string pathanme of directory at the root os the cache tree
+        @return file object pointing to metadata file content as JSON string or None
+        
+        On entry the path format should be /ni_meta/<alg>;<digest>
+        """
         if not path.startswith(self.META_PRF):
             self.logerror("Path '%s' does not start with %s." %
                           (path, self.META_PRF))
@@ -1341,13 +1366,26 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     #--------------------------------------------------------------------------#
     def send_get_redirect(self, ni_name, meta_path):
+        """
+        @brief Redirect HTTP GET requests for URL http//<netloc>/.well-known/ni...
+        @param ni_name NIname object corresponding to .well-known URL
+        @param meta_path string expected metadata pathname corresponding to ni_name
+        @return None (only headers are sent for redirect)
+
+        Send a Temporary Redirect (HTTP response code 307) when a GET request
+        for an HTTP URL with a path starting /.well-known/ni[h]/ is received.
+
+        This is done because .well-known URLs are not supposed to return large
+        amounts of data.
+        """
         # Check if the metadata path corresponds to an actual file
         if not os.path.isfile(meta_path):
-            self.loginfo("File does not exist: %s" % path)
+            self.loginfo("File does not exist: %s" % meta_path)
             self.send_error(404, "Requested file not in cache")
             return None
 
-        self.send_response(307)
+        self.send_response(307, "Redirect for .well-known version of '%s'" %
+                           ni_name.get_url())
         self.send_header("Location", "http://%s%s%s;%s" % (self.server.authority,
                                                             self.CONT_PRF,
                                                             ni_name.get_alg_name(),
@@ -1360,7 +1398,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """
         @breif Process NetInf POST requests.
-        @return void
+        @return None
         
         NetInf uses a set of forms POSTed to URLs to transmit NetInf
         messages on the HTTP convergence layer.
@@ -1370,14 +1408,24 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             For the basic NetInf protocol:
                 'get', 'publish' (alias 'put'), 'search'
             Only if functioning as an NRS server:
-                'nrsconf', 'nrslookup', 'nrsvals'
+                'nrsconf', 'nrslookup', 'nrsdelete', 'nrsvals'
 
-        This routine processes the form data ready to either retrieve a
-        Named Data Object (NDO) from the local cache ('get' case) or
-        insert a (new) NDO into the local cache ('publish' case).  The]
-        actual details of the GET and PUBLISH operations are in
-        subsidary routines netinf_get and netinf_publish.
+        For the basic NetInf protocol, this routine processes the form data
+        ready to do one of:
+        - get: retrieve a Named Data Object (NDO) from the local cache,
+        - publish: insert a (new) NDO into the local cache, or
+        - search: Carry out a search and report NDOs that meet the earch criteria.
+          Currently, this search is carried out, not in the existing NDOs in the
+          cache, but by using the OpenSearch interface to Wikipedia. The search
+          criteria are passed to interface and the top ten results are accessed,
+          turning them into new NDOs and reporting the NDOs to the searcher.
 
+        If an NRS is being run, the form data is processed ready to do one of:
+        - nrsconf: add a new entry in the NRS database with an ni name or locator as key
+        - nrslookup: retrieve the NRS entry indexed by an ni name or locator key
+        - nrsdelete: delete an NRS entry given the key
+        - nrsvals: retrieve all the NRS entries wih keys matching a pattern
+       
         The cache is a directory tree rooted at the location specifed
         in self.server.storage_root with two parallel trees for NDO content
         and corresponding metadata.  Each tree in the cache has a directory per
@@ -1388,17 +1436,65 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         The corresponding content and metadata files share a name. The files in
         the cache are named using the url-safe base64 encoded
-        digest used in ni: URIs. (NOTE: There is a small probability of
-        clashing names for truncated hashes.)
+        digest used in ni: URIs or the hex encoding with check digit uswed in nih:
+        URIs. (NOTE: There is a small probability of clashing names for truncated
+        hashes.)
 
-        The NRS database is held in a Redis database.
+        When an NDO is published, generally, at least the metadata is provided.
+        The associated content may be published either at the same time or later.
+        Also the metadata may be updated later. Internally, the progam maintains a
+        stack of changes made to the metadata which is summarized when the NDO is
+        retrieved using a get operation and retirned with the content if available.
+        The metadata is stored as a JSON object in the metadata file and transferred
+        in the protocol in this form.  The metadata is managed internally as an instance
+        of the NetInfMetaData class.  There is a very close mapping between JSON
+        objects and Python dictionaries. 
+
+        The NRS database is held in a Redis database.  The values associated with a
+        key (either a URI from the ni:scheme or a locator, for example a (part of)
+        an HTTP scheme URI such as http://example.com or a (similar part of) a DTN
+        scheme such as dtn://north.pole.  The values associated with the key are stored
+        using the hash mechanism provided by Redis that allows values for multiple
+        (sub-)keys to be stored efficiently indexed by each master key.  Currently
+        the sub-keys used are for two locators (loc1, loc), two routing hints (hint1,
+        hint2) and metadata (meta).
+
+        Each request is handled by a specific processing routine.
+
+        The paths derived from the HTTP PUBLISH requests do not require any
+        fragment components, and only the NetInf publish operation might need
+        a query string (for optional content type specification).  The
+        paths are checked before being pased to the processing routines.
+        
         """
         
+        # Record presence or absence of query string and fragments
+        has_query_string, has_fragments = \
+                          self.check_path_for_query_and_fragments(self.path)
+
+        # Of the POST URLs recognized by niserver, only the NetInf publish request
+        # uses the query string, but none want fragments
+        if has_fragments:
+            self.loginfo("Received POST with unwanted fragment part: '%s'" %
+                         self.path)
+            self.send_error(400, "Fragment modifiers not allowed")
+            return None
+            
+        # Only the NetInf publish/put POST URL recognized by niserver wants a
+        # query string.
+        if has_query_string and not (self.path.startswith(self.NETINF_PUBLISH) or
+                                     self.path.startswith(self.NETINF_PUT)):
+            self.loginfo("Received POST with unwanted query string: '%s'" %
+                         self.path)
+            self.send_error(400, "Query string not allowed")
+            return None
+        
         # The NetInf proto uses a very limited set of requests..
-        if self.path not in [ self.NETINF_GET, self.NETINF_PUBLISH,
-                              self.NETINF_PUT, self.NETINF_SEARCH,
-                              self.NRS_CONF,   self.NRS_LOOKUP,
-                              self.NRS_DELETE, self.NRS_VALS ]:
+        if (self.path not in [ self.NETINF_GET, self.NETINF_SEARCH,
+                               self.NRS_CONF,   self.NRS_LOOKUP,
+                               self.NRS_DELETE, self.NRS_VALS ]) and \
+                               not (self.path.startswith(self.NETINF_PUBLISH) or
+                                    self.path.startswith(self.NETINF_PUT)):
             self.logdebug("Unrecognized POST request: %s" % self.path)
             self.send_error(404, "POST %s is not used by NetInf" % self.path)
             return
@@ -1411,12 +1507,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             environ={'REQUEST_METHOD':'POST',
                      'CONTENT_TYPE':self.headers['Content-Type'],
                      })
-
+        self.logdebug("POST Form parsed")
+        
         # Call subsidiary routines to do the work
         if (self.path == self.NETINF_GET):
             self.netinf_get(form)
-        elif ((self.path == self.NETINF_PUBLISH) or
-              (self.path == self.NETINF_PUT)):
+        elif (self.path.startswith(self.NETINF_PUBLISH) or
+              self.path.startswith(self.NETINF_PUT)):
             self.netinf_publish(form)
         elif (self.path == self.NETINF_SEARCH):
             self.netinf_search(form)
@@ -1430,6 +1527,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             elif (self.path == self.NRS_VALS):
                 self.nrs_vals(form)
             else:
+                # A value that isn't one of the above shouldn't have got past
+                # previous checks
                 raise ValueError
         elif self.path in [ self.NRS_CONF, self.NRS_LOOKUP,
                             self.NRS_DELETE, self.NRS_VALS ]:
@@ -1438,6 +1537,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(404, "NetInf server is not providing NRS services")
             return
         else:
+            # ... as above
             raise ValueError
 
         return
@@ -1446,14 +1546,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     def netinf_get(self, form):
         """
         @brief Process the decoded form sent with a POST NetInf get request
-        @param Processed form data
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
 
         The form sent with a NetInf get request to
         http://<netloc>/.well-known/netinfproto/get
-        must contain exactly the following fields:
-        URI:    the ni: name for the NDO to be retrieved
-        msgid:  an identifier used by the source to correlate replies
-        ext:    placeholder for extension fields (no values currently defined)
+        must contain the following fields:
+        - URI:    the ni: name for the NDO to be retrieved
+        - msgid:  an identifier used by the source to correlate replies
+
+        It may optionally contain the following field:
+        - ext:    placeholder for extension fields (no values currently defined)
 
         The routine
         - checks the relevant fields are present (and no more)
@@ -1467,30 +1570,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Validate form data
         # Check only expected keys and no more
         # NOTE: 'stage' is unused and is a hangover from testing - left in for consistency with PHP
-        mandatory_get_fields = ["URI", "msgid"]
-        optional_get_fields = ["ext", "stage"]
-        for field in mandatory_get_fields:
-            if field not in form.keys():
-                self.logdebug("Missing mandatory field %s in get form")
-                self.send_error(412, "Missing mandatory field %s in form." % field)
-                return
-        ofc = 0
-        fov = {}
-        for field in optional_get_fields:
-            if field in form.keys():
-                ofc += 1
-                fov[field] = form[field].value
-            else:
-                fov[field] = "(not supplied)"
-                
-        if (len(form.keys()) > (len(mandatory_get_fields) + ofc)):
-            self.logdebug("NetInf get form has too many fields: %s" % str(form.keys()))
-            self.send_error(412, "Form has unxepected extra fields beyond %s" % (str(mandatory_get_fields)+
-                                                                                 str(optional_get_fields)))
-        self.logdebug("NetInf get for URI %s, nsgid %s, ext %s" % (form["URI"].value,
-                                                                   form["msgid"].value,
-                                                                   fov["ext"]))
-        
+        mandatory = ["URI", "msgid"]
+        optional = ["ext", "stage"]
+        form_ok, fov = self.check_form_data(form, mandatory, optional, "netinfproto/get")
+        if not form_ok:
+            return
+
+        self.logdebug("/netinfproto/get: URI: '%s', msgid: '%s', 'ext': '%s'" %
+                      (fov["URI"], fov["msgid"], fov["ext"]))
+
         # Generate NIname and validate it (it should have a Params field).
         ni_name = ni.NIname(form["URI"].value)
         rv = ni_name.validate_ni_url()
@@ -1502,7 +1590,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Turn the ni_name into paths for NDO and metadata.
         # Then send the headers if all is well
-        (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root, ni_name)
+        (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root, ni_name)
         # send_get_header returns open file pointer to file to be returned (or None)
         f = self.send_get_header(ndo_path, meta_path, form["msgid"].value)
         if f:
@@ -1514,7 +1602,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     def netinf_publish(self, form):
         """
         @brief Process the decoded form sent with a POST NetInf publish request
-        @param Processed form data
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
 
         The form sent with a NetInf publish request to
         http://<netloc>/netinfproto/publish (or .../put)
@@ -1544,38 +1633,34 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             - sends a 406 error if the validation fails
         - maps the ni: URI into file names (for content and metadata)
             - if the content file already exists updates the metadata
-            - if the metadats update succeeds send a 304 response(with the
+            - if the metadats update succeeds send a 204 response(with the
               mod time here)
             - if the metedata update fails send a 401 error 
         - if fullPut is set saves the file using the filetype and creating the file
           with the digest name; updates/cretes the metadata file
             - sends a 401 error if either of the files cannot be written
-        - returns 200 OK if caching succeeded
+        - sends a publish report with HTTP response 200-OK if caching succeeded
         """
         # Validate form data
         # Check only expected keys and no more
-        mandatory_publish_fields = ["URI",  "msgid"]
-        optional_publish_fields = ["ext", "loc2", "fullPut", "octets", "loc1", "rform"]
-        for field in mandatory_publish_fields:
-            if field not in form.keys():
-                self.logerror("Missing mandatory field %s in publish form" % field)
-                self.send_error(412, "Missing mandatory field %s in form." % field)
-                return
-        ofc = 0
-        fov = {}
-        for field in optional_publish_fields:
-            if field in form.keys():
-                ofc += 1
-                fov[field] = form[field].value
-            else:
-                fov[field] = "(not supplied)"
-                
-        if (len(form.keys()) > (len(mandatory_publish_fields) + ofc)):
-            self.logerror("NetInf publish form has too many fields: %s" % str(form.keys()))
-            self.send_error(412, "Form has unxepected extra fields beyond %s" % (str(mandatory_publish_fields)+
-                                                                                 str(optional_publish_fields)))
+        mandatory = ["URI",  "msgid"]
+        optional = ["ext", "loc2", "fullPut", "octets", "loc1", "rform"]
+        form_ok, fov = self.check_form_data(form, mandatory, optional, self.path)
+        if not form_ok:
             return
 
+        self.logdebug("NetInf publish for "
+                      "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
+                      "loc1 %s, loc2 %s at %s" % (form["URI"].value,
+                                                  fov["fullPut"],
+                                                  fov["octets"],
+                                                  form["msgid"].value,
+                                                  fov["rform"],
+                                                  fov["ext"],
+                                                  fov["loc1"],
+                                                  fov["loc2"],
+                                                  timestamp))
+        
         # Convert textual fullPut value to boolean
         if "fullPut" in form.keys():
             fp_val = form["fullPut"].value.lower()
@@ -1590,9 +1675,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             full_put = False
 
         # Record timestamp for this operation
-        timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+        timestamp = self.metadata_timestamp_for_now()
         
-        # If fullPut is supplied and equivalent to True then there must be octets which is a file
+        # If fullPut is supplied and equivalent to True then
+        # there must be an octets option which references a file
         file_uploaded = False
         if full_put:
             if not "octets" in form.keys():
@@ -1646,19 +1732,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             rform = "json"
             self.logdebug("Using default rform - json")                
         
-        self.logdebug("NetInf publish for "
-                      "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
-                      "loc1 %s, loc2 %s at %s" % (form["URI"].value,
-                                                  fov["fullPut"],
-                                                  fov["octets"],
-                                                  form["msgid"].value,
-                                                  fov["rform"],
-                                                  fov["ext"],
-                                                  fov["loc1"],
-                                                  fov["loc2"],
-                                                  timestamp))
-        
-        # Extract the locators form the form
+        # Extract the locators from the form
         (loc1, loc2) = self.form_to_locs(form)
         
         # Generate NIname and validate it (it should have a Params field).
@@ -1685,7 +1759,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return
 
         # Turn the ni_name into NDO and metadate file paths
-        (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root,
+        (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root,
                                                           ni_name)
 
         # We don't know what the content type is yet
@@ -1798,13 +1872,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                 ni_name.get_url())
                 return
 
-            # Check the ni is the same - only affects query string
-            # Assume for the time being that we expect exactly the same string
-            # This is not really right as the query string need not be present
-            # and there could be variations in white space
-            if form["URI"].value != md.get_ni():
+            # Check the canonicalized ni is the same as that in the metadata file
+            if ni_name.get_url() != md.get_ni():
                 self.logerror("Update uses different URI - old: %s; new: %s" % \
-                              (md.get_ni(), form["URI"].value))
+                              (md.get_ni(), ni_name.get_url()))
                 self.send_error(412, "Publish update uses different ni - previous was %s" % \
                                 md.get_ni())
                 return
@@ -1813,7 +1884,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             if not((ctype is None) or (md.get_ctype() == ctype)):
                 self.logerror("Update uses different content type - old: %s; new: %s" % \
                               (md.get_ctype(), ctype))
-                self.send_error(412, "Publish update uses different content type  - previous was %s" % \
+                self.send_error(412, "Publish update uses different content type - previous was %s" % \
                                 md.get_ctype())
                 return
                 
@@ -1836,14 +1907,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     os.remove(temp_name)
                 except Exception, e:
-                    self.loginfo("Failed to unlink temp file %s: %s)" % (temp_name, str(e)))
+                    self.loginfo("Failed to unlink temp file %s: %s)" %
+                                 (temp_name, str(e)))
                     self.send_error(500, "Cannot unlink temporary file")
                     return
                     
             fs = os.stat(ndo_path)
 
-            self.send_publish_report("updated metadata", rform, True,
-                                     True, first_store, form,
+            self.send_publish_report(rform, True, True, first_store, form,
                                      md, ni_name.get_url(), fs)
 
             return
@@ -1856,50 +1927,71 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 os.rename(temp_name, ndo_path)
             except:
                 os.remove(temp_name)
-                self.logerror("Unable to rename tmp file %s to %s: %s" % (temp_name, ndo_path, str(e)))
+                self.logerror("Unable to rename tmp file %s to %s: %s" %
+                              (temp_name, ndo_path, str(e)))
                 self.send_error(500, "Unable to rename temporary file")
                 return
 
             fs = os.stat(ndo_path)
 
-            self.send_publish_report("stored_all", rform, True,
-                                     False, first_store, form,
+            self.send_publish_report(rform, True, False, first_store, form,
                                      md, ni_name.get_url(), fs)
 
             return
 
         # Otherwise report we just stored the metadata
-        self.send_publish_report("stored_metadata", rform, False,
-                                 False, first_store, form,
+        self.send_publish_report(rform, False, False, first_store, form,
                                  md, ni_name.get_url(), None)
 
         return
 
     #--------------------------------------------------------------------------#
     def netinf_search(self, form):
-        
+        """
+        @brief Process the decoded form sent with a POST NetInf publish request
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
+
+        The form sent with a NetInf publish request to
+        http://<netloc>/netinfproto/search
+        must contain at least the following fields:
+        - tokens: the search query
+        - msgid:  an identifier used by the source to correlate replies
+
+        It may also contain
+        - rform:  Value indicating the form of the response (html, json or plain)
+        - ext:    placeholder for extension fields (only 'meta' defined at present)
+
+        The search that is implemented currently sends the tokens string to the
+        OpenSearch interface for Wikipedia, asking for the response in the
+        SearchSuggestion2 XML format with up to 10 items flagged.
+
+        The response (if any) is parsed and the items returned processed.
+
+        The Url, Text and Description fields are extracted.  An HTTP GET request
+        is sent for the (Wikipedia) entry referenced by the Url and the result (if
+        one is returned) saved, a digest using the sha-256 algorithm calculated,
+        the data cached as an NDO using the digest as name. The corresponding
+        metadata is constructed including a 'search' element in the 'metadata'
+        object in 'details' (see NetInfMetaData class for more information) and the
+        Wikipedia Url as a locator.
+
+        An HTML results report document is then built consising of a list of items
+        referring to the successfully retrieved flagged items with:
+        - the ni name as a hyperlink with the http:///ni_cache URL as address
+        - a hyperlink named 'meta' with the http:///ni_meta URL as address
+        - a block containing
+           - the Text field from the Wikipedia response
+           - the Desciption field from the Wikipedia reponse
+        """
         # Validate form data
         # Check only expected keys and no more
-        mandatory_search_fields = ["tokens",  "msgid"]
-        optional_search_fields = ["ext", "rform", "stage"]
-        for field in mandatory_search_fields:
-            if field not in form.keys():
-                self.logerror("Missing mandatory field %s in search form" % field)
-                self.send_error(412, "Missing mandatory field %s in form." % field)
-                return
-        ofc = 0
-        fov = {}
-        for field in optional_search_fields:
-            if field in form.keys():
-                ofc += 1
-                fov[field] = form[field].value
-            else:
-                fov[field] = "(not supplied)"
-                
-        if (len(form.keys()) > (len(mandatory_search_fields) + ofc)):
-            self.logerror("NetInf search form has too many fields: %s" % str(form.keys()))
-            self.send_error(412, "Form has unxepected extra fields beyond %s" % (str(mandatory_search_fields)+
-                                                                                 str(optional_search_fields)))
+        mandatory = ["tokens",  "msgid"]
+        # stage is left over from earlier versions - left in for consistency
+        optional = ["ext", "rform", "stage"]
+        form_ok, fov = self.check_form_data(form, mandatory, optional,
+                                            "netinfproto/search")
+        if not form_ok:
             return
 
         # Check that the response type is one we expect - default is JSON if not explicitly requested
@@ -1915,7 +2007,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logdebug("Using default rform - json")                
         
         # Record timestamp for this operation
-        op_timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+        op_timestamp = self.metadata_timestamp_for_now()
 
         self.logdebug("NetInf search for "
                       "tokens %s, msgid %s, rform %s, ext %s at %s" % (form["tokens"].value,
@@ -2040,7 +2132,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 continue
 
             # Record timestamp for this get operation
-            timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+            timestamp = self.metadata_timestamp_for_now()
 
             # Access the item and get the data - this might be a bit slow.. live with it for now
             url = item["url"]
@@ -2162,7 +2254,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 continue
 
             # Determine file names for metadata and content
-            (ndo_path, meta_path) = self.ni_name_to_file_name(self.server.storage_root,
+            (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root,
                                                               ni_name)
 
             # Check if metadata file exists already - then either store new or update
@@ -2304,39 +2396,32 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return
         
     #--------------------------------------------------------------------------#
-    def read_nrs_entry(self, redis_key, val_names):
-        # Check if there is any entry
-        try:
-            all_vals = self.server.nrs_redis.hgetall(redis_key)
-        except Exception, e:
-            return None
-
-        if len(all_vals) == 0:
-            return None
-        
-        try:
-            vals = self.server.nrs_redis.hmget(redis_key, val_names)
-        except Exception, e:
-            return None
-
-        # Combine hints and locs into lists
-        hints = []
-        locs = []
-        meta = None
-        for pair in itertools.imap(None, val_names, vals):
-            if pair[1] is not None:
-                if pair[0].startswith("hint"):
-                    hints.append(pair[1])
-                elif pair[0].startswith("loc"):
-                    locs.append(pair[1])
-                elif pair[0] == "meta":
-                    meta = pair[1]
-
-        # Return the results as a dictionary 
-        return { "hints" : hints, "locs": locs, "meta": meta }
-
-    #--------------------------------------------------------------------------#
     def nrs_conf(self, form):
+        """
+        @brief Process the decoded form sent with a POST NRS nrsconf request
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
+
+        The form sent with a NRS entry creat/update request to
+        http://<netloc>/netinfproto/nrsconf
+        must contain at least the following fields:
+        - URI: key for the entry - either an ni: scheme URI or locator of any kind
+
+        It may also contain
+        - hint1:    routing hint #1
+        - hint2:    routing hint #2
+        - loc1:     locator #1
+        - loc2:     locator #2
+        - meta:     metadata
+
+        Create or update a Redis database entry keyed by the URI.
+        Set hash keys for the optional fields to the supplied values, replacing
+        any previously supplied values.
+
+        Send a response consisting of a JSON string representing the currently
+        stored entry (post-update) for the URI key.
+        """
+
         # Validate form data
         # Check only expected keys and no more
         fov = {}
@@ -2399,13 +2484,34 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     #--------------------------------------------------------------------------#
     def nrs_lookup(self, form):
+        """
+        @brief Process the decoded form sent with a POST NRS nrslookup request
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
+
+        The form sent with a NRS entry creat/update request to
+        http://<netloc>/netinfproto/nrsconf
+        must contain just the following field:
+        - URI: key for the entry - either an ni: scheme URI or locator of any kind
+
+        Lookup a Redis database entry if any) keyed by the URI.
+        It is expected to contain a subset of the follwoing hash keys with values:
+        - hint1:    routing hint #1
+        - hint2:    routing hint #2
+        - loc1:     locator #1
+        - loc2:     locator #2
+        - meta:     metadata
+
+        If there is an entry corresponding to the key, send a response consisting
+        of a JSON string representing the currently stored entry for the URI key.
+        """
         # Validate form data
         # Check only expected keys and no more
-        fov = {}
         mandatory = ["URI"]
         optional = []
         expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
-        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+        form_ok, fov = self.check_form_data(form, mandatory, optional, "nrslookup")
+        if not form_ok:
             return
 
         # Lookup up URI value
@@ -2438,13 +2544,36 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     #--------------------------------------------------------------------------#
     def nrs_delete(self, form):
+        """
+        @brief Process the decoded form sent with a POST NRS nrsdelete request
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
+
+        The form sent with a NRS entry creat/update request to
+        http://<netloc>/netinfproto/nrsdelete
+        must contain just the following field:
+        - URI: key for the entry - either an ni: scheme URI or locator of any kind
+
+        Lookup a Redis database entry if any) keyed by the URI.
+        It is expected to contain a subset of the follwoing hash keys with values:
+        - hint1:    routing hint #1
+        - hint2:    routing hint #2
+        - loc1:     locator #1
+        - loc2:     locator #2
+        - meta:     metadata
+
+        If there is an entry recover the data corresponding to the key before
+        deleteing the entry. Then send a response documenting the deletion, if it
+        succeeeded, or otherwise, if it failed.
+        """
+
         # Validate form data
         # Check only expected keys and no more
-        fov = {}
         mandatory = ["URI"]
         optional = []
         expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
-        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+        form_ok, fov = self.check_form_data(form, mandatory, optional, "nrsdelete")
+        if not form_ok:
             return
 
         # Lookup up URI value
@@ -2466,8 +2595,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(412, "Deleting key in NRS database caused exception: %s" %
                             str(e))
             return
-
-            
 
         # Generate successful reponse output
         f = StringIO()
@@ -2494,13 +2621,42 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     #--------------------------------------------------------------------------#
     def nrs_vals(self, form):
+        """
+        @brief Process the decoded form sent with a POST NRS nrsvals request
+        @param form cgi.FieldStorage object with processed form data
+        @return (none)
+
+        The form sent with a NRS entry creat/update request to
+        http://<netloc>/netinfproto/nrsconf
+        may contain just the following optional field:
+        - pattern: a string acceptable as a parameter to the Redis keys API function.
+
+        See the Redis documentation for acceptable patterns.
+
+        If the pattern is missing, deault to using the wildcard "*" pattern.
+
+        Lookup all Redis entries with keys matching the pattern.
+        It is expected each will contain a subset of the follwoing hash keys
+        with values:
+        - hint1:    routing hint #1
+        - hint2:    routing hint #2
+        - loc1:     locator #1
+        - loc2:     locator #2
+        - meta:     metadata
+
+        Construct a response as a JSON object containing two main fields:
+        - pattern:  The pattern used for the key matching
+        - results:  An array of JDSON objects in the format of the
+                    return from the nrslookup form. 
+        """
+
         # Validate form data
         # Check only expected keys and no more
-        fov = {}
         mandatory = []
         optional = ["pattern"]
         expected = ["hint1", "hint2", "loc1", "loc2", "meta"]
-        if not self.check_form_data(form, mandatory, optional, fov, "nrslookup"):
+        form_ok, fov = self.check_form_data(form, mandatory, optional, "nrsvals")
+        if not form_ok:
             return
 
         # Set up pattern 
@@ -2553,16 +2709,19 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     def store_metadata(self, meta_path, loc1, loc2, uri, timestamp, ctype, extrameta):
         """
         @brief Create new metadata file for a cached NDO from form data etc
-        @param File name for metadata file
-        @param locator #1 - None or string
-        @param locator #2 - None or string
-        @param canonicalized uri
-        @param timestamp when file written (maybe None if not entering NDO this time)
-        @param content type (maybe None if no uploaded file)
-        @param Dictionary with 'meta' values from 'ext' parameter (or None)
+        @param meta_path string pathname for metadata file
+        @param loc1 string locator #1 or None
+        @param loc2 string locator #2 or None
+        @param uri string canonicalized ni scheme URI for object being stored
+        @param timestamp string when metadata created
+        @param ctype string content type (maybe None if no uploaded file)
+        @param extrameta dictionary with optionally 'meta' key with values from 'ext'
+               parameter, 'publish' key with value reflecting how published,
+               'search' key with values describing how searched if relevant, or
+               None.  May contain more in future.
         @return NetInfMetaData instance that was written to file or None if a problem
 
-        The file contains JSON encoded metadata created by writing
+        The metadata file contains JSON encoded affiliated data created by writing
         a JSON encoded NetInfMetaData class instance to the file.
 
         Contract: The meta_path file does not exist on entry
@@ -2574,9 +2733,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logerror("Unable to create metadata file %s: %s" % (meta_path, str(e)))
             return None
 
+        # Always add this server's authority as a locator when creating metadata file
         md = NetInfMetaData(uri, timestamp, ctype,
                             self.server.authority, loc1, loc2, extrameta)
-        print "stored:", md
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
@@ -2591,18 +2750,21 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     def update_metadata(self, meta_path, loc1, loc2, timestamp, ctype, extrameta):
         """
         @brief Update existing metadata file for a cached NDO from form data etc
-        @param File name for metadata file
-        @param locator #1 - None or string
-        @param locator #2 - None or string
-        @param timestamp when file written (maybe None if not entering NDO this time)
-        @param content type (maybe None if no uploaded file)
-        @param Dictionary with 'meta' values from 'ext' parameter (or None)
+        @param meta_path string pathname for metadata file
+        @param loc1 string locator #1 or None
+        @param loc2 string locator #2 or None
+        @param timestamp string when metadata updated
+        @param ctype string content type (maybe None if no uploaded file)
+        @param extrameta dictionary with optionally 'meta' key with values from 'ext'
+               parameter, 'publish' key with value reflecting how published,
+               'search' key with values describing how searched if relevant, or
+               None.  May contain more in future.
         @return NetInfMetaData instance that was written to file or None if a problem
 
-        The file contains JSON encoded metadata created by writing
+        The metadata file contains JSON encoded affiliated data created by writing
         a JSON encoded NetInfMetaData class instance to the file.
 
-        Contract: The meta_path file exists on entry
+        Contract: The meta_path file does not exist on entry
         """
 
         try:
@@ -2622,10 +2784,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         f.seek(0)
 
         # Update info in metadata structure and set content type if appropriate
+        # No need to write the authority again.
         md.add_new_details(timestamp, None, loc1, loc2, extrameta)
         md.set_ctype(ctype)
         # Write metadata back to file
-        print "updated: ", md
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
@@ -2636,33 +2798,87 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return md
 
     #--------------------------------------------------------------------------#
-    def send_publish_report(self, status, rform, ndo_in_cache, ignored_upload,
-                            first_store, form, metadata, url, ndo_status):
+    def send_publish_report(self, rform, ndo_in_cache, ignored_upload,
+                            first_store, form, metadata, ni_uri, content_fileinfo):
+        """
+        @brief Create and send report fo a successful publication of an NDO
+        @param rform string format for report ('json', 'html' or 'plain')
+        @param ndo_in_cache boolean indicating if the content is in the cache
+        @param ignored_upload boolean indicating if the upload had duplicated content
+                                      file that checked but ignored
+        @param first_store boolean indicating if this was a new NDO in this cache
+        @param form cgi.FieldStorage object with processed form data from publish request
+        @param metadata NetInfMetaData object instance containing current metadata for NDO
+        @param ni_uri string canonicalized ni scheme URI for object being stored
+        @param content_fileinfo 10-tuple as returned by os.stat for NDO content
+                                         file or None
+        @return (none)
 
+        Construct a report indicating what has been cached as a result of a
+        publish operation and send it as na HTTP response.  Client can ask
+        for various report response formats:
+        - json   send a JSON object string desribing the operation performed
+                 and a summary of the metadata now held about the NDO
+                 (content-type: application/json).
+        - html   send an HTML with a human readable report of what has been done
+                 (content-type: text/html)
+        - plain  send a plain text report of what has been done
+                 (content-type:  text/plain)
+
+        The status code returned in the JSON data when 'json' format response is
+        requested is as follows:
+        - 201 First store of content and metadata stored or updated
+        - 202 Duplicate content ignored (already in cache), metadata updated
+        - 204 No content in store or supplied with request; metadata stored
+        - 205 No content in store or supplied with request; metadata updated
+
+        The usage approximates to (but is not exzcatly equivalent to the
+        corresponding HTTP 2xx response codes.
+        """
+        # Check parameter consistency
+        if ndo_in_cache and (content_fileinfo == None):
+            self.logerror("Coding fault: Must have ndo_status if in cache: %s." %
+                          ni_uri)
+            file_length = "(unknown)"
+        else:
+            file_length = str(content_fileinfo[stat.ST_SIZE])
+            
+        # Format information strings to be used in report and set status
+        # info1 is used in the HTML and plain text report bodies
+        # info2 is the message send with the HTTP response type message
         if ndo_in_cache and ignored_upload:
             info1 = ("File %s is already in cache as '%s' (%d octets);" + \
                     " metadata updated.") % (form["octets"].filename,
-                                             url,
-                                             ndo_status[6])
+                                             ni_uri,
+                                             file_length)
             info2 = "Object already in cache; metadata updated."
             status = 202
-        elif ndo_in_cache:
-            info1 = ("File %s and metadata stored in cache" + \
+        elif ndo_in_cache and first_store:
+            info1 = ("File %s and metadata stored in new cache entry" + \
                      " as '%s' (%d octets)") % (form["octets"].filename,
-                                                url,
-                                                ndo_status[6])
+                                                ni_uri,
+                                                file_length)
             info2 = "Object and metadata cached."
             status = 201
+        elif ndo_in_cache:
+            info1 = ("File %s stored in cache and metadata updated" + \
+                     " as '%s' (%d octets)") % (form["octets"].filename,
+                                                ni_uri,
+                                                ndo_status[stat.ST_SIZE])
+            info2 = "Object cached and metadata updated."
+            status = 201
         elif first_store:
-            info1 = "Metadata only for '%s' stored in cache" % url
+            info1 = "Metadata only for '%s' stored in cache" % ni_uri
             info2 = "Metadata for object stored in cache."
             status = 204
         else:
-            info1 = "Metadata for '%s' updated in cache (NDO not present)" % url
+            info1 = "Metadata for '%s' updated in cache (NDO not present)" % ni_uri
             info2 = "Metadata for object updated - object not present."
-            status = 204
+            status = 205
+
+            
+        # Select response format and construct body in a StringIO pseudo-file
         f = StringIO()
-        # Select reponse format
         if rform == "json":
             # JSON format: Metadata as JSON string        
             ct = "application/json"
@@ -2673,14 +2889,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         elif rform == "plain":
             # Textual form report (useful for publish command line applications)
             ct = "text/plain"
-            f.write(info1)
+            f.write("NetInf PUBLISH succeeded - %s: status %d\n" % (info1, status))
         elif rform == "html":
             # HTML formatted report intended to be outputted by web browsers
             ct = "text/html"
             f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
             f.write("<html>\n<body>\n<title>NetInf PUBLISH Report</title>\n")
             f.write("<h2>NetInf PUBLISH Report</h2>\n")
-            f.write("\n<p>%s</p>" % info1)
+            f.write("\n<p>%s: status %d</p>" % (info1, status))
             f.write("\n</body>\n</html>\n")
                 
         length = f.tell()
@@ -2708,7 +2924,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     #--------------------------------------------------------------------------#
     def check_path_for_query_and_fragments(self, path):
         """
-        @brief Generate flsgs indicating if a URL path has a query string or fragment(S)
+        @brief Generate flags indicating if a URL path has a query string or fragment(S)
         @param path string what is left after the netloc in the HTTP URL given to the server
         @return tuple of two boolean values, indicating (0) query string and (1) fragments present
 
@@ -2727,14 +2943,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return (has_query_string, has_fragments)
 
     #--------------------------------------------------------------------------#
-    def ni_name_to_file_name(self, storage_root, ni_name):
+    def ni_name_to_file_names(self, storage_root, ni_name):
         """
         @brief make basic patname for ni_name in object cache
-        @param root of directory tree for object cache
-        @param ni: scheme URL encoded in a NIname object
+        @param storage_root string root of directory tree for object cache
+        @param ni_name NIname instance encoding ni: scheme URL
         @return pathnames for NDO (content) and metadata files 
 
-        Generate <storage root>/<hash alg identifier>/<digest>
+        Generate 2-tuple of
+        <storage root>/ndo_dir/<hash alg identifier>/<digest>
+        and
+        <storage root>/meta_dir/<hash alg identifier>/<digest>
         """
         ndo_name =  "%s%s%s/%s" % (storage_root,
                                    NDO_DIR,
@@ -2750,16 +2969,23 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     #--------------------------------------------------------------------------#
     def redirect_name_to_file_names(self, storage_root, redirect_name):
         """
-        @brief make basic patname for redirect_name in object cache
-        @param root of directory tree for object cache
-        @param pathname as supplied to redirect for ni: .well-known name
-        @return pathnames for NDO file and metadata file
+        @brief Make file patnames in object cache for the path from a redirected content URL  
+        @param storage_root string root of directory tree for object cache
+        @param redirect_name string path as supplied to redirect for ni: .well-known name
+        @return pathnames for NDO content file and metadata file
 
-        Generate <storage root>/[ndo_dir|meta_dir]/<redirect_name less CONT_PRF prefix>
+        If the client uses the HTTP .well-known/ni[h] URL to access an NDO,
+        the server responds with a 307 - Redirect indicating the location to be
+        accessed. The URL for this location is of the form:
+        http://<netloc>/ni_cache/<alg name>;<digest>
+
+        This method converts such a redirect location to cache filenames, i.e.,<br/>
+        <storage root>/[ndo_dir|meta_dir]/<redirect_name less CONT_PRF prefix><br/>
         with ';' between <alg name> and <digest> replaced by '/'.
-        e.g., convert HTTP path:
-        /ni_cache/sha-256-32;81fdb284;d
-        to file path
+        
+        e.g., convert HTTP path:<br/>
+        /ni_cache/sha-256-32;81fdb284;d<br/>
+        to file path<br/>
         /<storage root>/ndo_dir/sha-256-32/81fdb284;d
         """
         ndo_name =  "%s%s%s" % (storage_root,
@@ -2772,38 +2998,41 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
 
     #--------------------------------------------------------------------------#
-    def translate_path(self, authority, storage_root, path):
+    def translate_wkn_path(self, authority, storage_root, path):
         """
-        @brief Translate a /-separated PATH to a ni_name and the local
-        filename syntax.
+        @brief Translate a /-separated .well-known PATH to a ni_name and the local
+        filename syntax. 
         @param the FQDN of this node used to build ni name
         @param the root of the directory tree where ni Named Data Objects are cached
         @param the path from the HTTP request
-        @return either (niSUCCESS. NIname instance, NDO path, metadata path) or
-                       (error code from ni_errs, None, None, None) if errors found.
+        @retval 4-tuple: (niSUCCESS, NIname instance, NDO path, metadata path) on success
+        @retval 4-tuple: (error code from ni_errs, None, None, None) if errors found.
 
-        Strips off the expected '/.well-known/ni[h]' prefix and builds
-        an ni name corresponding to the http: form. Validates the
-        form of the ni[h] name and then builds it into a local file name.
         The path is expected to have the form:
         /.well-known/ni[h]/<digest name>/<encoded digest>[?<query]
+        Method strips off the '/.well-known/ni[h]' prefix and builds
+        an NIname object corresponding to the http: form. Validates the
+        form of the ni[h] name and then builds it into a pair of local file names
+        corresponding to the content and metafile locations.
 
-        If this is found, then it is turned into:
+        The return value is a 4-tuple consisting of:
+         - return code taken form ni.ni_errs_txt
          - ni URI:        ni://<authority>/<digest name>;<url encoded digest>[?<query]
-           or
+           <br/>or<br/>
            nih URI:       nih:/<digest name>;<hex encoded digest>
          - NDO filename:  <storage_root>/ndo_dir/<digest name>;<url encoded digest>
          - META filename:<storage_root>/meta_dir/<digest name>;<url encoded digest>
-        Both are returned.
-        
+
+        If the return code is not niSUCCESS, the other threee members are None. 
         """
 
-        # Note: 'path' may contain param and query (nut not fragment) components
+        # Note: 'path' will not contain query or fragment components
         # Must do nih first as ni is a substring of nih!
         if path.startswith(self.NIH_HTTP):
             path = path[len(self.NIH_HTTP):]
             if (len(path) == 0) or not path.startswith("/"):
                 return (ni.ni_errs.niBADURL, None, None, None)
+            # This should locate the division between algorithm and digest
             dgstrt = path.find("/", 1)
             if dgstrt == -1:
                 return (ni.ni_errs.niBADURL, None, None, None)
@@ -2814,6 +3043,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             path = path[len(self.NI_HTTP):]
             if (len(path) == 0) or not path.startswith("/"):
                 return (ni.ni_errs.niBADURL, None, None, None)
+            # This should locate the division between algorithm and digest
             dgstrt = path.find("/", 1)
             if dgstrt == -1:
                 return (ni.ni_errs.niBADURL, None, None, None)
@@ -2830,14 +3060,33 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         rv = ni_name.validate_ni_url()
         if (rv != ni.ni_errs.niSUCCESS):
             return (rv, None, None, None)
-        (ndo_path, meta_path) = self.ni_name_to_file_name(storage_root, ni_name)
+        (ndo_path, meta_path) = self.ni_name_to_file_names(storage_root, ni_name)
         self.logdebug("NI URL: %s, NDO storage path: %s" % (url, ndo_path))
 
         return (ni.ni_errs.niSUCCESS, ni_name, ndo_path, meta_path)
 
     #--------------------------------------------------------------------------#
     def check_form_data(self, form, mandatory_fields,
-                        optional_fields, field_values, form_name):
+                        optional_fields, form_name):
+        """
+        @brief Checks that the fields in the form sent with a POST are as expected.
+        @param form cgi.FieldStorage object with processed form data from POST request
+        @param mandatory_fields list of strings for names of fields that must be present
+        @param optional_fields  list of strings for names of fields that may be present
+        @param form_name string name of form that generated form data for error messages
+        @retval (False, None) 2-tuple if checking fails
+        @retval (True, field_values) 2-tuple if checking succeeds with field_values
+                                     holding the value of the various fields present or
+                                     "(not supplied)" for optional fields not present.
+
+        Gather field values for all fields present in form.
+
+        Check:
+        - Mandatory_fields are all present
+        - Remaining fields are all in the optional_fields and there are no others
+        """
+        # Record field values found
+        field_values = {}
         # Validate form data
         # Check only expected keys and no more
         for field in mandatory_fields:
@@ -2846,7 +3095,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                               (field, form_name))
                 self.send_error(412, "Missing mandatory field %s in %s form." %
                                 (field, form_name))
-                return False
+                return (False, None)
             field_values[field] = form[field].value
             
         ofc = 0
@@ -2861,17 +3110,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.logerror("NetInf %s form has too many fields: %s" %
                           (form_name, str(form.keys())))
             self.send_error(412, "Form has unxepected extra fields beyond %s" %
-                            (str(mandatory_fields) + str(optional_publish_fields)))
-            return False
+                            (str(mandatory_fields) + str(optional_fields)))
+            return (False, None)
                           
-        return True
+        return (True, field_values)
 
     #--------------------------------------------------------------------------#
     def form_to_locs(self, form):
         """
         @brief Extract locator items (loc1, loc2) from form and return a tuple
         of loc values.
-        @param processed form data
+        @param form cgi.FieldStorage object with processed form data from POST request
         @return two item tuple of locators - either None or value from form
         """
         if "loc1" in form.keys():
@@ -2887,23 +3136,74 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return (loc1, loc2)
 
     #--------------------------------------------------------------------------#
+    def read_nrs_entry(self, redis_key, val_names):
+        """
+        @brief Read the entry in the NRS database for the redis_key and return values
+               for hash names in val_names (if present).
+        @param redis_key string key name for NRS database
+        @param val_names list of strings with names of hash elements to read
+        @retval None if the key does not exist or has no entries or getting
+                     values fails
+        @retval dictionary object representing JSON object with fields 'hints' and
+                           'locs' containing arrays of strings from 'hints*' and
+                           'locs*' hashes, respectively and 'meta' containing
+                           the value of the 'meta' hash.
+        """
+        # Check if there is any entry
+        try:
+            all_vals = self.server.nrs_redis.hgetall(redis_key)
+        except Exception, e:
+            return None
+
+        if len(all_vals) == 0:
+            return None
+        
+        try:
+            vals = self.server.nrs_redis.hmget(redis_key, val_names)
+        except Exception, e:
+            return None
+
+        # Combine hints and locs into lists
+        hints = []
+        locs = []
+        meta = None
+        for pair in itertools.imap(None, val_names, vals):
+            if pair[1] is not None:
+                if pair[0].startswith("hint"):
+                    hints.append(pair[1])
+                elif pair[0].startswith("loc"):
+                    locs.append(pair[1])
+                elif pair[0] == "meta":
+                    meta = pair[1]
+
+        # Return the results as a dictionary 
+        return { "hints" : hints, "locs": locs, "meta": meta }
+
+    #--------------------------------------------------------------------------#
     def copyfile(self, source, outputfile):
         """
         @brief Copy all data between two file objects.
 
-        @param source is a file object open for reading
-        (or anything with a read() method)
-        @param outputfile is a file object open for writing
-        (or anything with a write() method).
+        @param source file object open for reading
+                          (or anything with a read() method)
+        @param outputfile file object open for writing
+                              (or anything with a write() method).
         @return void
         
         The only reason for overriding this would be to change
         the block size or perhaps to replace newlines by CRLF
-        -- note however that this the default server uses this
-        to copy binary data as well.
         """
         shutil.copyfileobj(source, outputfile)
         return
+
+    #--------------------------------------------------------------------------#
+    def metadata_timestamp_for_now(self):
+        """
+        @brief Format timestamp recording time 'now' as string for metadata files.
+        @return string with formatted timestamp for time at this instant
+                as expressed using UTC time.
+        """
+        return datetime.datetime.utcnow().strftime(METADATA_TIMESTAMP_TEMPLATE)
 
     #--------------------------------------------------------------------------#
     def mime_boundary(self):
@@ -2916,6 +3216,66 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 #==============================================================================#
 
 class NIHTTPServer(ThreadingMixIn, HTTPServer):
+    """
+    @brief Provide a class that provides a theaded HTTP server.
+
+    @details
+    The HTTPServer class which is a subclass of TCPServer and in turn a subclass
+    of SocketServer opens a socket that is bound to the specified port passed in
+    the addr parameter to the constructor.  The server then sets up a listener
+    waiting for connection requests ariving at this socket.
+    
+    The ThreadingMixIn from the SocketServer module overrides the process_request
+    method in the HTTP/TCP/SocketServer so that it creates a new thread whenever
+    a new connection is made and accepted.  Each thread creates an instance of
+    the NIHTTPHandler class that processes the requests that come in on this
+    connection.
+
+    This wrapper provides additional management for keeping track of what threads
+    are in use and naming them for convenience in identifying logging messages,
+    and helping with shutting down the server.  It also holds a number of pieces of
+    information as instance variables derived from the configuration file and
+    command line arguments that will be needed by all request handler threads.
+    """
+
+    #--------------------------------------------------------------------------#
+    # INSTANCE VARIABLES
+
+    ##@var storage_root
+    # string pathname of directorystring pathname for root of cache directory tree
+    ##@var authority
+    # string combination of server FQDN and server port as URL 'netloc'
+    ##@var logger
+    # object logger instance to output messages
+    ##@var getputform
+    # string pathname of GET/PUBLISH/SEARCH form HTML file
+    ##@var nrsform
+    # string pathname of NRS configuration form HTML file
+    ##@var provide_nrs
+    # boolean True if server is to offer NRS server function
+    ##@var favicon
+    # string pathname for brower favicon.ico icon file
+    ##@var nrs_redis
+    # object StrictRedis instance used for comunication beween the NRS server and the Redis database.
+    ##@var thread_running_lock
+    # object Lock instance used to serialize access to running_threads and next_handler_num
+    ##@var running_threads
+    # set contains NIHTTPHandler instances that are associated with the current runing threads.
+    ##@var next_handler_num
+    # integer initialized to 0, incremented by one whenever a handler thread is created,
+    # and the previous value used as part of the name for the thread.
+    ##@var allow_reuse_address
+    # boolean (from TCPServer) if set, when the listener socket is bound to the server
+    # address, the ioctl SO_REUSEADDR is called on the socket before being bound.This is
+    # handy especially during development as otherwise you have to wait for a
+    # significant period (typically at least 4 minutes) while the TIME_WAIT state
+    # on the socket from a previous instance terminates before the server can be
+    # restarted using the same (address, port) pair.
+    ##@var daemon_threads
+    # boolean set to make all the spawned handler threads are made daemon threads. This
+    # means that the handler threads are terminated when the main thread terminates.
+
+    #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority, logger,
                  getputform, nrsform, provide_nrs, favicon):
         """
@@ -2930,7 +3290,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         @param favicon string pathname for brower favicon.ico icon file
         @return (none)
 
-        Save the parameters (except for addr) as istance variables.
+        Save the parameters (except for addr) as instance variables.
         These values can be accessed from the NIHTTPHandler class instance
         that is created to handle each incoming connection to the server.
         These handler instances run in separate threads on account of the
@@ -2984,24 +3344,52 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
     #--------------------------------------------------------------------------#
     def add_thread(self, thread):
+        """
+        @brief Record a new handler thread resulting from a server connection.
+        @param thread object NIHTTPHandler instance instantiated to handle connection.
+        @eturn (none)
+
+        Add the new thread to the running_threads set.  Need to grab the
+        thread_running_lock before doing the addition to serialize access.
+        """
         self.logger.debug("New thread added")
         with self.thread_running_lock:
             self.running_threads.add(thread)
 
     #--------------------------------------------------------------------------#
     def remove_thread(self, thread):
+        """
+        @brief Remove a handler thread from the set of running threads.
+        @param thread object NIHTTPHandler instance instantiated to handle connection.
+        @eturn (none)
+
+        Remove the thread from the running_threads set just before the thread dies.
+        Need to grab the thread_running_lock before doing the addition to
+        serialize access.
+        """
         with self.thread_running_lock:
             if thread in self.running_threads:
                 self.running_threads.remove(thread)
 
     #--------------------------------------------------------------------------#
     def end_run(self):
+        """
+        @brief Shutdown the niserver. *** Must not be called from handler threads!
+        @return (none)
+
+        Calling this method from a handler thread will result in deadlock.
+        Currently called from the (separate) main thread in niserver_main.py
+        
+        If there are any threads in the running_threads set, request their closure.
+        This closes the read and write file objects used by the handler.
+
+        Finally shutdown the server.
+        """
         for thread in self.running_threads:
             if thread.request_thread.isAlive():
                 thread.request.close()
         del self.running_threads
         self.shutdown()
-
 
 #==============================================================================#
 # EXPORTED GLOBAL FUNCTIONS
@@ -3099,21 +3487,30 @@ def ni_http_server(storage_root, authority, server_port, logger,
 
 #==============================================================================#
 
+#==============================================================================#
+# TESTING CODE
+#==============================================================================#
 if __name__ == "__main__":
-    import time
-    logger = logging.getLogger("test")
-    logger.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler()
-    fmt = logging.Formatter("%(levelname)s %(threadName)s %(message)s")
-    ch.setFormatter(fmt)
-    logger.addHandler(ch)
+    #==== TEST FUNCTIONS ====
+    def test_client(my_host, my_port, ip, port, message):
+        """
+        @brief Simulate an HTTP client - push message to niserver
+        @param my_host string hostname where client is running
+        @param port integer port to use for client
+        @param ip string IP address being used by server
+        @param port integer port on which server is listening
+        @param message string message to send
+        @return message string received
 
-    # Port 0 means to select an arbitrary unused port
-    HOST, PORT = "localhost", 0
+        Opens TCP connection from(my_host, my_port) to (ip, port)
 
-    def client(ip, port, message):
+        Sends message across connection
+
+        Reads socket until it closes, close down connection from this end
+        and return message received.
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind((HOST, PORT))
+        sock.bind((my_host, my_port))
         sock.connect((ip, port))
         sock.send(message)
         time.sleep(1)
@@ -3121,72 +3518,122 @@ if __name__ == "__main__":
         sock.close()
         return m
 
-    # Create a dummy file to get
-    sd = "/tmp"
-    shutil.rmtree(sd+"/sha-256", ignore_errors=True)
-    os.mkdir(sd+"/sha-256")
-    fn = "/sha-256/abcdef-12f"
-    full_fn = sd+fn+"?ct=image%2fjpeg"
-    f = open(full_fn, "w")
-    f.write("The quick yellow fox burrowed under the twisting worm.\n")
-    f.close()
-    os.symlink(full_fn, sd+fn)
+    def test_main():
+        """
+        @brief Perform some very limited local tests
 
-    fd2="""Content-Type: "multipart/form-data"\r
+        A small file is inserted into the cache other than via publish
 
-------------------------------aea19b03abac\r
+        A simulated form string is provided.
 
-ni:///sha-256;gajdjk\r
+        Six tests are performed using test_client. They are not exhaustive
+        but serve to show the basic functionality is working:
+        - Test that GET is rejecting unknown URLs
+        - Test GET is rejecting URLs with fragment parts
+        - Test server is rejecting unrecognized request types
+        - Test valid .well-known URL getting back redirect
+        - Test redirected URL from previous case and check content returned
+        - Test POST can read a simple form and detect that it doesn't have the file.
 
-------------------------------aea19b03abac\r
+        TO DO: More sophisticated tests can be carried out on the full server using curl.
+        """
 
-1\r
+        #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
 
-------------------------------aea19b03abac--\r
+        # This string is a very simple example of what is sent from client to
+        # server when the client is using a 'form' to send various data items.
+        
+        fd="""Content-Type: multipart/form-data; boundary="--aea19b03abac"
+Connection: close
+
+----aea19b03abac
+Content-Disposition: form-data; name="URI"
+
+ni:///sha-256-32;gf2yhA
+----aea19b03abac
+Content-Disposition: form-data; name="msgid"
+
+aaabbb
+----aea19b03abac--
+
 
 """
 
-    fd="""Content-Type: "multipart/form-data"\m
-\m
---dbb76dd438094382bb923100624d68da\m
-Content-Disposition: form-data; name="URI"\m
-Content-Type: text/plain; charset=utf-8\m
-\m
-ni://folly.org.uk/sha-256;WMeBb88-F_766WdGo9fPyBZ3ZOh6GXbzXIL1LG9X23g\m
---dbb76dd438094382bb923100624d68da\m
-Content-Disposition: form-data; name="msgid"\m
-Content-Type: text/plain; charset=utf-8\m
-\m
-19319\m
---dbb76dd438094382bb923100624d68da\m
-Content-Disposition: form-data; name="ext"\m
-Content-Type: text/plain; charset=utf-8\m
-\m
-{ "meta" : { "a": 1 } }\m
---dbb76dd438094382bb923100624d68da\m
-\m
-"""
-    
-    server = NIHTTPServer((HOST, PORT), "/tmp", "example.com", logger,
-                          "./getputform.html", "./nrsconfig.html",
-                          False, "./favicon.ico")
-    ip, port = server.server_address
+        #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
 
-    # Start a thread with the server -- that thread will then start one
-    # more thread for each request
-    server_thread = threading.Thread(target=server.serve_forever,
-                                     name="Niserver Listener")
-    # Exit the server thread when the main thread terminates
-    server_thread.setDaemon(True)
-    server_thread.start()
-    logger.info("Server loop running in thread:%s" % server_thread.getName())
+        logger = logging.getLogger("test")
+        logger.setLevel(logging.DEBUG)
+        ch = logging.StreamHandler()
+        fmt = logging.Formatter("%(levelname)s %(threadName)s %(message)s")
+        ch.setFormatter(fmt)
+        logger.addHandler(ch)
 
-    # Note server will hang if sent message with just one \r\n on the end
-    # Needs to be thought about (timeouts!)
-    logger.info(client(ip, port, "GET /some/path HTTP/1.0\r\n\r\n"))
-    logger.info(client(ip, port, "GET /other/path;digest?q=d#dfgg HTTP/1.0\r\n\r\n"))
-    logger.info(client(ip, port, "BURP /other/path HTTP/1.0\r\n\r\n"))
-    logger.info(client(ip, port, "GET %s HTTP/1.0\r\n\r\n" % ("/.well-known/ni"+fn)))
-    logger.info(client(ip, port, "POST %s HTTP/1.0\r\n%s" % ("/netinfproto/get", fd2)))
-    server.end_run()
-    logger.info("Server shutdown")
+        # Port 0 means to select an arbitrary unused port
+        HOST, PORT = "localhost", 0
+
+        # Temporary storage root
+        sd = "/tmp/niserver_test"
+
+        server = NIHTTPServer((HOST, PORT), sd, "example.com", logger,
+                              "./getputform.html", "./nrsconfig.html",
+                              False, "./favicon.ico")
+
+        # Create a dummy file to get
+        shutil.rmtree(sd, ignore_errors=True)
+        os.mkdir(sd)
+        os.mkdir(sd+NDO_DIR)
+        os.mkdir(sd+NDO_DIR+"sha-256")
+        os.mkdir(sd+META_DIR)
+        os.mkdir(sd+META_DIR+"sha-256")
+        content_str = "The quick yellow fox burrowed under the twisting worm.\n"
+        ni_name = ni.NIname("ni:///sha-256")
+        uri = ni.NIproc.makenib(ni_name, content_str)
+        dgst = ni_name.get_digest()
+        ndo_fn = sd+NDO_DIR+"sha-256"+"/"+dgst
+        meta_fn = sd+META_DIR+"sha-256"+"/"+dgst
+        logger.info("NDO path: %s" % ndo_fn)
+        logger.info("META path: %s" % meta_fn)
+        fn = "/sha-256/"+dgst
+        f = open(ndo_fn, "wb")
+        f.write("The quick yellow fox burrowed under the twisting worm.\n")
+        f.close()
+        timestamp = datetime.datetime.utcnow().strftime("%y-%m-%dT%H:%M:%S+00:00")
+        extrameta = {}
+        extrameta["publish"] = "test"
+        md = NetInfMetaData(ni_name.get_url(), timestamp, "text/plain", "localhost",
+                            None, None, extrameta)
+        print md
+        f = open(meta_fn, "w")
+        json.dump(md.json_val(), f)
+        f.close()
+
+
+        ip, port = server.server_address
+
+        # Start a thread with the server -- that thread will then start one
+        # more thread for each request
+        server_thread = threading.Thread(target=server.serve_forever,
+                                         name="Niserver Listener")
+        # Exit the server thread when the main thread terminates
+        server_thread.setDaemon(True)
+        server_thread.start()
+        logger.info("Server loop running in thread:%s" % server_thread.getName())
+
+        # Note server will hang if sent message with just one \r\n on the end
+        # Needs to be thought about (timeouts!)
+        logger.info(test_client(HOST, PORT, ip, port, "GET /some/path HTTP/1.0\r\n\r\n"))
+        logger.info(test_client(HOST, PORT, ip, port, "GET /other/path;digest?q=d#dfgg HTTP/1.0\r\n\r\n"))
+        logger.info(test_client(HOST, PORT, ip, port, "BURP /other/path HTTP/1.0\r\n\r\n"))
+        logger.info(test_client(HOST, PORT, ip, port, "GET %s HTTP/1.0\r\n\r\n" % ("/.well-known/ni"+fn)))
+        logger.info(test_client(HOST, PORT, ip, port, "GET %s HTTP/1.0\r\n\r\n" %
+                                ("/ni_cache/sha-256;"+dgst)))
+        logger.info(test_client(HOST, PORT, ip, port, "POST %s HTTP/1.0\r\n%s" % ("/netinfproto/get", fd)))
+        server.end_run()
+        logger.info("Server shutdown")
+
+        return
+
+    #==== Run tests ====
+    print "Testing niserver - no NRS server"
+    test_main()
+        
