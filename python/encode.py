@@ -141,12 +141,13 @@ class ParamDigester:
         self.hash_function = None
         return
 
-    def set_algorithm(self, digester=None):
+    def set_algorithm(self, alg_name= "", digester=None):
         """
         @brief Initializes digester and sets up context for digestion.
-        @param string representation of hash digest required
+        @param alg_name - str Textual name of algorithm
+        @param digester callable digest function from hashlib
         """
-        self.algorithm = digester
+        self.algorithm = alg_name
         self.hash_function = digester()
         return
 
@@ -653,7 +654,7 @@ if __name__ == "__main__":
     f = StringIO(s)
 
     dg = ParamDigester()
-    dg.set_algorithm(hashlib.sha256)
+    dg.set_algorithm("sha-256", hashlib.sha256)
     digest_parm = MultipartParam("digest", fileobj=f, filename="str", digester=dg)
 
     te = { "generator": test_digest, "length": 43, "execute": digest_parm.get_digest }

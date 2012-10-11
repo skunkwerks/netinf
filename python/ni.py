@@ -9,9 +9,10 @@
     This is the NI URI library developed as
     part of the SAIL project. (http://sail-project.eu)
 
-    Specification(s) - note, versions may change
-            http://tools.ietf.org/html/farrell-decade-ni-00
-            http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+      Specification(s) - note, versions may change
+          - http://tools.ietf.org/html/farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Copyright 2012 Trinity College Dublin
 
@@ -19,7 +20,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-      http://www.apache.org/licenses/LICENSE-2.0
+      - http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,6 +28,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+@code
+Revision History
+================
+Version   Date       Author         Notes
+0.6       11/10/2012 Elwyn Davies   Provide setter for netloc field.  Improve doxygen.
+0.5	  14/09/2012 Elwyn Davies   Specify ValueError as exception when init tuple
+                                    wrong length.
+0.4	  11/09/2012 Elwyn Davies   Add accessor for query string.
+0.3	  01/06/2012 Elwyn Davies   Added algorithm suite list access.
+0.2	  01/06/2012 Elwyn Davies   Added support for binary format.
+0.1	  31/05/2012 Elwyn Davies   Added suport for nih scheme.
+0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+@endcode
 """
  
 import base64
@@ -38,14 +52,18 @@ import ni_urlparse
 from encode import ParamDigester
 from stdnum import luhn
 
+#==============================================================================#
+# Bebug function for usae during testing
 def debug(string):
     """
     @brief Print out debugging information string
-    @param string to be printed (in)
+    @param string str to be printed (in)
     """
     #print string
     return
 
+#==============================================================================#
+# Support class
 class _Enum(set):
     """
     @brief Class to support pseudo-enums in Python subclassed from set
@@ -61,15 +79,19 @@ class _Enum(set):
     def __getattr__(self, name):
         """
         @brief override standard object method to access items in set as attributes
-        @param name - item in enum to access (in)
+        @param name str item in enum to access (in)
         @return string with value equal to parameter name or raise AttributeError if name not in set
         """
         if name in self:
             return name
         raise AttributeError
 
-## ni_errs Error codes for NI operations
-# @brief Enumeration of possible return codes from NI class functions.
+#==============================================================================#
+# GLOBAL VARIABLES
+
+##@var ni_errs
+# Error codes for NI operations
+# Enumeration of possible return codes from NI class functions.
 #
 # niSUCCESS       Function was successful.
 #
@@ -109,7 +131,8 @@ ni_errs = _Enum(["niSUCCESS", "niBADALG", "niBADFILE",
                  "niNOAUTHORITY", "niNOQUERY", "niBADURL"])
 
 
-## @brief ni_errs_txt - Dictionary with textual error strings corresponding to error texts.
+##@var ni_errs_txt
+# Dictionary with textual error strings corresponding to error texts.
 ni_errs_txt = { ni_errs.niSUCCESS:      "Successful",
                 ni_errs.niBADALG:       "Name does not contain recognized hash algorithm selector",
                 ni_errs.niBADFILE:      "Unable to open content file",
@@ -124,16 +147,22 @@ ni_errs_txt = { ni_errs.niSUCCESS:      "Successful",
                 ni_errs.niBADURL:       "URL is not in expected form"}
 
 
+#==============================================================================#
 class NIname:
     """
     @brief Encapsulation for an ni: name
+
     Uses ni_urlparse to dismantle URL
 
     Note that constructor does not validate URL - user must call
     validate_ni_url before attempting to retrieve hash algorithm info
     """
 
-    ## @brief The class variable hash_algs is a dictionary specifying possible digest algs.
+    #--------------------------------------------------------------------------#
+    #=== Class constants ===
+    #--------------------------------------------------------------------------#
+    ##@var hash_algs
+    # Dictionary specifying possible digest algs.
     #
     # The entries are keyed by the name of the hash algorithm which will be in the
     # file part of the ni: scheme URL.
@@ -151,30 +180,52 @@ class NIname:
                   "sha-256-128": (hashlib.sha256, 32, 16, 22, 2),
                   "sha-256"    : (hashlib.sha256, 32, 32, 43, 1) }
 
-    ## @brief Index for NI.hash_algs value tuples.
+    #--------------------------------------------------------------------------#
+    # Indices for NI.hash_algs value tuples.
     #
+    ##@var AF
     # Hashlib hashing function
     AF = 0
-    ## @brief Index for NI.hash_algs value tuples.
-    #
+    ##@var HL
     # Hash function output length
     HL = 1
-    ## @brief Index for NI.hash_algs value tuples.
-    #
+    ##@var TL
     # Length of digest after truncation
-    TL = 2  
-    ## @brief Index for NI.hash_algs value tuples
-    #
+    TL = 2
+    ##@var EL
     # Length of digest after url-safe base64 encoding
-    EL = 3  
-    ## @brief Index for NI.hash_algs value tuples
-    #
+    EL = 3
+    ##@var SI
     # Suite index number for this encoding
     SI = 4
 
-    ## @brief Mapping from suite numbers to hash algs
+    #--------------------------------------------------------------------------#
+    ##@var suite_index
+    # Mapping from suite numbers to hash algs
     suite_index = None
     
+    #--------------------------------------------------------------------------#
+    #=== Instance Variables ===
+    ##@var alg_name
+    # string the algorithm name identifier for this URI
+    ##@var url
+    # string the complete URI string built from components
+    ##@var validated
+    # boolean indicating if URI has been validated 
+    ##@var scheme
+    # string the scheme part of the URI (either ni or nih)
+    ##@var netloc
+    # string the netloc part of the URI (FQDN, port, etc)
+    ##@var hash_alg_info
+    # tuple value from hash_algs corresponding to alg_name
+    ##@var params
+    # string the params part of the URI (i.e., the representation of the digest)
+    ##@var query
+    # string the query string part of the URI
+    
+    #--------------------------------------------------------------------------#
+    #=== Class Methods ===
+    #--------------------------------------------------------------------------#
     @classmethod
     def list_algs(cls):
         """
@@ -199,8 +250,9 @@ class NIname:
     def get_ni_alphabet(cls):
         """
         @brief ni alphabet contains the set of symbols used in ni names
-        Used in validating hi names
         @return alphabet used for ni: base64 encoded digests 
+
+        Used in validating hi names
         """
         return "0123456789abcdefghijklmnopqrstuv"
     
@@ -208,18 +260,35 @@ class NIname:
     def get_nih_alphabet(cls):
         """
         @brief nih alphabet contains the set of symbols used in nih names
+        @return alphabet used for nih: base15 encoded digests 
+
         Used in generating the luhn-mod-16 checkdigit that is optionally
         appended to nih human readable ni names.  Luhn-mod-16 operations
         are done using the Python luhn module from the Python stdnum suite
         available from http://pypi.python.org/pypi/python-stdnum.
-        @return alphabet used for nih: base15 encoded digests 
         """
         return "0123456789abcdef"     
  
+    #--------------------------------------------------------------------------#
+    @classmethod
+    def construct_suite_index(cls):
+        """
+        @brief Construct suite index on first use - dictionary of suites vs hashalg keys
+        """
+        if NIname.suite_index == None:
+            NIname.suite_index = {}
+            for key in NIname.hash_algs.keys():
+                NIname.suite_index[NIname.hash_algs[key][NIname.SI]] = key
+            debug(NIname.suite_index)
+        return
+    
+    #--------------------------------------------------------------------------#
+    #=== Constructor ===
+    #--------------------------------------------------------------------------#
     def __init__(self, url):
         """
         @brief Constructor
-        @param url string or tuple (in)
+        @param url string or tuple (in) containing initializers for URI
 
         If the argument is a tuple, the elements are strings:
         scheme (ni or nih)
@@ -255,22 +324,12 @@ class NIname:
             debug("NIname constructor: argument type %s not allowed" % str(type(url)))
             raise TypeError
         return
-    @classmethod
-    def construct_suite_index(cls):
-        """
-        @brief Construct suite index on first use - dicytionary of suites vs hashalg keys
-        """
-        if NIname.suite_index == None:
-            NIname.suite_index = {}
-            for key in NIname.hash_algs.keys():
-                NIname.suite_index[NIname.hash_algs[key][NIname.SI]] = key
-            debug(NIname.suite_index)
-        return
-    
+
+    #--------------------------------------------------------------------------#
     def set_url(self, url):
         """
         @brief update stored URL
-        @param url string (in)
+        @param url str or tuple Value to be set for url
         @return (void)
         """
         self.url = url
@@ -280,9 +339,11 @@ class NIname:
         self.validated = False
         return
 
+    #--------------------------------------------------------------------------#
     def get_hash_alg_info(self):
         """
         @brief find the appropriate entry in hash_algs if there is one
+
         For the ni scheme the file_part of the URL must be the algorithm
         scheme textual name.
         For the nih scheme the file part can be either the textual scheme name
@@ -304,14 +365,17 @@ class NIname:
                 return NIname.hash_algs[NIname.suite_index[suite_no]]               
         return None
 
+    #--------------------------------------------------------------------------#
     def get_alg_name(self):
         """
         @brief retrieve the textual name of the algoritm embedded in the url
-        This may have been derived from a suite index.
         @return algorithm name
+
+        This may have been derived from a suite index.
         """
         return self.alg_name
 
+    #--------------------------------------------------------------------------#
     def get_scheme(self):
         """
         @brief retrieve the scheme component of the url
@@ -319,6 +383,7 @@ class NIname:
         """
         return self.scheme
         
+    #--------------------------------------------------------------------------#
     def get_netloc(self):
         """
         @brief retrieve the netloc component of the url
@@ -326,9 +391,11 @@ class NIname:
         """
         return self.netloc
         
+    #--------------------------------------------------------------------------#
     def set_netloc(self, netloc):
         """
         @brief set the netloc component of the url
+        @param netloc str Value to be set in netloc
         @return niSUCCESS or niNOAUTHORITY 
         The value of the netloc is not checked except that if the scheme is
         'nih' then the netloc must be empty.
@@ -342,10 +409,11 @@ class NIname:
         self.regen_url()
         return ni_errs.niSUCCESS
         
+    #--------------------------------------------------------------------------#
     def validate_ni_url(self, has_params = True):
         """
         @brief Check URL is in the expected form - right scheme and valid alg name.
-        @param has_params Indicates if expecting params in URL (templates have empty params)
+        @param has_params boolean Indicates if expecting params in URL (templates have empty params)
         @return returns niSUCCESS, niBADSCHEME, niBADALG, niBADPARAMS, niNOAUTHORITY,
                         niNOFRAG or niBADURL.
 
@@ -428,6 +496,7 @@ class NIname:
         self.validated = True
         return ni_errs.niSUCCESS    
 
+    #--------------------------------------------------------------------------#
     def url_validated(self):
         """
         @brief Return boolean indicating if ni: URL has been validated
@@ -435,28 +504,33 @@ class NIname:
         """
         return self.validated
     
+    #--------------------------------------------------------------------------#
     def regen_url(self):
         """
         @brief regenerate internal state of URL from components after update
-        Clear validated flag after regenerating state.
         @return (void)
+
+        Clear validated flag after regenerating state.
         """
         self.url = ni_urlparse.urlunparse((self.scheme, self.netloc, self.path,
                                            self.params, self.query, self.fragment))
         self.validated = False
         return
     
+    #--------------------------------------------------------------------------#
     def set_params(self, params):
         """
         @brief update params part of stored URL and regen URL
-        Should call validate again afterwards.
-        @param params new value for params
+        @param params str new value for params
         @return (void)
+
+        Should call validate again afterwards.
         """
         self.params = params
         self.regen_url()
         return
 
+    #--------------------------------------------------------------------------#
     def get_url(self):
         """
         @brief return stored URL rebuilt from components
@@ -464,17 +538,21 @@ class NIname:
         """
         return self.url
         
+    #--------------------------------------------------------------------------#
     def get_query_string(self):
         """
         @brief return stored query string
-        @return query
+        @return query string
         """
         return self.query
         
+    #--------------------------------------------------------------------------#
     def set_query_string(self, qs):
         """
         @brief set the query string component of the url
+        @param qs str Query string to be set.
         @return niSUCCESS 
+
         The value of the query string is not checked except that if the scheme is
         'nih' then the query string must be empty.
         """
@@ -487,6 +565,7 @@ class NIname:
         self.regen_url()
         return ni_errs.niSUCCESS
         
+    #--------------------------------------------------------------------------#
     def get_hash_function(self):
         """
         @brief return hash function for specified hash alg name (file_part)
@@ -497,6 +576,7 @@ class NIname:
             return None
         return self.hash_alg_info[NIname.AF]
 
+    #--------------------------------------------------------------------------#
     def get_digest_length(self):
         """
         @brief return digest length for specified hash alg name/suite (file_part)
@@ -507,6 +587,7 @@ class NIname:
             return None
         return self.hash_alg_info[NIname.HL]
 
+    #--------------------------------------------------------------------------#
     def get_truncated_length(self):
         """
         @brief return truncated digest length for specified hash alg name/suite (file_part)
@@ -517,6 +598,7 @@ class NIname:
             return None
         return self.hash_alg_info[NIname.TL]
 
+    #--------------------------------------------------------------------------#
     def get_b64_encoded_length(self):
         """
         @brief return encoded digest length for specified hash alg name (file_part)
@@ -527,6 +609,7 @@ class NIname:
             return None
         return self.hash_alg_info[NIname.EL]
 
+    #--------------------------------------------------------------------------#
     def get_digest(self):
         """
         @brief return params part of stored URL
@@ -534,6 +617,7 @@ class NIname:
         """
         return self.params
 
+    #--------------------------------------------------------------------------#
     def get_wku_transform(self):
         """
         @brief Generate http .well-known transform of ni: URL
@@ -551,6 +635,7 @@ class NIname:
                                        "/.well-known/ni/"+self.file_part+"/"+self.params,
                                        "", self.query, self.fragment))
     
+    #--------------------------------------------------------------------------#
     def __repr__(self):
         """
         @brief Presentation string for NIname
@@ -558,6 +643,7 @@ class NIname:
         """ 
         return self.url
 
+#==============================================================================#
 class NIdigester(ParamDigester):
     """
     @brief Class to wrap up a digest mechanism with the ni URI to be used while 
@@ -568,7 +654,7 @@ class NIdigester(ParamDigester):
     The digest is generated on the fly while the octets are being sent to the
     server via the encode or iter_encode methods of MultipartParam.
 
-    The NIdigester class then has five methods:
+    The NIdigester class then has six methods:
     - set_url - records the template url and sets up the 'context' appropriate 
                 for generating the digest using the algorithm in the template.
     - update_digest - incorporates a chunk of data into the digest
@@ -584,6 +670,23 @@ class NIdigester(ParamDigester):
     digest can be passed across as a part of all of a separate parameter
     in order to check that the file has not got corrupted
     """
+    #--------------------------------------------------------------------------#
+    #=== Instance variables
+
+    ##@var algorithm
+    # Textual name of digester algorithm in use
+    ##@var hash_function
+    # Object instance from hashlib for constructing digest using algorithm above.
+    ##@var digest
+    # Generated digest in final form (b64 encoded or hex encoded)
+    ##@var ni_name
+    # Object instance of NIname containing Uri under construction 
+    ##@var initialized
+    # boolean set after set_url has been called successfully
+    
+    #--------------------------------------------------------------------------#
+    #=== Constructor ===
+    #--------------------------------------------------------------------------#
     def __init__(self):
         """
         @brief Constructor - Initialises instance variables
@@ -595,20 +698,25 @@ class NIdigester(ParamDigester):
         self.initialized = False
         return
 
+    #--------------------------------------------------------------------------#
+    #=== General Methods
+    #--------------------------------------------------------------------------#
     def set_url(self, url):
         """
         @brief Records algorithm and sets up context for digestion.
-        @param ni URI template containing algorithm specifier
+        @param url ni URI template containing algorithm specifier
         @return returns niSUCCESS, niBADSCHEME, niBADALG or niBADURL.
         """
         self.ni_name = NIname(url)
         rv = self.ni_name.validate_ni_url(has_params=False)
         if rv != ni_errs.niSUCCESS:
             return rv
-        self.set_algorithm(self.ni_name.get_hash_function())
+        self.set_algorithm(self.ni_name.get_alg_name(),
+                           self.ni_name.get_hash_function())
         self.initialized = True
         return rv
 
+    #--------------------------------------------------------------------------#
     def update_digest(self, buffer):
         """
         @brief Pass a buffer of input to digest algorithm
@@ -623,6 +731,7 @@ class NIdigester(ParamDigester):
         self.hash_function.update(buffer)
         return True
 
+    #--------------------------------------------------------------------------#
     def finalize_digest(self):
         """
         @brief Complete generation of digest based on data input through 'update'
@@ -651,6 +760,7 @@ class NIdigester(ParamDigester):
         debug("Complete URL: %s" % self.ni_name.get_url())
         return True
 
+    #--------------------------------------------------------------------------#
     def get_digest(self):
         """
         @brief Access previously generated digest
@@ -658,6 +768,7 @@ class NIdigester(ParamDigester):
         """
         return self.digest
 
+    #--------------------------------------------------------------------------#
     def get_b64_encoded_length(self):
         """
         @brief return bas64url encoded digest length for specified hash alg name (file_part)
@@ -665,6 +776,7 @@ class NIdigester(ParamDigester):
         """
         return self.ni_name.get_b64_encoded_length()
     
+    #--------------------------------------------------------------------------#
     def get_url(self):
         """
         @brief Access URL with incorporated digest (if made already)
@@ -672,14 +784,16 @@ class NIdigester(ParamDigester):
         """
         return self.ni_name.get_url()
 
+    #--------------------------------------------------------------------------#
     def __repr__(self):
         """
-        @param Python standard string representation output
+        @brief Python standard string representation output
         @return suitable representation string
         """
         return "Digest algorithm: %s; Value: %s" % (str(self.algorithm),
                                                     str(self.digest))
 
+#==============================================================================#
 class NI:
     """
     @brief NI operations class
@@ -701,6 +815,9 @@ class NI:
     - checknib - checks digest against the digest for a memory buffer.
     """
 
+    #--------------------------------------------------------------------------#
+    #=== Constructor ===
+    #--------------------------------------------------------------------------#
     def __init__(self):
         """
         @brief Constructor - empty 
@@ -708,9 +825,9 @@ class NI:
         debug("Started nilib")
         return
 
-    #######################################
-    # Private routines
-    #######################################
+    #--------------------------------------------------------------------------#
+    #=== Private routines ===
+    #--------------------------------------------------------------------------#
     def digest_file(self, ni_url, file_name):
         """
         @brief Apply the algorithm selected in ni_url to the whole contents of a file
@@ -765,15 +882,16 @@ class NI:
 
         return (dgst[:ni_url.get_truncated_length()], ni_errs.niSUCCESS)
 
-    #######################################
-    # Public routines
-    #######################################
+    #--------------------------------------------------------------------------#
+    #=== Public routines ===
+    #--------------------------------------------------------------------------#
     def make_b64_urldigest(self, bin_digest):
         """
         @brief Construct the base64, URL-encoded digest from binary digest
+        @return URL safe base64 encoded ASCII digest (out)
+
         Remove trailing pad characters ('=') if present (depends on length of digest)  
         @param bin_digest binary hash digest as a string (in)
-        @return URL safe base64 encoded ASCII digest (out)
         """
         dgst = base64.urlsafe_b64encode(bin_digest)
 
@@ -792,12 +910,14 @@ class NI:
         debug(len(dgst))
         return dgst
 
+    #--------------------------------------------------------------------------#
     def make_human_digest(self, bin_digest):
         """
         @brief Construct the base16 (hex) encoding from the binary digest.
-        Add check digit.
         @param bin_digest binary hash digest as a string (in)
         @return bas16 (hex) encoded ASCII digest with check digit(out)
+
+        Add check digit.
         """
         dgst = base64.b16encode(bin_digest).lower()
         debug("base16 encoded digest: %s" % dgst)
@@ -806,23 +926,26 @@ class NI:
         dgst = dgst + ";" + check_digit        
         return dgst 
 
+    #--------------------------------------------------------------------------#
     def makenif(self, ni_url, file_name):
         """
         @brief make an ni or nih scheme URI for a named file
-        Given an ni or nih name template, open a file, hash it and add the hash to
-        the URI template as the 'params' field appended to path file component.
-
         @param ni_url is the URI - expects NIname object (in/out)
         @param file_name is a file name - string (in)
         @return result code from ni_errs enumeration:
-        niBADSCHEME if the ni_url has ascheme other than ni or nih
-        niBADPARAMS if the digest isn't the right format when generated
-        niNOFRAG if the ni_url has fragment specifiers
-        niBADURL if the initial URL already has parameters
-        niBADALG if algorithm name is not known,
-        niBADFILE if canot open/read file, 
-        niHASHFAIL if the hash digest seems to be the wrong length or
-        niSUCCESS if all goes well.
+
+        Given an ni or nih name template, open a file, hash it and add the hash to
+        the URI template as the 'params' field appended to path file component.
+
+        Return codes:
+        - niBADSCHEME if the ni_url has ascheme other than ni or nih
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niNOFRAG if the ni_url has fragment specifiers
+        - niBADURL if the initial URL already has parameters
+        - niBADALG if algorithm name is not known,
+        - niBADFILE if canot open/read file, 
+        - niHASHFAIL if the hash digest seems to be the wrong length or
+        - niSUCCESS if all goes well.
         """
 
         # Check that ni_name has been validated and then validate if not
@@ -852,9 +975,14 @@ class NI:
         # Validation *should be* a formality
         return ni_url.validate_ni_url(has_params=True)
         
+    #--------------------------------------------------------------------------#
     def checknif(self, ni_url, file_name):
         """
         @brief check if an ni or nih scheme URI matches a file's content
+        @param ni_URL is the URI - expects NIname object with params(in)
+        @param file_name is a file name - string (in)
+        @return result code taken from ni_errs enumeration
+
         Extract the hash algorithm for the URI, use to hash the file
         contents and compare it with the digest in the URI params field.
  
@@ -864,20 +992,17 @@ class NI:
         An example error would be if a hash function is not supported,
         in that case the function returns an niBADALG error.
 
-        @param ni_URL is the URI - expects NIname object with params(in)
-        @param file_name is a file name - string (in)
-        @return result code taken from ni_errs enumeration
-        niBADSCHEME if scheme is not ni or nih
-        niBADALG if algorithm name is not known,
-        niBADPARAMS if the digest isn't the right format when generated
-        niNOFRAG if the ni_url has fragment specifiers
-        niBADURL if the initial URL already has parameters
-        niBADFILE if canot open/read file, 
-        niHASHFAIL if the hash digest seems to be the wrong length,
-        niBADHASH if the digest in the name does not match digest of file
-        niHASHTOOLONG if the digest in the name is too long,
-        and
-        niSUCCESS if all goes well.
+        Return codes:
+        - niBADSCHEME if scheme is not ni or nih
+        - niBADALG if algorithm name is not known,
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niNOFRAG if the ni_url has fragment specifiers
+        - niBADURL if the initial URL already has parameters
+        - niBADFILE if canot open/read file, 
+        - niHASHFAIL if the hash digest seems to be the wrong length,
+        - niBADHASH if the digest in the name does not match digest of file,
+        - niHASHTOOLONG if the digest in the name is too long, or
+        - niSUCCESS if all goes well.
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -912,22 +1037,25 @@ class NI:
                                             
         return ni_errs.niBADHASH
 
+    #--------------------------------------------------------------------------#
     def makenib(self, ni_url, buf):
         """
         @brief make an ni or nih scheme URI for a buffer
-        Given an ni or nih name template, hash a buffer and add the hash to
-        the URI template as the 'params' field appended to path file component.
-
         @param ni_url is the URI template - expects NIname object without params (in/out)
         @param buf is the buffer 
         @return result code taken from ni_errs enumeration:
-        niBADSCHEME if the ni_url has ascheme other than ni or nih
-        niBADPARAMS if the digest isn't the right format when generated
-        niNOFRAG if the ni_url has fragment specifiers
-        niBADURL if the initial URL already has parameters
-        niBADALG if algorithm name is not known,
-        niHASHFAIL if the hash digest seems to be the wrong length or
-        niSUCCESS if all goes well.     
+
+        Given an ni or nih name template, hash a buffer and add the hash to
+        the URI template as the 'params' field appended to path file component.
+
+        Return codes:
+        - niBADSCHEME if the ni_url has ascheme other than ni or nih
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niNOFRAG if the ni_url has fragment specifiers
+        - niBADURL if the initial URL already has parameters
+        - niBADALG if algorithm name is not known,
+        - niHASHFAIL if the hash digest seems to be the wrong length or
+        - niSUCCESS if all goes well.     
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -963,9 +1091,15 @@ class NI:
         # Validation *should be* a formality
         return ni_url.validate_ni_url(has_params=True)
 
+    #--------------------------------------------------------------------------#
     def checknib(self, ni_url, buf):
         """
         @brief check if an ni or nih scheme URI matches a buffer
+        @param ni_url is the URI - expects NIname object with non-empty params (in)
+        @param buf is the buffer 
+        @param res is the result (out, zero if good)
+        @return result code taken from ni_errs enumeration
+
         Given an ni or nih name and a buffer, hash the buffer and compare the hash to
         the URI 'params' field appended to path file component.
      
@@ -975,20 +1109,16 @@ class NI:
         An example error would be if a hash function is not supported,
         in that case the function returns an niBADALG error.
 
-        @param ni_url is the URI - expects NIname object with non-empty params (in)
-        @param buf is the buffer 
-        @param res is the result (out, zero if good)
-        @return result code taken from ni_errs enumeration
-        niBADSCHEME if scheme is not ni or nih
-        niBADALG if algorithm name is not known,
-        niBADPARAMS if the digest isn't the right format when generated
-        niNOFRAG if the ni_url has fragment specifiers
-        niBADURL if the initial URL already has parameters
-        niHASHFAIL if the hash digest seems to be the wrong length,
-        niBADHASH if the digest in the name does not match digest of file
-        niHASHTOOLONG if the digest in the name is too long,
-        and
-        niSUCCESS if all goes well. 
+        Return codes:
+        - niBADSCHEME if scheme is not ni or nih
+        - niBADALG if algorithm name is not known,
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niNOFRAG if the ni_url has fragment specifiers
+        - niBADURL if the initial URL already has parameters
+        - niHASHFAIL if the hash digest seems to be the wrong length,
+        - niBADHASH if the digest in the name does not match digest of file
+        - niHASHTOOLONG if the digest in the name is too long, or
+        - niSUCCESS if all goes well. 
         """
         # Check that ni_name has been validated and then validate if not
         if not ni_url.url_validated():
@@ -1030,22 +1160,21 @@ class NI:
                                             
         return ni_errs.niBADHASH
 
+    #--------------------------------------------------------------------------#
     def makebnf(self, suite_no, file_name):
         """
         @brief make a binary format hash for a file given the suite number for the encoding
         @param suite_no index of encoding suite (see NIname.suite_index) (in)
         @param file_name is the file (in)
         @return (tuple) result code taken from ni_errs enumeration, binary digest as bytearray(none if fails)
-        niBADALG if algorithm name is not known,
-        niHASHFAIL if the hash digest seems to be the wrong length or
-        niSUCCESS if all goes well.
-        niBADALG if algorithm name is not known,
-        niBADPARAMS if the digest isn't the right format when generated
-        niBADFILE if canot open/read file, 
-        niHASHFAIL if the hash digest seems to be the wrong length,
-        niHASHTOOLONG if the digest in the name is too long,
-        and
-        niSUCCESS if all goes well.      
+
+        Return codes:
+        - niBADALG if algorithm name is not known,
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niBADFILE if canot open/read file, 
+        - niHASHFAIL if the hash digest seems to be the wrong length,
+        - niHASHTOOLONG if the digest in the name is too long, or
+        - niSUCCESS if all goes well.      
         """
 
         # Simulate an nih type name using the suite
@@ -1070,21 +1199,19 @@ class NI:
 
         return (ni_errs.niSUCCESS, dgst_ba)
     
+    #--------------------------------------------------------------------------#
     def makebnb(self, suite_no, buf):
         """
         @brief make a binary format hash for a buffer given the suite number for the encoding
         @param suite_no index of encoding suite (see NIname.suite_index) (in)
         @param buf is the buffer (in)
         @return (tuple) result code taken from ni_errs enumeration, binary digest as bytearray (none if fails)
-        niBADALG if algorithm name is not known,
-        niHASHFAIL if the hash digest seems to be the wrong length or
-        niSUCCESS if all goes well.
-        niBADALG if algorithm name is not known,
-        niBADPARAMS if the digest isn't the right format when generated
-        niHASHFAIL if the hash digest seems to be the wrong length,
-        niHASHTOOLONG if the digest in the name is too long,
-        and
-        niSUCCESS if all goes well.      
+
+        Return codes:
+        - niBADPARAMS if the digest isn't the right format when generated
+        - niBADALG if algorithm name is not known,
+        - niHASHFAIL if the hash digest seems to be the wrong length or
+        - niSUCCESS if all goes well.      
         """
         # Simulate an nih type name using the suite
         url = "nih:%d" % suite_no
@@ -1115,631 +1242,649 @@ class NI:
 
         return (ni_errs.niSUCCESS, dgst_ba)
 
-## @brief NIproc - Global instance for NI operations class
+#==============================================================================#
+# GLOBAL VARIABLES
+##@bvar NIproc
+# Global instance for NI operations class
 NIproc = NI()
 
+#==============================================================================#
+# TESTING CODE
 if __name__ == "__main__":
     import inspect
 
     def lineno():
         """
         @brief Returns the current line number in our program.
+        @return integer line no in program code
         """
         return inspect.currentframe().f_back.f_lineno
 
-    # Sample file names
-    foo_sample = "../samples/foo"
-    bar_sample = "../samples/bar"
+    def test_main():
+        """
+        @brief Sequence of tests for ni library
+        """
 
-    # Construct 100 octet buffer, zero filled
-    buf = "".zfill(100)
+        # Sample file names
+        foo_sample = "../samples/foo"
+        bar_sample = "../samples/bar"
 
-    # Construct buffer with random text
-    randbuf = "@GCC: (Ubuntu/Linaro 4.5.2-8ubuntu4) 4.5.2GCC: (Ubuntu/Linaro 4.5.2-8ubuntu3) 4.5.2.symtab.strtab.shstrtab.interp.note.ABI-tag.note.gnu.build-id.gnu.hash.dynsym.dynstr.gnu.version.gnu.version_r.rela.dyn.rela.plt.init.text.fini.rodata.eh_frame_hdr.eh_frame.ctors.dtors.jcr.dynamic.got.got.plt.data.bss.comment"
-    
-    
-    # Make file_name "foo"
-    file_name = foo_sample
+        # Construct 100 octet buffer, zero filled
+        buf = "".zfill(100)
 
-    print "Checking construction of NIname for scheme ni"
-    print "============================================="
-    
-    print "\nNIname from string..."
-    n = NIname("ni://tcd.ie/sha-256?a=b")
-    print n
-    print "\nNIname from 3 element tuple..."
-    n = NIname(("ni", "tcd.ie", "sha-256"))
-    print n
-    print "\nNIname from 4 element tuple..."
-    n = NIname(("ni", "tcd.ie", "sha-256", "def"))
-    print n
-    print "\nNIname from 5 element tuple (query element empty)..."
-    n = NIname(("ni", "tcd.ie", "sha-256", "abd", ""))
-    print n
-    print "\nNIname from 5 element tuple (query element non-empty)..."
-    n = NIname(("ni", "tcd.ie", "sha-256", "abd", "xyz"))
-    print n
-    
-    print "\nChecking construction of NIname for scheme nih"
-    print   "=============================================="
-    
-    print "\nNIname from string with no authority..."
-    n = NIname("nih:sha-256?a=b")
-    print n
-    print "\nNIname from 3 element tuple..."
-    n = NIname(("nih", "", "sha-256"))
-    print n
-    print "\nNIname from 4 element tuple..."
-    n = NIname(("nih", "", "sha-256", "def"))
-    print n
-    print "\nNIname from 5 element tuple (query element empty)..."
-    n = NIname(("nih", "", "sha-256", "abd", ""))
-    print n
-    print "\nNIname from 5 element tuple (query element non-empty)..."
-    n = NIname(("nih", "", "sha-256", "abd", "xyz"))
-    print n
-    
-    print "\nCheck validation of NIname for bad scheme"
-    print   "========================================="
+        # Construct buffer with random text
+        randbuf = "@GCC: (Ubuntu/Linaro 4.5.2-8ubuntu4) 4.5.2GCC: (Ubuntu/Linaro 4.5.2-8ubuntu3) 4.5.2.symtab.strtab.shstrtab.interp.note.ABI-tag.note.gnu.build-id.gnu.hash.dynsym.dynstr.gnu.version.gnu.version_r.rela.dyn.rela.plt.init.text.fini.rodata.eh_frame_hdr.eh_frame.ctors.dtors.jcr.dynamic.got.got.plt.data.bss.comment"
+        
+        
+        # Make file_name "foo"
+        file_name = foo_sample
 
-    n = NIname("zz://tcd.ie.bollix/sha-256;?c=moreshite")
-    print "\nChecking validation of URL %s with wrong scheme name..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADSCHEME):
-        print "Bad scheme correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Bad scheme accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    print "\nCheck validation of NIname for ni scheme"
-    print   "========================================"
+        print "Checking construction of NIname for scheme ni"
+        print "============================================="
+        
+        print "\nNIname from string..."
+        n = NIname("ni://tcd.ie/sha-256?a=b")
+        print n
+        print "\nNIname from 3 element tuple..."
+        n = NIname(("ni", "tcd.ie", "sha-256"))
+        print n
+        print "\nNIname from 4 element tuple..."
+        n = NIname(("ni", "tcd.ie", "sha-256", "def"))
+        print n
+        print "\nNIname from 5 element tuple (query element empty)..."
+        n = NIname(("ni", "tcd.ie", "sha-256", "abd", ""))
+        print n
+        print "\nNIname from 5 element tuple (query element non-empty)..."
+        n = NIname(("ni", "tcd.ie", "sha-256", "abd", "xyz"))
+        print n
+        
+        print "\nChecking construction of NIname for scheme nih"
+        print   "=============================================="
+        
+        print "\nNIname from string with no authority..."
+        n = NIname("nih:sha-256?a=b")
+        print n
+        print "\nNIname from 3 element tuple..."
+        n = NIname(("nih", "", "sha-256"))
+        print n
+        print "\nNIname from 4 element tuple..."
+        n = NIname(("nih", "", "sha-256", "def"))
+        print n
+        print "\nNIname from 5 element tuple (query element empty)..."
+        n = NIname(("nih", "", "sha-256", "abd", ""))
+        print n
+        print "\nNIname from 5 element tuple (query element non-empty)..."
+        n = NIname(("nih", "", "sha-256", "abd", "xyz"))
+        print n
+        
+        print "\nCheck validation of NIname for bad scheme"
+        print   "========================================="
 
-    n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite#a_fragment")
-    print "\nChecking validation of URL %s with non-empty fragment part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niNOFRAG):
-        print "Existence of fragment correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Existence of fragment accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/abde/sha-256;?c=moreshite")
-    print "\nChecking validation of URL %s with non-empty dir part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADURL):
-        print "Bad path correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Bad path accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/barf-256;?c=moreshite")
-    print "\nChecking validation of URL %s with unknown digest..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADALG):
-        print "Unknown digest algorithm correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Unknown digest algorithm accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite")
-    print "\nChecking validation of template URL %s when expecting params..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADURL):
-        print "Lack of params correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Lack of params accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256;fghfasjhasdgjaaga?c=moreshite")
-    print "\nChecking validation of full URL %s when not expecting params..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADURL):
-        print "Inappropriate presence of params correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Inappropriate presence of params accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni:///sha-256")
-    print "\nChecking validation of minimal template URL %s..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted"
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgs?d=e")
-    print "\nChecking validation of full URL %s with query..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted"
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;afshg?d=e")
-    print "\nChecking validation of full URL %s with a short digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Short digest correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Short digest accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgxy?d=e")
-    print "\nChecking validation of full URL %s with an overlong digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Overlong digest correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Overlong digest accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;afsh*h?d=e")
-    print "\nChecking validation of full URL %s with a inappropriate character in the digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Inappropriate character correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Inappropriate character accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgs?d=e")
-    print "\nGenerating HTTP transform of URL... %s" % n.get_url()
-    print n.get_wku_transform()
-
-    n = NIname("ni://tcd.ie.bollix/mumble-256;afshgsdd?d=e")
-    print"\nChecking HTTP transform not generated for bad ni: URL %s ..." % n.get_url()
-    http_url = n.get_wku_transform()
-    if (http_url == None):
-        print "HTTP transform correctly not generated for ni: URL with bad transform"
-    else:
-        print "Error: HTTP transform %s generated for ni: URL with bad transform" % http_url
-
-    n = NIname("ni://tcd.ie.bollix/sha-256;?d=e")
-    print"\nChecking HTTP transform not generated for ni: template URL %s ..." % n.get_url()
-    http_url = n.get_wku_transform()
-    if (http_url == None):
-        print "HTTP transform correctly not generated for ni: template URL with no digest"
-    else:
-        print "Error: HTTP transform %s generated for ni: templatye URL with no digest" % http_url
-
-
-    print "\nCheck validation of NIname for nih scheme"
-    print   "========================================="
-
-    n = NIname("nih://tcd.ie/sha-256;")
-    print "\nChecking validation of URL %s with authority part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niNOQUERY):
-        print "Existence of authority correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Existence of authority accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256;?c=moreshite")
-    print "\nChecking validation of URL %s with non-empty query part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niNOQUERY):
-        print "Existence of query correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Existence of query accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256;#a_fragment")
-    print "\nChecking validation of URL %s with non-empty fragment part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niNOFRAG):
-        print "Existence of fragment correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Existence of fragment accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:abde/sha-256;")
-    print "\nChecking validation of URL %s with non-empty dir part..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADURL):
-        print "Bad path correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Bad path accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:barf-256;")
-    print "\nChecking validation of URL %s with unknown digest..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADALG):
-        print "Unknown digest algorithm correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Unknown digest algorithm accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256;")
-    print "\nChecking validation of template URL %s when expecting params..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADURL):
-        print "Lack of params correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Lack of params accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256;fghfasjhasdgjaagasda")
-    print "\nChecking validation of full URL %s when not expecting params..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADURL):
-        print "Inappropriate presence of params correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Inappropriate presence of params accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256")
-    print "\nChecking validation of minimal template URL with name %s..." % n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted"
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:2")
-    print "\nChecking validation of minimal template URL with suite number %s..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted: suite identifed - %s" % n.get_alg_name()
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:11;")
-    print "\nChecking validation of URL %s with unknown suite number..." %n.get_url()
-    rv = n.validate_ni_url(has_params=False)
-    if (rv == ni_errs.niBADALG):
-        print "Unknown suite number correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Unknown suite number accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256-32;01234aff")
-    print "\nChecking validation of full URL without check digit %s..." % n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted"
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-
-    n = NIname("nih:sha-256-32;01234aff;5")
-    print "\nChecking validation of full URL with check digit %s..." % n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niSUCCESS):
-        print "URL correctly accepted"
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-
-    n = NIname("nih:sha-256-32;0123456")
-    print "\nChecking validation of full URL %s with a short digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Short digest correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Short digest accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256-32;012345678")
-    print "\nChecking validation of full URL %s with an overlong digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Overlong digest correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Overlong digest accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256-32;0123456g")
-    print "\nChecking validation of full URL %s with an inappropriate character in the digest string..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Inappropriate character correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Inappropriate presence of params accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-    
-    n = NIname("nih:sha-256-32;01234567ff")
-    print "\nChecking validation of full URL %s with overlong digest string but same length as with check digit..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Overlong digest correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Overlong digest accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-
-    n = NIname("nih:sha-256-32;01234567;h")
-    print "\nChecking validation of full URL %s with bad check digit..." %n.get_url()
-    rv = n.validate_ni_url(has_params=True)
-    if (rv == ni_errs.niBADPARAMS):
-        print "Bad check digit correctly detected."
-    elif (rv == ni_errs.niSUCCESS):
-        print "Bad check digit accepted incorrectly."
-    else:
-        print "Unexpected error detected: %s" % ni_errs_txt[rv]
-
-    n = NIname("nih:sha-256-32;01234aff")
-    print "\nGenerating HTTP transform of URL... %s" % n.get_url()
-    print n.get_wku_transform()
-
-    n = NIname("nih:mumble-256;afshgsdd")
-    print"\nChecking HTTP transform not generated for bad ni: URL %s ..." % n.get_url()
-    http_url = n.get_wku_transform()
-    if (http_url == None):
-        print "HTTP transform correctly not generated for ni: URL with bad transform"
-    else:
-        print "Error: HTTP transform %s generated for ni: URL with bad transform" % http_url
-
-    n = NIname("nih:sha-256;")
-    print"\nChecking HTTP transform not generated for ni: template URL %s ..." % n.get_url()
-    http_url = n.get_wku_transform()
-    if (http_url == None):
-        print "HTTP transform correctly not generated for ni: template URL with no digest"
-    else:
-        print "Error: HTTP transform %s generated for ni: templatye URL with no digest" % http_url
-
-
-    print "\nChecking operation of NIdigester"
-    print "=================================="
-
-    print "Setting up NIdigester with template ni://www.example.com/sha-256"
-    z = NIdigester()
-    rv = z.set_url("ni://www.example.com/sha-256")
-    if rv != ni_errs.niSUCCESS:
-        print "Unexpected error detected when validating template: %s" % ni_errs_txt[rv]
-    else:
-        print "Template accepted by NIdigester"
-        rv = z.update_digest("The quick brown fox jumped over the lazy dog")
-        if not rv:
-            print "Nidigester update_digest returned False - unexpected"
+        n = NIname("zz://tcd.ie.bollix/sha-256;?c=moreshite")
+        print "\nChecking validation of URL %s with wrong scheme name..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADSCHEME):
+            print "Bad scheme correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Bad scheme accepted incorrectly."
         else:
-            rv = z.finalize_digest()
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        print "\nCheck validation of NIname for ni scheme"
+        print   "========================================"
+
+        n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite#a_fragment")
+        print "\nChecking validation of URL %s with non-empty fragment part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niNOFRAG):
+            print "Existence of fragment correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Existence of fragment accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/abde/sha-256;?c=moreshite")
+        print "\nChecking validation of URL %s with non-empty dir part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADURL):
+            print "Bad path correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Bad path accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/barf-256;?c=moreshite")
+        print "\nChecking validation of URL %s with unknown digest..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADALG):
+            print "Unknown digest algorithm correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Unknown digest algorithm accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite")
+        print "\nChecking validation of template URL %s when expecting params..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADURL):
+            print "Lack of params correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Lack of params accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256;fghfasjhasdgjaaga?c=moreshite")
+        print "\nChecking validation of full URL %s when not expecting params..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADURL):
+            print "Inappropriate presence of params correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Inappropriate presence of params accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni:///sha-256")
+        print "\nChecking validation of minimal template URL %s..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted"
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgs?d=e")
+        print "\nChecking validation of full URL %s with query..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted"
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;afshg?d=e")
+        print "\nChecking validation of full URL %s with a short digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Short digest correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Short digest accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgxy?d=e")
+        print "\nChecking validation of full URL %s with an overlong digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Overlong digest correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Overlong digest accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;afsh*h?d=e")
+        print "\nChecking validation of full URL %s with a inappropriate character in the digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Inappropriate character correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Inappropriate character accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;afshgs?d=e")
+        print "\nGenerating HTTP transform of URL... %s" % n.get_url()
+        print n.get_wku_transform()
+
+        n = NIname("ni://tcd.ie.bollix/mumble-256;afshgsdd?d=e")
+        print"\nChecking HTTP transform not generated for bad ni: URL %s ..." % n.get_url()
+        http_url = n.get_wku_transform()
+        if (http_url == None):
+            print "HTTP transform correctly not generated for ni: URL with bad transform"
+        else:
+            print "Error: HTTP transform %s generated for ni: URL with bad transform" % http_url
+
+        n = NIname("ni://tcd.ie.bollix/sha-256;?d=e")
+        print"\nChecking HTTP transform not generated for ni: template URL %s ..." % n.get_url()
+        http_url = n.get_wku_transform()
+        if (http_url == None):
+            print "HTTP transform correctly not generated for ni: template URL with no digest"
+        else:
+            print "Error: HTTP transform %s generated for ni: templatye URL with no digest" % http_url
+
+
+        print "\nCheck validation of NIname for nih scheme"
+        print   "========================================="
+
+        n = NIname("nih://tcd.ie/sha-256;")
+        print "\nChecking validation of URL %s with authority part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niNOQUERY):
+            print "Existence of authority correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Existence of authority accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256;?c=moreshite")
+        print "\nChecking validation of URL %s with non-empty query part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niNOQUERY):
+            print "Existence of query correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Existence of query accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256;#a_fragment")
+        print "\nChecking validation of URL %s with non-empty fragment part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niNOFRAG):
+            print "Existence of fragment correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Existence of fragment accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:abde/sha-256;")
+        print "\nChecking validation of URL %s with non-empty dir part..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADURL):
+            print "Bad path correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Bad path accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:barf-256;")
+        print "\nChecking validation of URL %s with unknown digest..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADALG):
+            print "Unknown digest algorithm correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Unknown digest algorithm accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256;")
+        print "\nChecking validation of template URL %s when expecting params..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADURL):
+            print "Lack of params correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Lack of params accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256;fghfasjhasdgjaagasda")
+        print "\nChecking validation of full URL %s when not expecting params..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADURL):
+            print "Inappropriate presence of params correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Inappropriate presence of params accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256")
+        print "\nChecking validation of minimal template URL with name %s..." % n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted"
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:2")
+        print "\nChecking validation of minimal template URL with suite number %s..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted: suite identifed - %s" % n.get_alg_name()
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:11;")
+        print "\nChecking validation of URL %s with unknown suite number..." %n.get_url()
+        rv = n.validate_ni_url(has_params=False)
+        if (rv == ni_errs.niBADALG):
+            print "Unknown suite number correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Unknown suite number accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256-32;01234aff")
+        print "\nChecking validation of full URL without check digit %s..." % n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted"
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+
+        n = NIname("nih:sha-256-32;01234aff;5")
+        print "\nChecking validation of full URL with check digit %s..." % n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niSUCCESS):
+            print "URL correctly accepted"
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+
+        n = NIname("nih:sha-256-32;0123456")
+        print "\nChecking validation of full URL %s with a short digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Short digest correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Short digest accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256-32;012345678")
+        print "\nChecking validation of full URL %s with an overlong digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Overlong digest correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Overlong digest accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256-32;0123456g")
+        print "\nChecking validation of full URL %s with an inappropriate character in the digest string..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Inappropriate character correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Inappropriate presence of params accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+        
+        n = NIname("nih:sha-256-32;01234567ff")
+        print "\nChecking validation of full URL %s with overlong digest string but same length as with check digit..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Overlong digest correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Overlong digest accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+
+        n = NIname("nih:sha-256-32;01234567;h")
+        print "\nChecking validation of full URL %s with bad check digit..." %n.get_url()
+        rv = n.validate_ni_url(has_params=True)
+        if (rv == ni_errs.niBADPARAMS):
+            print "Bad check digit correctly detected."
+        elif (rv == ni_errs.niSUCCESS):
+            print "Bad check digit accepted incorrectly."
+        else:
+            print "Unexpected error detected: %s" % ni_errs_txt[rv]
+
+        n = NIname("nih:sha-256-32;01234aff")
+        print "\nGenerating HTTP transform of URL... %s" % n.get_url()
+        print n.get_wku_transform()
+
+        n = NIname("nih:mumble-256;afshgsdd")
+        print"\nChecking HTTP transform not generated for bad ni: URL %s ..." % n.get_url()
+        http_url = n.get_wku_transform()
+        if (http_url == None):
+            print "HTTP transform correctly not generated for ni: URL with bad transform"
+        else:
+            print "Error: HTTP transform %s generated for ni: URL with bad transform" % http_url
+
+        n = NIname("nih:sha-256;")
+        print"\nChecking HTTP transform not generated for ni: template URL %s ..." % n.get_url()
+        http_url = n.get_wku_transform()
+        if (http_url == None):
+            print "HTTP transform correctly not generated for ni: template URL with no digest"
+        else:
+            print "Error: HTTP transform %s generated for ni: templatye URL with no digest" % http_url
+
+
+        print "\nChecking operation of NIdigester"
+        print "=================================="
+
+        print "Setting up NIdigester with template ni://www.example.com/sha-256"
+        z = NIdigester()
+        rv = z.set_url("ni://www.example.com/sha-256")
+        if rv != ni_errs.niSUCCESS:
+            print "Unexpected error detected when validating template: %s" % ni_errs_txt[rv]
+        else:
+            print "Template accepted by NIdigester"
+            rv = z.update_digest("The quick brown fox jumped over the lazy dog")
             if not rv:
-                print "NIdigester finalize_digest return False - unexpected"
+                print "Nidigester update_digest returned False - unexpected"
             else:
-                print "Generated URL : %s" % z.get_url()
-                print "Representation of NIdigester instance: %s " % z
-    
-    print "Setting up NIdigester with duff template ni://www.example.com/shc-256"
-    z = NIdigester()
-    rv = z.set_url(("ni", "www.example.com", "shb-256"))
-    if rv == ni_errs.niSUCCESS:
-        print "Unexpected success detected when validating template"
-    else:
-        print "Error correctly detected when validating template: %s" % ni_errs_txt[rv]
+                rv = z.finalize_digest()
+                if not rv:
+                    print "NIdigester finalize_digest return False - unexpected"
+                else:
+                    print "Generated URL : %s" % z.get_url()
+                    print "Representation of NIdigester instance: %s " % z
         
-    print "\nChecking makenif, makebnf and checknif"
-    print   "======================================\n"
-    
-    print "File name %s in buffer 'buf' %d octets long" % ( str(file_name), len(file_name))
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenif(n, file_name)
-    print "Name with digest: %s\n" % n.get_url()
-    
-    n = NIname("nih:sha-256-32;")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenif(n, file_name)
-    full_name = n.get_url()
-    print "Name with digest: %s" % n.get_url()
-    print "Checking name with check digit..."
-    ret = NIproc.checknif(n, file_name)
-    if ret == ni_errs.niSUCCESS:
-        print "Digest verified successfully"
-    else:
-        print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
-    n = NIname(full_name[:-2])
-    print "Checking name without check digit...%s" % n.get_url()
-    ret = NIproc.checknif(n, file_name)
-    if ret == ni_errs.niSUCCESS:
-        print "Digest verified successfully"
-    else:
-        print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
-    
-    n = NIname("nih:6;")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenif(n, file_name)
-    print "Name with digest: %s" % n.get_url()
-    
-    print "\nChecking makebnf with suite 6..."
-    (ret, ba) = NIproc.makebnf(6, file_name)
-    if ret == ni_errs.niSUCCESS:
-        print "Binary digest: %s" % base64.b16encode(str(ba))
-    else:
-        print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
-    
-    print "\nChecking makebnf with (bad) suite 11..."
-    (ret, ba) = NIproc.makebnf(11, file_name)
-    if ret == ni_errs.niSUCCESS:
-        print "Making binary digest succeeded unexpectedly"
-    else:
-        print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256-32;?c=moreshite")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenif(n, file_name)
-    print "Name with SHA256 truncated digest: %s\n" % n.get_url()
-    
-    n = NIname("ni://tcd.ie.bollix/sha-256;")    
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenif(n, bar_sample)
-    print "Name with digest: %s\n" % n.get_url()
-
-    n = NIname("ni://tcd.ie/sha-256;?c=image%%2Fjson")
-    print "\nName: %s" % n.get_url() 
-    ret = NIproc.makenif(n, file_name)
-    if ret != ni_errs.niSUCCESS:
-        print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
-    else:
+        print "Setting up NIdigester with duff template ni://www.example.com/shc-256"
+        z = NIdigester()
+        rv = z.set_url(("ni", "www.example.com", "shb-256"))
+        if rv == ni_errs.niSUCCESS:
+            print "Unexpected success detected when validating template"
+        else:
+            print "Error correctly detected when validating template: %s" % ni_errs_txt[rv]
+            
+        print "\nChecking makenif, makebnf and checknif"
+        print   "======================================\n"
+        
+        print "File name %s in buffer 'buf' %d octets long" % ( str(file_name), len(file_name))
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256;?c=moreshite")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenif(n, file_name)
         print "Name with digest: %s\n" % n.get_url()
+        
+        n = NIname("nih:sha-256-32;")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenif(n, file_name)
+        full_name = n.get_url()
+        print "Name with digest: %s" % n.get_url()
+        print "Checking name with check digit..."
         ret = NIproc.checknif(n, file_name)
-        if ret != ni_errs.niSUCCESS:
-            print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
+        if ret == ni_errs.niSUCCESS:
+            print "Digest verified successfully"
         else:
-            print "Hash check for name %s with content file %s successful." % (n.get_url(),
-                                                                               file_name)
-        print "Checking name same digest with wrong content file \'%s\'" % bar_sample
-        ret = NIproc.checknif(n, bar_sample)
-        if ret == ni_errs.niBADHASH:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect hash incorrect for content." % n.get_url()
+            print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
+        n = NIname(full_name[:-2])
+        print "Checking name without check digit...%s" % n.get_url()
+        ret = NIproc.checknif(n, file_name)
+        if ret == ni_errs.niSUCCESS:
+            print "Digest verified successfully"
         else:
-            print "Hash check for name %s detected unexpected error %s." % (n.get_url(), ni_errs_txt[ret])
-                                                                               
+            print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
         
-        i = n.get_url().index("?")
-        good_name =  n.get_url()                                                                     
-        nn = NIname("Z".join([n.get_url()[:i], n.get_url()[i:]]))
-        print "\nName with too long digest: %s\n" % nn.get_url()
-        ret = NIproc.checknif(nn, file_name)
-        if ret == ni_errs.niHASHTOOLONG:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+        n = NIname("nih:6;")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenif(n, file_name)
+        print "Name with digest: %s" % n.get_url()
+        
+        print "\nChecking makebnf with suite 6..."
+        (ret, ba) = NIproc.makebnf(6, file_name)
+        if ret == ni_errs.niSUCCESS:
+            print "Binary digest: %s" % base64.b16encode(str(ba))
         else:
-            print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
-                                                                               
-        i = good_name.index(";") + 4
-        c = good_name[i]
-        if c != "_":
-            bad_name = "_".join([good_name[:i],good_name[(i+1):]])
+            print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
+        
+        print "\nChecking makebnf with (bad) suite 11..."
+        (ret, ba) = NIproc.makebnf(11, file_name)
+        if ret == ni_errs.niSUCCESS:
+            print "Making binary digest succeeded unexpectedly"
         else:
-            bad_name = "Q".join([good_name[:i],good_name[(i+1):]])
-        nn = NIname(bad_name)
-        print "\nName with corrupted digest: %s\n" % nn.get_url()
-        ret = NIproc.checknif(nn, file_name)
-        if ret == ni_errs.niBADHASH:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
-        else:
-            print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+            print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256-32;?c=moreshite")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenif(n, file_name)
+        print "Name with SHA256 truncated digest: %s\n" % n.get_url()
+        
+        n = NIname("ni://tcd.ie.bollix/sha-256;")    
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenif(n, bar_sample)
+        print "Name with digest: %s\n" % n.get_url()
 
-    print "\nChecking makenib, makebnb and checknib"
-    print   "======================================\n"
-
-    print "Using buffer 'buf' %d octets long filled with zeroes (%s)." % ( len(buf), buf.decode())
-
-    n = NIname("ni://folly.org.wl/sha-256;?abc=zzz")
-    print "\nName: %s" % n.get_url()
-    NIproc.makenib(n, randbuf)
-    n = NIname("ni://folly.org.wl/sha-256;?abc=mmm")
-    print "Name with digest of 'randbuf': %s\n" % n.get_url()
-    ret = NIproc.makenib(n, buf)
-    if ret != ni_errs.niSUCCESS:
-        print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
-    else:
-        print "Name with digest of 'buf': %s\n" % n.get_url()
-        ret = NIproc.checknib(n, buf)
+        n = NIname("ni://tcd.ie/sha-256;?c=image%%2Fjson")
+        print "\nName: %s" % n.get_url() 
+        ret = NIproc.makenif(n, file_name)
         if ret != ni_errs.niSUCCESS:
             print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
         else:
-            print "Hash check for name %s with content file %s successful." % (n.get_url(),
-                                                                               file_name)
-        print "Checking name same digest with wrong content buffer \'randbuf\'"
+            print "Name with digest: %s\n" % n.get_url()
+            ret = NIproc.checknif(n, file_name)
+            if ret != ni_errs.niSUCCESS:
+                print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
+            else:
+                print "Hash check for name %s with content file %s successful." % (n.get_url(),
+                                                                                   file_name)
+            print "Checking name same digest with wrong content file \'%s\'" % bar_sample
+            ret = NIproc.checknif(n, bar_sample)
+            if ret == ni_errs.niBADHASH:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect hash incorrect for content." % n.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (n.get_url(), ni_errs_txt[ret])
+                                                                                   
+            
+            i = n.get_url().index("?")
+            good_name =  n.get_url()                                                                     
+            nn = NIname("Z".join([n.get_url()[:i], n.get_url()[i:]]))
+            print "\nName with too long digest: %s\n" % nn.get_url()
+            ret = NIproc.checknif(nn, file_name)
+            if ret == ni_errs.niHASHTOOLONG:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+                                                                                   
+            i = good_name.index(";") + 4
+            c = good_name[i]
+            if c != "_":
+                bad_name = "_".join([good_name[:i],good_name[(i+1):]])
+            else:
+                bad_name = "Q".join([good_name[:i],good_name[(i+1):]])
+            nn = NIname(bad_name)
+            print "\nName with corrupted digest: %s\n" % nn.get_url()
+            ret = NIproc.checknif(nn, file_name)
+            if ret == ni_errs.niBADHASH:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+
+        print "\nChecking makenib, makebnb and checknib"
+        print   "======================================\n"
+
+        print "Using buffer 'buf' %d octets long filled with zeroes (%s)." % ( len(buf), buf.decode())
+
+        n = NIname("ni://folly.org.wl/sha-256;?abc=zzz")
+        print "\nName: %s" % n.get_url()
+        NIproc.makenib(n, randbuf)
+        n = NIname("ni://folly.org.wl/sha-256;?abc=mmm")
+        print "Name with digest of 'randbuf': %s\n" % n.get_url()
+        ret = NIproc.makenib(n, buf)
+        if ret != ni_errs.niSUCCESS:
+            print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
+        else:
+            print "Name with digest of 'buf': %s\n" % n.get_url()
+            ret = NIproc.checknib(n, buf)
+            if ret != ni_errs.niSUCCESS:
+                print "Error: %s at line %d" % (ni_errs_txt[ret], lineno())
+            else:
+                print "Hash check for name %s with content file %s successful." % (n.get_url(),
+                                                                                   file_name)
+            print "Checking name same digest with wrong content buffer \'randbuf\'"
+            ret = NIproc.checknib(n, randbuf)
+            if ret == ni_errs.niBADHASH:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect hash incorrect for content buffer." % n.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (n.get_url(), ni_errs_txt[ret])
+                                                                                   
+            
+            i = n.get_url().index("?")
+            good_name =  n.get_url()                                                                     
+            nn = NIname("Z".join([n.get_url()[:i], n.get_url()[i:]]))
+            print "\nName with too long digest: %s\n" % nn.get_url()
+            ret = NIproc.checknib(nn, buf)
+            if ret == ni_errs.niBADPARAMS:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+                                                                                   
+            i = good_name.index(";") + 4
+            c = good_name[i]
+            if c != "_":
+                bad_name = "_".join([good_name[:i],good_name[(i+1):]])
+            else:
+                bad_name = "Q".join([good_name[:i],good_name[(i+1):]])
+            nn = NIname(bad_name)
+            print "\nName with corrupted digest: %s\n" % nn.get_url()
+            ret = NIproc.checknib(nn, buf)
+            if ret == ni_errs.niBADHASH:
+                print "Correctly detected: %s" % ni_errs_txt[ret]
+            elif ret == ni_errs.niSUCCESS:
+                print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+            else:
+                print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+
+        n = NIname("nih:sha-256-32;")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenib(n, randbuf)
+        full_name = n.get_url()
+        print "Name with digest: %s" % n.get_url()
+        print "Checking name with check digit..."
         ret = NIproc.checknib(n, randbuf)
-        if ret == ni_errs.niBADHASH:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect hash incorrect for content buffer." % n.get_url()
+        if ret == ni_errs.niSUCCESS:
+            print "Digest verified successfully"
         else:
-            print "Hash check for name %s detected unexpected error %s." % (n.get_url(), ni_errs_txt[ret])
-                                                                               
+            print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
+        n = NIname(full_name[:-2])
+        print "Checking name without check digit...%s" % n.get_url()
+        ret = NIproc.checknib(n, randbuf)
+        if ret == ni_errs.niSUCCESS:
+            print "Digest verified successfully"
+        else:
+            print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
         
-        i = n.get_url().index("?")
-        good_name =  n.get_url()                                                                     
-        nn = NIname("Z".join([n.get_url()[:i], n.get_url()[i:]]))
-        print "\nName with too long digest: %s\n" % nn.get_url()
-        ret = NIproc.checknib(nn, buf)
-        if ret == ni_errs.niBADPARAMS:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
+        n = NIname("nih:6;")
+        print "\nName: %s" % n.get_url() 
+        NIproc.makenib(n, randbuf)
+        print "Name with digest: %s" % n.get_url()
+        
+        print "\nChecking makebnb with suite 6..."
+        (ret, ba) = NIproc.makebnb(6, randbuf)
+        if ret == ni_errs.niSUCCESS:
+            print "Binary digest: %s" % base64.b16encode(str(ba))
         else:
-            print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
-                                                                               
-        i = good_name.index(";") + 4
-        c = good_name[i]
-        if c != "_":
-            bad_name = "_".join([good_name[:i],good_name[(i+1):]])
+            print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
+        
+        print "\nChecking makebnb with (bad) suite 11..."
+        (ret, ba) = NIproc.makebnb(11, randbuf)
+        if ret == ni_errs.niSUCCESS:
+            print "Making binary digest succeeded unexpectedly"
         else:
-            bad_name = "Q".join([good_name[:i],good_name[(i+1):]])
-        nn = NIname(bad_name)
-        print "\nName with corrupted digest: %s\n" % nn.get_url()
-        ret = NIproc.checknib(nn, buf)
-        if ret == ni_errs.niBADHASH:
-            print "Correctly detected: %s" % ni_errs_txt[ret]
-        elif ret == ni_errs.niSUCCESS:
-            print "Hash check for name %s failed to detect HASHTOOLONG error." % nn.get_url()
-        else:
-            print "Hash check for name %s detected unexpected error %s." % (nn.get_url(), ni_errs_txt[ret])
+            print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
+        
+        print "\nEnd of tests"
+        print "============\n"
 
-    n = NIname("nih:sha-256-32;")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenib(n, randbuf)
-    full_name = n.get_url()
-    print "Name with digest: %s" % n.get_url()
-    print "Checking name with check digit..."
-    ret = NIproc.checknib(n, randbuf)
-    if ret == ni_errs.niSUCCESS:
-        print "Digest verified successfully"
-    else:
-        print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
-    n = NIname(full_name[:-2])
-    print "Checking name without check digit...%s" % n.get_url()
-    ret = NIproc.checknib(n, randbuf)
-    if ret == ni_errs.niSUCCESS:
-        print "Digest verified successfully"
-    else:
-        print "Error inappropriately detected when verifying name: %s" % ni_errs_txt[ret]
-    
-    n = NIname("nih:6;")
-    print "\nName: %s" % n.get_url() 
-    NIproc.makenib(n, randbuf)
-    print "Name with digest: %s" % n.get_url()
-    
-    print "\nChecking makebnb with suite 6..."
-    (ret, ba) = NIproc.makebnb(6, randbuf)
-    if ret == ni_errs.niSUCCESS:
-        print "Binary digest: %s" % base64.b16encode(str(ba))
-    else:
-        print "Error inappropriately detected when generating binary digest: %s" % ni_errs_txt[ret]
-    
-    print "\nChecking makebnb with (bad) suite 11..."
-    (ret, ba) = NIproc.makebnb(11, randbuf)
-    if ret == ni_errs.niSUCCESS:
-        print "Making binary digest succeeded unexpectedly"
-    else:
-        print "Error correctly detected when generating binary digest: %s" % ni_errs_txt[ret]
-    
-    print "\nEnd of tests"
-    print "============\n"
+        return
 
-                                                                               
+#==============================================================================#
+# Perform tests
+    test_main()
+
+
+                                                                                   
 
 
 
 
 
-    
+        

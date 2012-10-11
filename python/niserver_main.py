@@ -34,6 +34,7 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+0.4       11/10/2012 Elwyn Davies   Minor commenting improvements.
 0.3	  07/10/2012 Elwyn Davies   Added favicon option. Improved doxygen stuff.
 0.2	  06/10/2012 Elwyn Davies   Added getputform and nrsform options, and
                                     tests that the files referred to are
@@ -57,6 +58,11 @@ from optparse import OptionParser
 
 from niserver import ni_http_server, check_cache_dirs
 
+#==============================================================================#
+# GLOBAL VARIABLES
+
+#=== Configuration Defaults ===
+
 ##@var CTRL_PORT
 # UDP port number used to send a shutdown control request.
 CTRL_PORT = 2114
@@ -69,6 +75,7 @@ SERVER_PORT = 8080
 # Default name for favicon file requested by browsers
 FAVICON_FILE = "/favicon.ico"
 
+#==============================================================================#
 def main(default_config_file):
     """
     @brief main program for lightweight NI HTTP server
