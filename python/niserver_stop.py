@@ -40,13 +40,21 @@ irrelevant.
 Revision History
 ================
 Version   Date       Author         Notes
+0.2       11/10/2012 Elwyn Davies   Make the code into a function so distutils
+                                    can make a script for it. 
 0.1	  17/09/2012 Elwyn Davies   Improved comments - removed history.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 """
 
 import socket
-print "Stopping niserver HTTP daemon..."
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.sendto("stop",("localhost",2114))
-s.close()
-print "... stop sent."
+def stop_niserver():
+    print "Stopping niserver HTTP daemon..."
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.sendto("stop",("localhost",2114))
+    s.close()
+    print "... stop sent."
+    return(0)
+
+#-------------------------------------------------------------------------------
+if __name__ == "__main__":
+    stop_niserver()

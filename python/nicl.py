@@ -31,7 +31,7 @@ import sys
 from optparse import OptionParser
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
-def main():
+def py_nicl():
     """
     @brief Command line program to generate and validate digests in ni: URLs.
     
@@ -173,5 +173,6 @@ def main():
         
     sys.exit(0)
 
+#-------------------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    py_nicl()

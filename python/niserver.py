@@ -173,6 +173,7 @@ Version   Date       Author         Notes
 NISERVER_VER = "0.9"
 
 #==============================================================================#
+#=== Standard modules for Python 2.[567].x distributions ===
 import os
 import stat
 import sys
@@ -195,12 +196,14 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
 from SocketServer import ThreadingMixIn
 import cgi
-import magic
 import urllib
 import urllib2
 import hashlib
-import DNS
 import xml.etree.ElementTree as ET
+
+#=== Modules needing special downloading
+import magic
+import DNS
 
 ##@var redis_loaded
 # Flag indicating if it was possible to load the Redis module.
@@ -210,6 +213,8 @@ try:
     redis_loaded = True
 except ImportError:
     redis_loaded = False
+
+#=== Local package modules ===
 
 import ni
 

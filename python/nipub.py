@@ -40,17 +40,22 @@ from ni import ni_errs, ni_errs_txt, NIname, NIproc, NIdigester
 from encode import *
 import streaminghttp
 
+#===============================================================================#
+##@var DIGEST_DFLT
+# Default digest hashing algorithm's name in ni.py
 DIGEST_DFLT = "sha-256"
 
+#===============================================================================#
 def debug(string):
     """
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    print string
+    #print string
     return
 
-def main():
+#===============================================================================#
+def py_nipub():
     """
     @brief Command line program to perform a NetInf 'publish' operation using http
     @brief convergence layer.
@@ -411,5 +416,6 @@ def main():
 
     sys.exit(0)
 
+#===============================================================================#
 if __name__ == "__main__":
-    main()
+    py_nipub()

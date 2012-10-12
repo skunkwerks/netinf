@@ -1,4 +1,5 @@
 NI URI format implementation in Python
+======================================
 
 Author:: Elwyn Davies <davieseb@scaa.tcd.ie>/<elwynd@folly.org.uk> 
 Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
@@ -7,6 +8,11 @@ Copyright (c) 2012 Elwyn Davies, Trinity College Dublin and Folly Consulting Ltd
 You can redistribute it and/or modify it under the same terms as Python.
 
 Basic implementation of the the NI URI format. Work in Progress.
+
+The specifications that this is based on - note, versions may change:
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Currently the code is for release 2 (version 2.6 or later) of Python.
 Support for release 3 will need some conversion work.
@@ -26,38 +32,46 @@ for the major release of Python you are using.
 Requires the Python 'python-magic' module (version 0.4.3 or later) to determine 
 the content type of files that are to be published. Note that the version of
 the magic module that is distributed with Ubuntu is out of date and does not
-provide the funtion used.  The latest version can be downloaded from
+provide the function used.  The latest version can be downloaded from
 http://pypi.python.org/pypi/python-magic/.
+
+Requires the Python 'redis-py' (version 2.7.1 or later) to provide an interface
+to the Redis database package if the NRS server capabilities are configured in
+the niserver.  This module can be downloaded from
+https://github.com/andymccurdy/redis-py/.
 
 (In each case the modules can be installed using:
 sudo python setup.py install
 assuming you have the distutils module installed).
 
 Provides:
-- ni.py - library of ni: and nih: URL processing and digest making/checking functions.
-- nicl.py - basic command line tool to make and check digests using ni.py.
-- niget.py - command line tool to perform NetInf get requests over HTTP
-- nipub.py - command line tool to perform NetInf publish requests over HTTP
-- ni_urlparse.py - slightly hacked version of urlparse.py supporting ni scheme.
-- doit.py - shell script used for checking ni.py and nicl.py
 
-Support functions (acquired from http://atlee.ca/software/poster/index.html):
-- encode.py - improved mechanism for constructing multipart/form 
-  (extensively modified).
-- streaminghttp.py - allows large uploads to be handled without requiring 
-  equally large memory buffers by allowing iterables and coping with 
-  Python generators (essentially as-is from Poster site).
+Command line utilities:
+- nicl.py -        basic command line tool to make and check digests using ni.py.
+- niget.py -       command line tool to perform NetInf get requests over HTTP.
+- nipub.py -       command line tool to perform NetInf publish requests over HTTP.
+- nisearch.py -    command line tool to perform NetInf search requests over HTTP.
+- doit.py -        shell script used for checking ni.py and nicl.py.
 
  Lightweight NI NDO cache server:
+     
  Provides an HTTP server that just serves as the server end of the NetInf
  protocol, manages a local cache of NDOs and provides http: access using
  the .well-known/ni mechanism. It provides the following functions:
- - NetInf GET over HTTP CL (responds to POSTS to /netinfproto/get)
- - NetInf PUBLISH over HTTP CL (responds to POSTS to /netinfproto/publish or .../put)
+ - NetInf GET over HTTP CL (responds to POSTs to /netinfproto/get)
+ - NetInf PUBLISH over HTTP CL (responds to POSTs to /netinfproto/publish or .../put)
+ - NetInf SEARCH over HTTP CL (responds to POSTs to /netinfproto/search)
  - HTTP GET for /.well-known/ni/<alg name>/<digest>
  - HTTP GET for /getputform.html
  - HTTP GET for /netinfproto/list and /netinfproto/list?showcache.html?alg=<alg-name>
  - HTTP GET for /favicon.ico (NetInf mini icon displayed in browser URL box)
+
+The server can be configured to provide Name Resolution Services (NRS):
+ - Add an NRS database entry (responds on POSTs on /netinfproto/nrsconf)
+ - Lookup an NRS database entry (responds on POSTs on /netinfproto/nrslookup)
+ - Delete an NRS database entry (responds on POSTs on /netinfproto/nrsdelete)
+ - Examine available NRS database entries (responds on POSTs on /netinfproto/nrsvals)
+
  Uses the following files:
  - niserver_main.py - the main server controller
  - niserver.py - the guts of the server
@@ -68,19 +82,42 @@ Also:
  - niserver_stop.py - command line utility to stop the server (only from the
    same host as it was started on)
 
+Support modules:
+- ni.py -          library of ni: and nih: URL processing and digest
+                   making/checking functions.
+- ni_urlparse.py - slightly hacked version of urlparse.py supporting ni scheme.
+
+Support moduls (acquired from http://atlee.ca/software/poster/index.html):
+- encode.py - improved mechanism for constructing multipart/form 
+              (extensively modified).
+- streaminghttp.py - allows large uploads to be handled without requiring 
+               equally large memory buffers by allowing iterables and coping
+               with Python generators (essentially as-is from Poster site).
+
 --------------------  
 
 Features
  - uses Python hashlib (ultimately dependent on OpenSSL) and base64
- - use Python urllib and mimetypes to do HTTP access
+ - use Python urllib, urllib2 and mimetypes to do HTTP access
  - uses Python stdnum.luhn module to create check digit for nih: names
  - can hash memory objects (strings), files, and web objects
  - supports hash function pluggability
 
 Limitations
- - niget should work on chunks of request rather than whole file
-
+ - niget should generate digest as it reads the content if possible rather
+   than reading it into a buffer (problem with very large objects)
+ - (more difficult) generate digest on the fly in server when uploading
+   file on publishing - may conflict with generating ni name on the fly at
+   client end (there is a solution by adding algorithm name to
+   content-disposition header for form data item with file.
+               
 CHANGES
+  2012-10-12
+        - Implemented initial version of NRS server using Redis database.
+          Updated cachelisting implementation to allow access to metadata.
+          General cleanup of and refactoring of niserver.py code
+          Addition/completion of Doxygen/doxypy documentation.
+          Fixed up niserver testing code.InteractiveConsole
   2012-10-01
 	- Added handling of metadata string supplied by PUBLISH to niserver
 	  and nipub.  Updated nipub to specify format of response (rform) 

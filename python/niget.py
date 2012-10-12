@@ -36,6 +36,7 @@ import email.parser
 import email.message
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
+#===============================================================================#
 def debug(string):
     """
     @brief Print out debugging information string
@@ -44,7 +45,8 @@ def debug(string):
     #print string
     return
 
-def main():
+#===============================================================================#
+def py_niget():
     """
     @brief Command line program to perform a NetInf 'get' operation using http
     @brief convergence layer.
@@ -275,5 +277,6 @@ def main():
 
     sys.exit(rv)
                                                                                                     
+#===============================================================================#
 if __name__ == "__main__":
-    main()
+    py_niget()

@@ -34,6 +34,7 @@ import urllib2
 import json
 #from ni import NIname, NIproc
 
+#===============================================================================#
 def debug(string):
     """
     @brief Print out debugging information string
@@ -42,7 +43,8 @@ def debug(string):
     #print string
     return
 
-def main():
+#===============================================================================#
+def py_search():
     """
     @brief Command line program to perform a NetInf 'get' operation using http
     @brief convergence layer.
@@ -236,5 +238,6 @@ def main():
 
     sys.exit(0)
                                                                                                     
+#===============================================================================#
 if __name__ == "__main__":
-    main()
+    py_search()

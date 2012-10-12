@@ -77,7 +77,7 @@ SERVER_PORT = 8080
 FAVICON_FILE = "/favicon.ico"
 
 #==============================================================================#
-def main(default_config_file):
+def py_niserver_start(default_config_file):
     """
     @brief main program for lightweight NI HTTP server
     @param default_config_file string Pathname of default to use for
@@ -486,10 +486,16 @@ def main(default_config_file):
 
     loginfo("%s: shutting down" % parser.get_prog_name())
     return True
-    
-#============================================================================
-if __name__ == "__main__":
-    if not main("/var/niserver/niserver.conf"):
+
+#------------------------------------------------------------------------------#    
+def py_niserver():
+    """
+    @brief Shim function to allow distuitils to create a script to start server
+    """
+    if not py_niserver_start("/var/niserver/niserver.conf"):
         os._exit(1)
 
+#==============================================================================#
+if __name__ == "__main__":
+    py_niserver()
 
