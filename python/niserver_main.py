@@ -8,14 +8,15 @@
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          http://tools.ietf.org/html/farrell-decade-ni-00
-          http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    
-       http://www.apache.org/licenses/LICENSE-2.0
+       - http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -309,7 +310,6 @@ def main(default_config_file):
                     authority = config.get(conf_section, conf_option)
 
         conf_section = "nrs"
-        print provide_nrs
         if (provide_nrs is None) and (not config.has_section(conf_section)):
             parser.error("No section named %s in configuration file %s" %
                          (conf_section, config_file))

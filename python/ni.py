@@ -10,9 +10,8 @@
     part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          - http://tools.ietf.org/html/farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
           - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
-          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Copyright 2012 Trinity College Dublin
 
@@ -27,6 +26,42 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+================================================================================
+
+This module contains library functions for building, checking and manipulating
+ni: scheme URIs according to draft-farrell-decade-ni (soon to be an RFC).
+
+It contains three main classes:
+- ni::NIname:  An instance of this class encapsulates a single Ni: scheme URI.
+It can be built either with a single string in the correct form or a tuple
+of components.  It knows the currently implemented digest algorithms, the
+truncations that are used with them, and the lengths of the resulting digests,
+both before and after truncation. Methods are implememted to allow checking
+of the syntax of a ni: scheme URI, both as a template without the digest and in
+complete form. The URI components can be accessed, and in most cases maniuplated
+in order to (for example) convert it to a 'canonical form' without netloc or
+query string.  It has a number of classmethods that can be used to access fixed
+'constants' withn the class including the algorithm list.
+- ni::NI: A 'stateless' class with a number of methods that are primarily
+intended for creating and checking the digests associated with a file or buffer
+that are incorporated into ni: scheme URIs referring to an object.  A single
+globally accessible instance is created and made available as 'NIproc'.
+-ni::NIdigester: A helper class intneded for use in conjunction with
+encode::MultipartParam (file: encode.py).  The pont of the complexity here is
+to avoid either reading all of a file to be both digested and sent over an HTTP
+connection from a client twice or reading it into a buffer before calculating the
+digest needed for an ni scheme URI.  When used in conjunction with the tricks in
+encode::MultipartParam and encode::multipart_encode, the digest can be calculated
+as the file is streamed out to the HTTP connection and the result incorporated into
+a later form parameter.  The actual streaming requires the streaminghttp module.
+
+The module uses a modified version of the standard urlparse, ni_urlparse that
+has the ni and nih URI schemes added (they aren't quite standardized yet!)
+
+The module uses the 'Luhn' algorithm from stdnum (available from
+http://pypi.python.org/pypi/python-stdnum) to calculate the checkdigit for
+the digests in the nih scheme. See http://en.wikipedia.org/Luhn_algorithm.
 
 @code
 Revision History
@@ -53,7 +88,9 @@ from encode import ParamDigester
 from stdnum import luhn
 
 #==============================================================================#
-# Bebug function for usae during testing
+__all__ = ['NIname', 'NI', 'NIdigester', 'NIproc']
+#==============================================================================#
+# Debug function for usae during testing
 def debug(string):
     """
     @brief Print out debugging information string
@@ -647,7 +684,7 @@ class NIname:
 class NIdigester(ParamDigester):
     """
     @brief Class to wrap up a digest mechanism with the ni URI to be used while 
-    @brief sending a file to an HTTP server.  Helper class for MultipartParam.
+    sending a file to an HTTP server.  Helper class for MultipartParam.
 
     Derived from ParamDigester in the encode module and the NIname class.
     

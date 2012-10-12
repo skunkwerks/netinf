@@ -9,14 +9,15 @@
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          http://tools.ietf.org/html/farrell-decade-ni-00
-          http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    
-       http://www.apache.org/licenses/LICENSE-2.0
+       - http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,14 +32,14 @@ from optparse import OptionParser
 import urllib
 import urllib2
 import json
-from ni import *
+#from ni import NIname, NIproc
 
 def debug(string):
     """
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    print string
+    #print string
     return
 
 def main():

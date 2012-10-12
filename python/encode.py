@@ -12,12 +12,12 @@ Copyright (c) 2012 Elwyn Davies, Folly Consulting and Trinity College Dublin
     developed as part of the SAIL project. (http://sail-project.eu)
 
     Specification(s) - note, versions may change
-            http://tools.ietf.org/html/farrell-decade-ni-00
-            http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
 
 Ths module is a modified version of part of the 'poster' software written
 by Chris Atlee.  The original code is available at
-            http://atlee.ca/software/poster/index.html
+            - http://atlee.ca/software/poster/index.html
 
 Licensed under the MIT license:
 
@@ -208,7 +208,7 @@ class MultipartParam(object):
     also contain a (fixed value)length field that will be the length of the value.
 
     If ``filename`` is set, it is what to say that this parameter's filename
-    is.  Note that this does not have to be the actual filename any local file.
+    is.  Note that this does not have to be the actual filename of any local file.
 
     If ``filetype`` is set, it is used as the Content-Type for this parameter.
     If unset it defaults to "text/plain; charset=utf8"

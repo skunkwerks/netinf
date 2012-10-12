@@ -9,14 +9,15 @@
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          http://tools.ietf.org/html/farrell-decade-ni-00
-          http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    
-       http://www.apache.org/licenses/LICENSE-2.0
+       -http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -33,7 +34,7 @@ import urllib2
 import json
 import email.parser
 import email.message
-from ni import *
+from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
 def debug(string):
     """
@@ -76,7 +77,7 @@ def main():
                       help="Store returned content even if digest doesn't validate")
     parser.add_option("-m", "--metadata", default=False,
                       action="store_true", dest="metadata",
-                      help="Output returned metedata as JSON string")
+                      help="Output returned metadata as JSON string")
     parser.add_option("-v", "--view", default=False,
                       action="store_true", dest="view",
                       help="Pretty print returned metadata.")

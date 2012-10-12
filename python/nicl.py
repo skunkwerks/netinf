@@ -9,8 +9,9 @@
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          http://tools.ietf.org/html/farrell-decade-ni-00
-          http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-00
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Copyright 2012 Trinity College Dublin
 
@@ -18,7 +19,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    
-       http://www.apache.org/licenses/LICENSE-2.0
+       - http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,7 +29,7 @@ limitations under the License.
 """
 import sys
 from optparse import OptionParser
-from ni import *
+from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
 def main():
     """
@@ -125,7 +126,7 @@ def main():
             print "%s" % n.get_wku_transform()
             sys.exit(0)
         if opts.verbose:
-            print "Name could not be successfully generated."
+            print "Name could not be successfully generated"
     elif opts.verify:
         n = NIname(opts.ni_name)
         ret = NIproc.checknif(n, opts.file_name)

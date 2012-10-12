@@ -9,7 +9,7 @@
       part of the SAIL project. (http://sail-project.eu)
 
       Specification(s) - note, versions may change
-          - http://tools.ietf.org/html/farrell-decade-ni-10
+          - http://tools.ietf.org/html/draft-farrell-decade-ni-10
           - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
           - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
@@ -121,6 +121,14 @@ the file because of policy constraints - such as space limits or DoS avoidance
 by deleting files after a certain length of time - note that these are not currently
 implemented but may be in future).
 
+Metadata files contain a string emcoded JSON object.  When this is loaded into
+memory, it is managed as a Python dictionary (to which it bears an uncanny
+resemblance!).  This is encapsulated in an instance of the niserver::NetInfMetaData
+class.
+
+The vast majority of the code is contained in the NIHTTPHandler class which
+is a subclass of the standard BaseHTTPRequestHandler.
+
 If specified in the configuration file (provide_nrs = yes), the server will also
 provide NetInf Name Resolution Service support.  A database is set up using the
 Redis name-value server (http://redis.io/) accessed via the Python binding 'redis-py'
@@ -159,10 +167,12 @@ Version   Date       Author         Notes
 0.0       12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 @endcode
 """
+#==============================================================================#
 ##@var NISERVER_VER
 # Version string for niserver
 NISERVER_VER = "0.9"
 
+#==============================================================================#
 import os
 import stat
 import sys
@@ -203,6 +213,9 @@ except ImportError:
 
 import ni
 
+#==============================================================================#
+__all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
+           'check_cache_dirs', 'ni_http_server'] 
 #==============================================================================#
 # GLOBAL VARIABLES
 
@@ -552,15 +565,16 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     @brief Action routines for all requests handled by niserver.
 
     @details
-    The class (name) is passed to the NIHTTPServer base class HTTPServer
-    when the NIHTTPServer is instantiated (see below).  The server is set
-    up as a threaded server.
+    The class (name) for this class is passed to the NIHTTPServer base class
+    HTTPServer when the NIHTTPServer is instantiated (see below).  The server
+    is set up as a threaded server.
 
     When the HTTPServer listener receives a connection request, it creates
     a new thread to handle the request(s) that is(are) passed over the
-    connection. It then reads in the request headers of the first request and
-    passes the request to the appropriate routine out of 'do_HEAD', 'do_GET' and
-    'do_POST', depending on the request type.
+    connection and calls the overridden 'handle' method. It then reads in the
+    request headers of the first request and passes the request to the
+    appropriate routine out of 'do_HEAD', 'do_GET' and 'do_POST', depending on
+    the request type.
 
     Depending on the value of the 'Connection' header in the request, the thread may
     remain active to receive additional requests ('keep-alive' value) or close
@@ -577,7 +591,6 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
     Note: All instance variables are defined in the superclass.
     """
-    
 
     #--------------------------------------------------------------------------#
     # CONSTANT VALUES USED BY CLASS
@@ -3499,7 +3512,9 @@ def ni_http_server(storage_root, authority, server_port, logger,
         except:
             logger.warn("Cannot get IP address for authority from DNS")
             ipaddr = socket.gethostbyname(authority)
-    print authority, ipaddr, server_port
+    logger.info("Setting up for %s at %s on port %d" % (authority,
+                                                        str(ipaddr),
+                                                        server_port))
 
     if provide_nrs:
         if not redis_loaded:
