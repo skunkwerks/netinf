@@ -35,23 +35,30 @@ the magic module that is distributed with Ubuntu is out of date and does not
 provide the function used.  The latest version can be downloaded from
 http://pypi.python.org/pypi/python-magic/.
 
-Requires the Python 'redis-py' (version 2.7.1 or later) to provide an interface
-to the Redis database package if the NRS server capabilities are configured in
-the niserver.  This module can be downloaded from
+Requires the Python 'redis-py' module (version 2.7.1 or later) to provide an
+interface to the Redis database package if the NRS server capabilities are
+configured in the niserver.  This module can be downloaded from
 https://github.com/andymccurdy/redis-py/.
+
+Requires the Python 'qrcode' module (version 2.4.2 or later) to provide the
+capability to output QRcode images.  This module can be downloaded from
+https://github.com/lincolnloop/python-qrcode/
 
 (In each case the modules can be installed using:
 sudo python setup.py install
 assuming you have the distutils module installed).
 
+They are also all in the PyPi repository and the Python setup checks that they
+have been installed, and installs them for you if they are missing.
+
 Provides:
 
 Command line utilities:
-- nicl.py -        basic command line tool to make and check digests using ni.py.
-- niget.py -       command line tool to perform NetInf get requests over HTTP.
-- nipub.py -       command line tool to perform NetInf publish requests over HTTP.
-- nisearch.py -    command line tool to perform NetInf search requests over HTTP.
-- doit.py -        shell script used for checking ni.py and nicl.py.
+- nicl.py -         basic command line tool to make and check digests using ni.py.
+- niget.py -        command line tool to perform NetInf get requests over HTTP.
+- nipub.py -        command line tool to perform NetInf publish requests over HTTP.
+- nisearch.py -     command line tool to perform NetInf search requests over HTTP.
+- pynilib_test.sh - shell script used for checking ni.py and nicl.py.
 
  Lightweight NI NDO cache server:
      
@@ -87,15 +94,51 @@ Support modules:
                    making/checking functions.
 - ni_urlparse.py - slightly hacked version of urlparse.py supporting ni scheme.
 
-Support moduls (acquired from http://atlee.ca/software/poster/index.html):
+Support modules (acquired from http://atlee.ca/software/poster/index.html):
 - encode.py - improved mechanism for constructing multipart/form 
               (extensively modified).
 - streaminghttp.py - allows large uploads to be handled without requiring 
                equally large memory buffers by allowing iterables and coping
                with Python generators (essentially as-is from Poster site).
 
---------------------  
+--------------------------------------------------------------------------------
+INSTALLATION
+============
 
+The Python nilib is setup to use the Python setuptools to install the code.
+From the Python subdirectory issue:
+    sudo python setup.py install
+
+By default it will install into /usr/local/bin for various scripts,
+/usr/local/lib/python2.7/dist-packages/nilib-1.0-py2.7.egg for the Python
+code and /var/niserver for the configuration files, HTML code and icon file.
+
+This requires the Python distribute system to be installed. See
+http://packages.python.org/distribute/setuptools.html
+
+It is quite likely that this is installed as standard.  Note that it is not the
+original distutils package, but the enhanced package.  Extra facilities are
+used to create the scripts that invoke the command line tools automatically
+while leaving the source code in .py files in the nilib distribution.
+
+--------------------------------------------------------------------------------
+RUNNING AN INSTALLED VERSION
+============================
+
+During installation scripts are created to run the various command line tools
+and the niserver startup script.  These are:
+- pyniserver     - runs niserver_main.py - starts niserver
+- pystopniserver - runs niserver_stop.py - stops niserver
+- pynicl         - runs nicl.py - command line to generate and validate digests
+- pyniget        - runs niget.py - command line to send NetInf GET message
+- pynipub        - runs nipub.py - command line to send NetInf PUBLISH message
+- pynisearch     - runs nisearch.py - command line to send NetInf SEARCH message
+
+The command line scripts (except pystopniserver which only does one thing)
+all have --help/-h options which will provide explanations of all the available
+options.
+
+--------------------------------------------------------------------------------
 Features
  - uses Python hashlib (ultimately dependent on OpenSSL) and base64
  - use Python urllib, urllib2 and mimetypes to do HTTP access
@@ -112,6 +155,9 @@ Limitations
    content-disposition header for form data item with file.
                
 CHANGES
+  2012-20-13
+        - Reorganized to work with Python distribute/setuputils.
+          Added notes for installation and installed scripts.
   2012-10-12
         - Implemented initial version of NRS server using Redis database.
           Updated cachelisting implementation to allow access to metadata.

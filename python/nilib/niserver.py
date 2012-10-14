@@ -147,6 +147,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       13/10/2012 Elwyn Davies   Added QR code display screen.
 0.9       11/10/2012 Elwyn Davies   Fixed few minor bugs resulting from code cleanup.
 0.8       10/10/2012 Elwyn Davies   Fixed bug in conversion between ni_cache names and file names
                                     (need to substitute ';' by '/'). Added favicon config variable.
@@ -200,10 +201,12 @@ import urllib
 import urllib2
 import hashlib
 import xml.etree.ElementTree as ET
+import base64
 
 #=== Modules needing special downloading
 import magic
 import DNS
+import qrcode
 
 ##@var redis_loaded
 # Flag indicating if it was possible to load the Redis module.
@@ -616,6 +619,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
     # Start of path for http://<netloc>/ni_meta/<alg name>;<digest>
     # for accessing metadata files directly
     META_PRF        = "/ni_meta/"
+    ##@var QRCODE_PRF
+    # Start of path for http://<netloc>/ni_qrcode/<alg name>;<digest>
+    # for accessing QRcode image encoding an ni[h] URI 
+    QRCODE_PRF      = "/ni_qrcode/"
     ##@var NI_HTTP
     # Path prefix for /.well-known/ni 
     NI_HTTP         = WKN + "ni"
@@ -876,7 +883,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         - 6. a path that starts with the META_PRF prefix
              which is a direct access for the metadata of one of the
              cached files, or
-        - 7. a path that starts /.well-known/ni[h]/ that sends a redirect
+        - 7. a path that starts with the QRCODE_PRF prefix
+             which is a direct access for an image of QRcode for the ni[h]
+             URI of one of the cached files, or
+        - 8. a path that starts /.well-known/ni[h]/ that sends a redirect
              for the equivalent ni_cache URL (see 5 above). The redirect
              is required by standards that recommend that URLS containing
              .well-known should not generate a large amount of return traffic. 
@@ -941,7 +951,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                          "form definition")
         
         #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
-        # Deal with operations that retrieve cached NDO content or metadata files
+        # Deal with operations that retrieve cached NDO content, metadata files
+        # or a QRcode image for the ni scheme URI for the NDO. 
 
         # Return content from http:///ni_cache/<alg>;<digest> URL
         if (self.path.lower().startswith(self.CONT_PRF)):
@@ -954,6 +965,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Return metadata from http:///ni_meta/<alg>;<digest> URL
         if (self.path.lower().startswith(self.META_PRF)):
             return self.send_meta_header(self.path, self.server.storage_root) 
+
+        # Return QRcode image from http:///ni_qrcode/<alg>;<digest> URL
+        if (self.path.lower().startswith(self.QRCODE_PRF)):
+            return self.send_qrcode_header(self.path, self.server.storage_root) 
 
         # Process /.well-known/ni[h]/<alg name>/<digest>
         rv, ni_name, ndo_path, meta_path = self.translate_wkn_path(self.server.authority,
@@ -1006,6 +1021,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         to the .well-known HTTP URL that would retrieve the metadata and content.
         If there is metadata for the ni[h] URI, the word 'meta' is displayed
         after the URI giving a link to just the metadata.
+        In addition, the word 'QRcode' is displayed with a link that will
+        display q QRcode image for the ni[h] name for the item. 
         """
         # Determine which directories to list - assume all by default
         algs_list = ni.NIname.get_all_algs()
@@ -1076,6 +1093,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             ni_http_prefix   = "http://%s%s/%s/" % (netloc, self.NI_HTTP, alg)
             nih_http_prefix  = "http://%s%s/%s/" % (netloc, self.NIH_HTTP, alg)
             meta_http_prefix = "http://%s%s%s;" % (netloc, self.META_PRF, alg)
+            qrcode_http_prefix = "http://%s%s%s;" % (netloc, self.QRCODE_PRF, alg)
             ni_prefix        = "ni:///%s;" % alg
             nih_prefix       = "nih:/%s;" % alg
             for name in all_ordered:
@@ -1096,10 +1114,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                         # No link if content file is not present 
                         f.write('<li>%s%s ' % (ni_prefix, name))
                 if name in meta_set:
-                    f.write('(<a href="%s%s">meta</a>)</li>\n' %
+                    f.write('(<a href="%s%s">meta</a>)' %
                             (meta_http_prefix, name))
                 else:
                     f.write('(no metadata available)</li>\n')
+                f.write('(<a href="%s%s">QRcode</a>)</li>\n' %
+                        (qrcode_http_prefix, name))
+                
             f.write("\n")
         f.write("</ul>\n<hr>\n</body>\n</html>\n")
         length = f.tell()
@@ -1381,6 +1402,87 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(500, "Cannot seek in metadata file")
             f.close()
             f = None
+        return f
+
+    #--------------------------------------------------------------------------#
+    def send_qrcode_header(self, path, storage_root):
+        """
+        @brief Send HTTP headers and set up for sending metadata file for GET
+        request access to an HTTP URL starting ni_qrcode.
+        @param path string pathname received with HTTP GET request
+        @param storage_root string pathname of directory at the root of the cache tree
+        @return file object pointing to StringIO containing image page with
+                            embedded QRcode image data or None
+        
+        On entry the path format should be /ni_qrcode/<alg>;<digest>
+        """
+        if not path.startswith(self.QRCODE_PRF):
+            self.logerror("Path '%s' does not start with %s." %
+                          (path, self.QRCODE_PRF))
+            self.send_error(412, "HTTP Path does not start with %s" %
+                            self.QRCODE_PRF)
+            return None
+
+        # Remove prefix and find location of first semicolon
+        path = path[len(self.QRCODE_PRF):]
+        if len(path) == 0:
+            self.logerror("Path '%s' does not have characters after %s." %
+                          (path, self.QRCODE_PRF))
+            self.send_error(412, "HTTP Path ends after %s" %
+                            self.QRCODE_PRF)
+            return None
+
+        dgstrt = path.find(";", 1)
+        if dgstrt == -1:
+            self.logerror("Path '%s' does not contain';' after %s." %
+                          (path, self.QRCODE_PRF))
+            self.send_error(412, "HTTP Path does not have ';' after %s" %
+                            self.QRCODE_PRF)
+            return None
+
+        alg_name = path[:dgstrt]
+        dgst = path[dgstrt+1:] 
+        meta_path = "%s%s%s/%s" % (storage_root, META_DIR,
+                                   alg_name, dgst)
+        self.logdebug("path %s converted to file name %s" % (path, meta_path))
+
+        # Open file if it exists
+        if not os.path.isfile(meta_path):
+            self.loginfo("Request for QRcode for NDO '%s that is not cached here'." % self.path)
+            self.send_error(404, "NDO for '%s' is not in cache" % self.path)
+            return None
+
+        # Reassemble ni name
+        if ';' in dgst:
+            # nih name
+            ni_string = ("nih:/%s/%s" % (alg_name, dgst))
+        else:
+            # ni name
+            ni_string = ("ni:///%s/%s" % (alg_name, dgst))
+
+        # Make a Base64urlencoded string of a png image of QR code
+        f = StringIO()
+        qrcode.make(ni_string).save(f)
+        f.seek(0)
+        qrstr = base64.b64encode(f.getvalue())
+        f.seek(0)
+
+        # Construct HTML document
+        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n')
+        f.write("<html>\n<body>\n<title>NetInf QRcode Image</title>\n")
+        f.write("<h1>NetInf QRcode Image for ni Scheme URI </h1>\n")
+        f.write("<h2>URI: %s</h2>" % ni_string)
+        f.write("\n<br/>\n<center>")
+
+        f.write('<img src="data:image/png;base64,%s" alt="QRcode" />' % qrstr)
+        f.write('</center>\n<</body></html>')
+        file_len = f.tell()
+        f.seek(0, os.SEEK_SET)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(file_len))
+        self.send_header("Content-Disposition", "inline")
+        self.end_headers()
         return f
 
     #--------------------------------------------------------------------------#
@@ -1994,14 +2096,24 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         metadata is constructed including a 'search' element in the 'metadata'
         object in 'details' (see NetInfMetaData class for more information) and the
         Wikipedia Url as a locator.
-
+        
+        If the requested response format is HTML:
         An HTML results report document is then built consisting of a list of items
         referring to the successfully retrieved flagged items with:
         - the ni name as a hyperlink with the http:///ni_cache URL as address
         - a hyperlink named 'meta' with the http:///ni_meta URL as address
+        - a hyperlink named 'QRcode' with the http:///ni_qrcode URL as address
         - a block containing
            - the Text field from the Wikipedia response
            - the Description field from the Wikipedia response
+
+        If the requested format is plain text:
+        An equivalent report written in plain text
+
+        If the requested format is JSON:
+        A JSON object containing 'NetInf', 'status', 'msgid', 'ts', and
+        'search' fields and a 'results' firld with an array of the ni URIs
+        of thecached results. 
         """
         # Validate form data
         # Check only expected keys and no more
@@ -2381,10 +2493,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                              self.META_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
+                ql = "http://%s%s%s;%s" % (self.server.authority,
+                                             self.QRCODE_PRF,
+                                             ni_name.get_alg_name(),
+                                             ni_name.get_digest())
                 f.write("Title: %s\n" % item["text"])
-                f.write("  NI:   %s\n" % ni_name.get_url())
-                f.write("  HTTP: %s\n" % cl)
-                f.write("  META: %s\n" % ml)
+                f.write("  NI:     %s\n" % ni_name.get_url())
+                f.write("  HTTP:   %s\n" % cl)
+                f.write("  META:   %s\n" % ml)
+                f.write("  QRCODE: %s\n" % ql)
                 f.write("    Description:\n")
                 f.write(textwrap.fill(item["desc"], width=80,
                                       initial_indent="        ",
@@ -2415,8 +2532,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                                              self.META_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
+                ql = "http://%s%s%s;%s" % (self.server.authority,
+                                             self.QRCODE_PRF,
+                                             ni_name.get_alg_name(),
+                                             ni_name.get_digest())
                 f.write('<a href="%s">%s</a> ' % (cl, ni_name.get_url()))
                 f.write('(<a href="%s">meta</a>)\n' % ml)
+                f.write('(<a href="%s">QRcode</a>)\n' % ql)
                 f.write("<blockquote>\n<b>%s</b>\n<br/>\n" % item["text"])
                 f.write("%s\n</blockquote>\n" % item["desc"])
                 f.write("</li>\n")

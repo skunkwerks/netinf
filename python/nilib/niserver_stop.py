@@ -37,6 +37,7 @@ The main thread then shuts down the niserver which is running in another
 thread so that server_shutdown can be used. The contents of the packet are
 irrelevant.
 
+@code
 Revision History
 ================
 Version   Date       Author         Notes
@@ -44,6 +45,7 @@ Version   Date       Author         Notes
                                     can make a script for it. 
 0.1	  17/09/2012 Elwyn Davies   Improved comments - removed history.
 0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+@endcode
 """
 
 import socket

@@ -24,6 +24,16 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+===============================================================================#
+
+@code
+Revision History
+================
+Version   Date       Author         Notes
+0.1       12/10/2012 Elwyn Davies   Update comments and change main function name. 
+0.0	  21/09/2012 Elwyn Davies   Created.
+@endcode
 """
 import sys
 import os.path
@@ -44,7 +54,7 @@ def debug(string):
     return
 
 #===============================================================================#
-def py_search():
+def py_nisearch():
     """
     @brief Command line program to perform a NetInf 'get' operation using http
     @brief convergence layer.
@@ -240,4 +250,4 @@ def py_search():
                                                                                                     
 #===============================================================================#
 if __name__ == "__main__":
-    py_search()
+    py_nisearch()

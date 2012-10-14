@@ -342,7 +342,7 @@ def py_niserver_start(default_config_file):
     if log_base is None:
         log_base = "/tmp"
 
-    if not (os.path.isdir(log_base) and os.access(config_file, os.W_OK)):
+    if not (os.path.isdir(log_base) and os.access(log_base, os.W_OK)):
         parser.error("Log_base %s is not a directory and/or not writeable" % log_base)
         os._exit(2)
         

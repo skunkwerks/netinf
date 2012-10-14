@@ -24,6 +24,21 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+===============================================================================#
+
+@code
+Revision History
+================
+Version   Date       Author         Notes
+0.5       12/10/2012 Elwyn Davies   Update comments and change main function name. 
+0.4	  01/10/2012 Elwyn Davies   Moved to using responses format rather than
+                                    multipart response. Canonicalized URIs in
+                                    metadata.
+0.3	  20/09/2012 Elwyn Davies   Add --lax and --dump options
+0.2	  19/09/2012 Elwyn Davies   First cut at adding JSON encoded metadata
+0.1	  11/07/2012 Elwyn Davies   Manage redirect for .well-known
+0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+@endcode
 """
 import sys
 import os.path
