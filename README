@@ -3,8 +3,9 @@ project. (http://sail-project.eu)
 NetInf is an abbreviation for 'Network of Information'.
 
 Specification(s) - note, versions may change::
-* http://tools.ietf.org/html/draft-farrell-decade-ni
-* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params
+* http://tools.ietf.org/html/draft-farrell-decade-ni-10
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+* http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Contact: stephen.farrell@cs.tcd.ie, dirk.kutscher@neclab.eu
 Copyright (C) 2012 Trinity College Dublin and Dirk Kutscher
