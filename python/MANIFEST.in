@@ -30,8 +30,10 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
+# 0.1	  15/10/2012 Elwyn Davies   Moved LICENSE and README to doc directory.
 # 0.0	  13/10/2012 Elwyn Davies   Created.
 # @endcode
 
-# Just have to specify the data files explicitly
+# Just have to specify the data and doc files explicitly
 recursive-include nilib/data *
+recursive-include nilib/doc *

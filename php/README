@@ -1,6 +1,11 @@
 
 These php scripts go with the ni-my-site.sh web site.
 
+The scripts supportthe following specifications:
+* http://tools.ietf.org/html/draft-farrell-decade-ni-10
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+* http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
+
 This is currently live on village.n4c.eu with NetInf GET
 working at http://village.n4c.eu/getform.html. Code that
 uses this needs to POST the form to 

@@ -29,7 +29,9 @@ may not be here going forward.)
  * Author:: Claudio Imbrenda <Claudio.Imbrenda@neclab.eu>
  * Copyright:: Copyright (c) 2012 Claudio Imbrenda
  * <Claudio.Imbrenda@neclab.eu>
- * Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+ * http://tools.ietf.org/html/draft-farrell-decade-ni-10
+ * http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+ * http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
  *
  * License:: http://www.apache.org/licenses/LICENSE-2.0.html
  * Licensed under the Apache License, Version 2.0 (the "License");

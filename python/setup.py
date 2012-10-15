@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+0.1       15/10/2012 Elwyn Davies   Moved README and LICENSE files to doc directory.
 0.0	  13/10/2012 Elwyn Davies   Created.
 @endcode
 """
@@ -56,10 +57,9 @@ setup(name='nilib',
                            'pynipub = nilib.nipub:py_nipub',
                            'pynisearch = nilib.nisearch:py_nisearch']
                     },
+      include_package_data=True,
       data_files=[('/var/niserver',
-                      ['nilib/data/LICENSE',
-                       'nilib/data/README',
-                       'nilib/data/niserver.conf',
+                      ['nilib/data/niserver.conf',
                        'nilib/data/niserver_log.conf',
                        'nilib/data/getputform.html',
                        'nilib/data/nrsconfig.html',
