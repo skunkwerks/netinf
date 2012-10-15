@@ -36,11 +36,18 @@ Authors
 Version
 ------
 
-This is version 0.1a.
+This is version 0.2.
 
 In this version, the c, python, ruby and clojure libraries
-are up to date with draft-farrell-decade-ni-07 for ni: and nih:
+are up to date with draft-farrell-decade-ni-10 for ni: and nih:
 name generation and verification as well as binary format names. 
+
+The HTTP and UDP convergence layers in c, php, python, ruby and clojure
+implement the functionality described in
+draft-kutscher-netinf-proto-00.
+
+The php, Python and ruby code implement some rudimnentary NRS
+capability.
 
 Other NetInf features and other languages are in a state of
 flux at the moment.
@@ -57,18 +64,20 @@ The different implementations provide the following features:
 
   - c: NI URI format, HTTP convergence layer
 
+  - curl: patches to allow curl to operate with ni names
+
   - ruby: NI URI format, HTTP and UDP convergence layers, standalone
 	NetInf router
 
   - python: NI URI format, HTTP convergence layer, standalone
-	NetInf server for HTTP convergence layer
+	NetInf server for HTTP convergence layer with NRS server
 
   - java: NI URI format, HTTP convergence layer, NI proxy with local
   	cache, GET/REGISTER/PUBLISH clients. Both client and proxy are 
 	Eclipse (http://www.eclipse.org/) projects and external JARs are 
 	not included; for more information, see README under lib/ directory.
 
-  - PHP: HTTP convergence layer
+  - PHP: HTTP convergence layer, NRS server
 
   - clojure: NI URI format
 
@@ -80,14 +89,17 @@ The different implementations provide the following features:
 Documentation
 -------------
 
-The specification of the NI URI format is here (as of 2012-06-01):
+The specification of the NI URI format is here (as of 2012-10-0r51):
 
-		http://tools.ietf.org/html/draft-farrell-decade-ni-07
-		http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-02
+* http://tools.ietf.org/html/draft-farrell-decade-ni-10
+* http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
 
 The NetInf protocol specification (the basis of the HTTP and UDP
 convergence layer implementations provided by some of the tools in
-this package) is available in the doc directory.
+this package) has been published as an Internet Draft.  The tools
+here conform to the following version:
+* http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
+
 
 An overall Makefile is provided in the top level to invoke the Makefiles in
 subsidiaary directories, especially for C, and generate documentation.
