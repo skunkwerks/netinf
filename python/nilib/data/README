@@ -121,6 +121,18 @@ original distutils package, but the enhanced package.  Extra facilities are
 used to create the scripts that invoke the command line tools automatically
 while leaving the source code in .py files in the nilib distribution.
 
+NOTES
+=====
+- The directory structure of the NDO cache has changed from versions prior
+  to October 2012. It will be necessary to delete any existing cache and
+  allow the server to recreate the directory structure.
+- The metadata structure in the metadata files is incompatible with earlier
+  versions of the server.  The server now checks that the 'NetInf' field
+  in the metadata is consistent with the NETINF_VER string written into the
+  server code. Please delete older cache entries before strating to use the
+  current version. When the metadata structure has stabilized, a backwards
+  compatibility mechanism may be provided.
+
 --------------------------------------------------------------------------------
 RUNNING AN INSTALLED VERSION
 ============================

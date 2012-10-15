@@ -147,6 +147,8 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       13/10/2012 Elwyn Davies   Added size to metadata. Added limited check for
+                                    consistent metadata (just written by same server).
 1.0       13/10/2012 Elwyn Davies   Added QR code display screen.
 0.9       11/10/2012 Elwyn Davies   Fixed few minor bugs resulting from code cleanup.
 0.8       10/10/2012 Elwyn Davies   Fixed bug in conversion between ni_cache names and file names
@@ -171,7 +173,7 @@ Version   Date       Author         Notes
 #==============================================================================#
 ##@var NISERVER_VER
 # Version string for niserver
-NISERVER_VER = "0.9"
+NISERVER_VER = "1.1"
 
 #==============================================================================#
 #=== Standard modules for Python 2.[567].x distributions ===
@@ -229,7 +231,7 @@ __all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
 
 ##@var NETINF_VER
 # Version of NetInf implemented - written into metadata instances 
-NETINF_VER = "v0.2 Elwyn"
+NETINF_VER = "v0.3 Elwyn"
 
 ##@var NDO_DIR
 # Pathname component identifying sub-directory under storage base for content files
@@ -250,6 +252,7 @@ class NetInfMetaData:
     - NetInf    Version string for NetInf specification applied
     - ni        ni[h] name of NDO to which metadata applies
     - ct        MIME content type of NDO (if known)
+    - size      Length of content in octets or -1 if not known
     - details   Array of JSON objects containing:
        - ts         UTC timestamp for object, format "%y-%m-%dT%H:%M:%S+00:00"
        - metadata   JSON object with arbitrary contents
@@ -280,8 +283,8 @@ class NetInfMetaData:
     # The most recent (last) JSON object in the array of "details" objects
 
     #--------------------------------------------------------------------------#
-    def __init__(self, ni_uri="", timestamp=None, ctype=None, myloc=None,
-                 loc1=None, loc2=None, extrameta=None):
+    def __init__(self, ni_uri="", timestamp=None, ctype=None, file_len=-1,
+                 myloc=None, loc1=None, loc2=None, extrameta=None):
         """
         @brief Create a new metadata object from parameters
         
@@ -290,6 +293,7 @@ class NetInfMetaData:
         @param ni_uri string The ni[h]: name to which the metadata applies
         @param timestamp string initial creation timestamp (format: see class header)
         @param ctype string MIME type of NDO (may be empty string if not yet known)
+        @param file_len integer Length of content in octets or -1 if not yet known
         @param myloc string locator derived from authority in ni name (i.e., local server)
         @param loc1 string locator for NDO
         @param loc2 string locator for NDO
@@ -304,6 +308,7 @@ class NetInfMetaData:
             self.json_obj["ct"] = ""
         else:
             self.json_obj["ct"] = ctype
+        self.json_obj["size"] = file_len
         self.json_obj["details"] = []
         self.add_new_details(timestamp, myloc, loc1, loc2, extrameta)
         return
@@ -367,18 +372,22 @@ class NetInfMetaData:
         @brief Set json_obj to a dictionary typically derived from
         @brief an NDO metadata file
         @param json_val dictionary JSON object in correct form
-        @return (none)
+        @return booleans indicating if load was successful
 
-        Currently the format of the dictionary is not checked.
-        TO DO: add checking
+        Currently the format of the dictionary is not checked,
+        but we do check that the "NetInf" entry matches with
+        the current NETINF_VER string.
+        TO DO: add more checking and deal with backwards compatibility.
 
         The curr_detail instance variable is set to the last
         item in the 'details' array.
         """
+        if json_val["NetInf"] != NETINF_VER:
+            return False
         self.json_obj = json_val
         # Set the current details to be the last entry
         self.curr_detail = self.json_obj["details"][-1]
-        return
+        return True
 
     #--------------------------------------------------------------------------#
     def append_locs(self, myloc=None, loc1=None, loc2=None):
@@ -456,6 +465,27 @@ class NetInfMetaData:
         """
         if ctype is not None:
             self.json_obj["ct"] = ctype
+        return
+
+    #--------------------------------------------------------------------------#
+    def get_size(self):
+        """
+        @brief Accessor for NDO content file size in metadata
+        @retval integer Value of "size" item in json_obj.
+        """
+        return self.json_obj["size"]
+
+    #--------------------------------------------------------------------------#
+    def set_size(self, file_len):
+        """
+        @brief Set the content file size item ("size") in json_obj.
+        @param file_len integer content file size for NDO in octets
+        @return (none)
+
+        Setting is skipped if parameter is None.
+        """
+        if file_len is not None:
+            self.json_obj["size"] = file_len
         return
 
     #--------------------------------------------------------------------------#
@@ -537,13 +567,13 @@ class NetInfMetaData:
         @retval dictionary JSON object containing summarized data
 
         The summary JSON object dictionary contains:
-        - the 'NetInf', 'ni' and 'ct' entries copied from json_obj
+        - the 'NetInf', 'ni', 'ct' and 'size' entries copied from json_obj
         - the timestamp 'ts' from the most recent (last element) of the 'details'
         - the summarized locator list 'loclist' derived by get_loclist
         - the summarized 'metadata' object derived by get_metadata.
         """
         sd = {}
-        for k in ["NetInf", "ni", "ct"]:
+        for k in ["NetInf", "ni", "ct", "size"]:
             sd[k] = self.json_obj[k]
         sd["ts"] = self.get_timestamp()
         sd["loclist"] = self.get_loclist()
@@ -1231,7 +1261,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Create empty metadata structure
             md = NetInfMetaData()
             # Read in metadata
-            md.set_json_val(json.load(f))
+            if not md.set_json_val(json.load(f)):
+                self.logerror("Attempt to load metadata for wrong server version")
+                self.send_error(500, "Metadata written by incompatible server version")
+                return None
         except Exception, e:
             self.logerror("JSON decode of metadata file %s failed: %s" % (meta_path, str(e)))
             self.send_error(500, "Metadata is corrupt")
@@ -1883,8 +1916,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root,
                                                           ni_name)
 
-        # We don't know what the content type is yet
+        # We don't know what the content type or the length are yet
         ctype = None
+        file_len = -1
 
         # If the form data contains an uploaded file...
         if file_uploaded:
@@ -1985,35 +2019,26 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Check if the metadata file exists - i.e., if this is an update
         if os.path.isfile(meta_path):
             # It does - had previous publish so update metadata
+            # Routine
+            # - checks canonicalized ni is the same as that in the metadata file
+            # - checks file_len and ctype are consistent with existing values
             first_store = False
-            md = self.update_metadata(meta_path, loc1, loc2, timestamp, ctype, extrameta)
+            (md, http_code, ret_str) = self.update_metadata(meta_path,
+                                                            loc1, loc2,
+                                                            ni_name.get_url(),
+                                                            timestamp,
+                                                            ctype, file_len,
+                                                            extrameta)
             if md is None:
-                self.logerror("Unable to update metadata file %s" % meta_path)
-                self.send_error(500, "Unable to update metadata file for %s" % \
-                                ni_name.get_url())
+                # Log message already written
+                self.send_error(http_code, ret_str)
                 return
 
-            # Check the canonicalized ni is the same as that in the metadata file
-            if ni_name.get_url() != md.get_ni():
-                self.logerror("Update uses different URI - old: %s; new: %s" % \
-                              (md.get_ni(), ni_name.get_url()))
-                self.send_error(412, "Publish update uses different ni - previous was %s" % \
-                                md.get_ni())
-                return
-
-            # Check if ctype in existing metadata is consistent with new ctype
-            if not((ctype is None) or (md.get_ctype() == ctype)):
-                self.logerror("Update uses different content type - old: %s; new: %s" % \
-                              (md.get_ctype(), ctype))
-                self.send_error(412, "Publish update uses different content type - previous was %s" % \
-                                md.get_ctype())
-                return
-                
         else:
             # New metadata file needed
             first_store = True
             md = self.store_metadata(meta_path, loc1, loc2, ni_name.get_url(),
-                                     timestamp, ctype, extrameta)
+                                     timestamp, ctype, file_len, extrameta)
             if md is None:
                 self.logerror("Unable to create metadata file %s" % meta_path)
                 self.send_error(500, "Unable to create metadata file for %s" % \
@@ -2320,7 +2345,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             except Exception, e:
                 self.logerror("Failed to open temp file %s for writing: %s)" % (temp_name, str(e)))
                 continue
-            read_length = 0
+            file_len = 0
             try:
                 while 1:
                     buf = http_object.read(16 * 1024)
@@ -2328,7 +2353,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                         break
                     f.write(buf)
                     hash_function.update(buf)
-                    read_length += len(buf)
+                    file_len += len(buf)
             except Exception, e:
                 self.logerror("Error while reading returned data for URL '%s' - ignoring result: %s" %
                               (url, str(e)))
@@ -2341,7 +2366,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             # Check length read and length in HTTP header, if any, match
             # (warning only if they don't)
-            if not ((obj_length is None) or (read_length == obj_length)):
+            if not ((obj_length is None) or (file_len == obj_length)):
                 self.logwarn(("Warning: Length of data read from network (%d) does not match " + \
                               "length in HTTP header (%d) for URL '%s'") % (read_length, obj_length,
                                                                             url))
@@ -2392,31 +2417,27 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             if os.path.isfile(meta_path):
                 # It does - had previous publish so update metadata
                 first_store = False
-                md = self.update_metadata(meta_path, url, None, timestamp, ctype, extrameta)
+                (md, http_code, ret_str) = self.update_metadata(meta_path,
+                                                                url, None,
+                                                                ni_name.get_url(),
+                                                                timestamp,
+                                                                ctype, file_len,
+                                                                extrameta)
                 if md is None:
-                    self.logerror("Unable to update metadata file %s" % meta_path)
-                    continue
-
-                # Check the ni is the same - only affects query string
-                # Assume for the time being that we expect exactly the same string
-                # This is not really right as the query string need not be present
-                # and there could be variations in white space
-                if ni_name.get_url() != md.get_ni():
-                    self.logerror("Update uses different URI - old: %s; new: %s" % \
-                                  (md.get_ni(), ni_name.get_url()))
-                    continue
-
-                # Check if ctype in existing metadata is consistent with new ctype
-                if not((ctype is None) or (md.get_ctype() == ctype)):
-                    self.logerror("Update uses different content type - old: %s; new: %s" % \
-                                  (md.get_ctype(), ctype))
+                    # Log message already written
+                    # Filing system (server) problems are terminal for search
+                    if http_code >= 500:
+                        self.send_error(http_code, ret_str)
+                        return
+                    
+                    # Otherwise just don't include this item in results
                     continue
                     
             else:
                 # New metadata file needed
                 first_store = True
                 md = self.store_metadata(meta_path, url, None, ni_name.get_url(),
-                                         timestamp, ctype, extrameta)
+                                         timestamp, ctype, file_len, extrameta)
                 if md is None:
                     self.logerror("Unable to create metadata file %s" % meta_path)
                     continue
@@ -2428,7 +2449,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     os.remove(temp_name)
                 except Exception, e:
-                    # This is fatal - need to abort whole process
+                    # This is fatal for this item - need to abort whole search
                     self.logerror("Failed to unlink temp file %s: %s)" % (temp_name, str(e)))
                     self.send_error(500, "Cannot unlink temporary file")
                     return
@@ -2437,7 +2458,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     os.rename(temp_name, ndo_path)
                 except:
-                    # This is fatal - need to abort whole process
+                    # This is fatal for this item - need to abort whole search
                     os.remove(temp_name)
                     self.logerror("Unable to rename tmp file %s to %s: %s" % (temp_name, ndo_path, str(e)))
                     self.send_error(500, "Unable to rename temporary file")
@@ -2873,7 +2894,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return
 
     #--------------------------------------------------------------------------#
-    def store_metadata(self, meta_path, loc1, loc2, uri, timestamp, ctype, extrameta):
+    def store_metadata(self, meta_path, loc1, loc2, uri, timestamp,
+                       ctype, file_len, extrameta):
         """
         @brief Create new metadata file for a cached NDO from form data etc
         @param meta_path string pathname for metadata file
@@ -2882,6 +2904,8 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         @param uri string canonicalized ni scheme URI for object being stored
         @param timestamp string when metadata created
         @param ctype string content type (maybe None if no uploaded file)
+        @param file_len integer length of content file
+                                (maybe None if no uploaded file)
         @param extrameta dictionary with optionally 'meta' key with values from 'ext'
                parameter, 'publish' key with value reflecting how published,
                'search' key with values describing how searched if relevant, or
@@ -2901,7 +2925,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return None
 
         # Always add this server's authority as a locator when creating metadata file
-        md = NetInfMetaData(uri, timestamp, ctype,
+        md = NetInfMetaData(uri, timestamp, ctype, file_len,
                             self.server.authority, loc1, loc2, extrameta)
         try:
             json.dump(md.json_val(), f)
@@ -2914,55 +2938,99 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         return md
     
     #--------------------------------------------------------------------------#
-    def update_metadata(self, meta_path, loc1, loc2, timestamp, ctype, extrameta):
+    def update_metadata(self, meta_path, loc1, loc2, uri,
+                        timestamp, ctype, file_len, extrameta):
         """
         @brief Update existing metadata file for a cached NDO from form data etc
         @param meta_path string pathname for metadata file
         @param loc1 string locator #1 or None
         @param loc2 string locator #2 or None
+        @param uri string ni scheme URI for metadata 
         @param timestamp string when metadata updated
         @param ctype string content type (maybe None if no uploaded file)
+        @param file_len integer length of content file
+                                (maybe None if no uploaded file)
         @param extrameta dictionary with optionally 'meta' key with values from 'ext'
                parameter, 'publish' key with value reflecting how published,
                'search' key with values describing how searched if relevant, or
                None.  May contain more in future.
-        @return NetInfMetaData instance that was written to file or None if a problem
+        @return 3-tuple
+                - NetInfMetaData instance that was written to file or
+                  None if a problem
+                - Suitable HTTP response code
+                - "Success" or Error message for HTTP response
 
         The metadata file contains JSON encoded affiliated data created by writing
         a JSON encoded NetInfMetaData class instance to the file.
 
-        Contract: The meta_path file does not exist on entry
+        Contract: The meta_path file exists on entry
+
+        Check ni_uri is the same as embedded in metadata (this would be a
+        server error as file name and uri should match).
+
+        If ctype or file_len are not None, check that they are consistent
+        with existing values
         """
 
         try:
             f = open(meta_path, "r+")
         except Exception, e:
             self.logerror("Unable to open metadata file %s: %s" % (meta_path, str(e)))
-            return None
+            return (None, 500, "Unable to open metadata file")
 
         # Create empty metadata object
         md = NetInfMetaData()
         try:
-            md.set_json_val(json.load(f))
+            if not md.set_json_val(json.load(f)):
+                err_msg = "Metadata written by incompatible server version"
+                self.logerror(err_msg)
+                return (None, 500, err_msg)
         except Exception, e:
             self.logerror("Read from metadata file %s failed.", meta_path)
-            return None
+            return (None, 500, "Read from metadata file failed")
         
         f.seek(0)
+
+        # Check that ni_uri is still correct - as this is related to the
+        # file name, this would be some sort of server problem.
+        if uri != md.get_ni():
+            self.logerror("Update uses different URI - old: %s; new: %s" % \
+                          (md.get_ni(), uri))
+            return (None, 500, "Metadata update found inconsistent ni name")
+        
+
+        # Check for consistency of ctype and file_len if appropriate
+        md_ct = md.get_ctype()
+        if (ctype != None) and (md_ct != ""):
+            if ctype != md_ct:
+                f.close()
+                self.loginfo("Update uses different content type - old: %s; new: %s" % \
+                              (md_ct, ctype))
+                return(None, 412, "Update uses different content type from exiating.")
+        md_size = md.get_size()
+        if (file_len != None) and (md_size != -1):
+            if file_len != md_size:
+                f.close()
+                self.loginfo("Update file has different size - old: %s; new: %s" % \
+                              (md_size, file_len))
+                return (None, 412, "Update file has differen length from exiating.")
 
         # Update info in metadata structure and set content type if appropriate
         # No need to write the authority again.
         md.add_new_details(timestamp, None, loc1, loc2, extrameta)
+        md.set_size(file_len)
         md.set_ctype(ctype)
+
         # Write metadata back to file
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
             self.logerror("Write to metadata file %s failed.", meta_path)
-            md = None
+            f.close()
+            return (None, 500, "Write to metadata file failed")
 
         f.close()        
-        return md
+        return (md, 200, "success")
 
     #--------------------------------------------------------------------------#
     def send_publish_report(self, rform, ndo_in_cache, ignored_upload,
