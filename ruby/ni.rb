@@ -404,7 +404,8 @@ module URI
         algoString=@hashAlgo.to_s
       end
       hexhash=Base16::encode(@hash)
-      @scheme + ':' + algoString + ';' + withDelimiter(hexhash, '-') + ';' + Base16::luhn(hexhash)
+      #@scheme + ':' + algoString + ';' + withDelimiter(hexhash, '-') + ';' + Base16::luhn(hexhash)
+      @scheme + ':' + algoString + ';' + hexhash + ';' + Base16::luhn(hexhash)
     end
 
 

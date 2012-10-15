@@ -21,6 +21,7 @@
 # Test cases for draft-farrell-decade-ni-06 
 
 echo Starting tests
+declare -i test_no=1
 
 # the ni name for hw.txt according to the I-D
 HWNAME1='ni:///sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk'
@@ -55,106 +56,130 @@ PROBLEM=false
 
 if [ "$HWNAME1" != "$CHWNAME" ]
 then
-	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "Test #${test_no}: ERROR in c, spec example (1) != calculated value (2)"
 	echo "(1): $HWNAME1"
 	echo "(2): $CHWNAME"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$PNAME1" != "$CPNAME1" ]
 then
-	echo "ERROR in c, spec example (1) != calculated value (2)"
+	echo "Test #${test_no}: ERROR in c, spec example (1) != calculated value (2)"
 	echo "(1): $PNAME1"
 	echo "(2): $CPNAME1"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BADRES1" != "bad" ]
 then
-	echo "ERROR in c, bad spec example (1) verify didn't fail!"
+	echo "Test #${test_no}: ERROR in c, bad spec example (1) verify didn't fail!"
 	echo "(1): $BADNAME1"
 	echo $BADRES1
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BADRES2" != "bad" ]
 then
-	echo "ERROR in c, bad spec example (1) verify didn't fail!"
+	echo "Test #${test_no}: ERROR in c, bad spec example (1) verify didn't fail!"
 	echo "(1): $BADNAME2"
 	echo $BADRES2
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$GOODRES1" != "good" ]
 then
-	echo "ERROR in c, good spec example (1) verify shouldn't fail!"
+	echo "Test #${test_no}: ERROR in c, good spec example (1) verify shouldn't fail!"
 	echo "(1): $HWNAME1"
 	echo $GOODRES1
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$GOODRES2" != "good" ]
 then
-	echo "ERROR in c, good spec example (1) verify shouldn't fail!"
+	echo "Test #${test_no}: ERROR in c, good spec example (1) verify shouldn't fail!"
 	echo "(1): $HWNAME2"
 	echo $GOODRES2
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BINNAME" != "$BNAME1" ]
 then
-	echo "ERROR in c, binary format example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in c, binary format example (1) not produced - got (2)"
 	echo "(1): $BNAME1"
 	echo "(2): $BINNAME"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$NIHOUT1" != "$NIHNAME1" ] 
 then
-	echo "ERROR in c, nih URI example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in c, nih URI example (1) not produced - got (2)"
 	echo "(1): $NIHNAME1"
 	echo "(2): $NIHOUT1"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$NIHOUT2" != "$NIHNAME2" ] 
 then
-	echo "ERROR in c, nih URI example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in c, nih URI example (1) not produced - got (2)"
 	echo "(1): $NIHNAME2"
 	echo "(2): $NIHOUT2"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 
 # Python tests - a start at least 
 
-PYHWNAME=`../python/nicl.py -V -g -n 'ni:///sha-256' -f hw.txt | tail -1`
-BADRES=`../python/nicl.py -V -v -n $BADNAME1 -f hw.txt | grep failed`
-GOODRES=`../python/nicl.py -V -v -n $HWNAME1 -f hw.txt | grep matches`
+PYHWNAME=`../python/nilib/nicl.py -V -g -n 'ni:///sha-256' -f hw.txt | tail -1`
+BADRES=`../python/nilib/nicl.py -V -v -n $BADNAME1 -f hw.txt | grep failed`
+GOODRES=`../python/nilib/nicl.py -V -v -n $HWNAME1 -f hw.txt | grep matches`
 
 if [ "$HWNAME1" != "$PYHWNAME" ]
 then
-	echo "ERROR in python, spec example (1) != calculated value (2)"
+	echo "Test #${test_no}: ERROR in python, spec example (1) != calculated value (2)"
 	echo "(1): $HWNAME1"
 	echo "(2): $PYHWNAME"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BADRES" != "Check of name against content failed." ]
 then
-	echo "ERROR in python, bad spec example (1) verify didn't fail!"
+	echo "Test #${test_no}: ERROR in python, bad spec example (1) verify didn't fail!"
 	echo "(1): $BADNAME1"
 	echo $BADRES
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$GOODRES" != "Name matches content file." ]
 then
-	echo "ERROR in python, good spec example (1) verify shouldn't fail!"
+	echo "Test #${test_no}: ERROR in python, good spec example (1) verify shouldn't fail!"
 	echo "(1): $HWNAME1"
 	echo $GOODRES
 	PROBLEM=true
 fi
+
+test_no+=1
 
 
 
@@ -174,77 +199,95 @@ NIHOUT2=`../ruby/ni2nih  -n $NIHOUT2_TMP`
 
 if [ "$HWNAME1?ct=text/plain" != "$CHWNAME" ]
 then
-	echo "ERROR in Ruby, spec example (1) != calculated value (2)"
+	echo "Test #${test_no}: ERROR in Ruby, spec example (1) != calculated value (2)"
 	echo "(1): $HWNAME1"
 	echo "(2): $CHWNAME"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$PNAME1?ct=application/octet-stream" != "$CPNAME1" ]
 then
-	echo "ERROR in Ruby, spec example (1) != calculated value (2)"
+	echo "Test #${test_no}: ERROR in Ruby, spec example (1) != calculated value (2)"
 	echo "(1): $PNAME1"
 	echo "(2): $CPNAME1"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BADRES1" != "bad" ]
 then
-	echo "ERROR in Ruby, bad spec example (1) verify didn't fail!"
+	echo "Test #${test_no}: ERROR in Ruby, bad spec example (1) verify didn't fail!"
 	echo "(1): $BADNAME1"
 	echo $BADRES1
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BADRES2" != "bad" ]
 then
-	echo "ERROR in Ruby, bad spec example (1) verify didn't fail!"
+	echo "Test #${test_no}: ERROR in Ruby, bad spec example (1) verify didn't fail!"
 	echo "(1): $BADNAME2"
 	echo $BADRES2
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$GOODRES1" != "good" ]
 then
-	echo "ERROR in Ruby, good spec example (1) verify shouldn't fail!"
+	echo "Test #${test_no}: ERROR in Ruby, good spec example (1) verify shouldn't fail!"
 	echo "(1): $HWNAME1"
 	echo $GOODRES1
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$GOODRES2" != "good" ]
 then
-	echo "ERROR in Ruby, good spec example (1) verify shouldn't fail!"
+	echo "Test #${test_no}: ERROR in Ruby, good spec example (1) verify shouldn't fail!"
 	echo "(1): $HWNAME2"
 	echo $GOODRES2
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$BINNAME" != "$BNAME1" ]
 then
-	echo "ERROR in Ruby, binary format example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in Ruby, binary format example (1) not produced - got (2)"
 	echo "(1): $BNAME1"
 	echo "(2): $BINNAME"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 if [ "$NIHOUT1" != "$NIHNAME1" ] 
 then
-	echo "ERROR in Ruby, nih URI example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in Ruby, nih URI example (1) not produced - got (2)"
 	echo "(1): $NIHNAME1"
 	echo "(2): $NIHOUT1"
 	PROBLEM=true
 fi
 
+test_no+=1
+
 NIH2_SHORT=`echo $NIHNAME2 | sed -e 's/sha-256-120/3/'`
 
 if [ "$NIHOUT2" != "$NIH2_SHORT" ] 
 then
-	echo "ERROR in Ruby, nih URI example (1) not producted - got (2)"
+	echo "Test #${test_no}: ERROR in Ruby, nih URI example (1) not produced - got (2)"
 	echo "(1): $NIH2_SHORT"
 	echo "(2): $NIHOUT2"
 	PROBLEM=true
 fi
+
+test_no+=1
 
 
 
@@ -256,3 +299,4 @@ then
 else
 	echo "There's a problem"
 fi
+
