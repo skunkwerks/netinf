@@ -1,8 +1,8 @@
 """
-@package ni
+@package nilib
 @file encode.py
 @brief Multipart/form-data encoding module.
-@version $Revision: 0.8.2 $ $Author: Chris Atlee $
+@version $Revision: 0.9 $ $Author: Chris Atlee and Elwyn Davies $
 
 Copyright (c) 2011 Chris AtLee
 Copyright (c) 2012 Elwyn Davies, Folly Consulting and Trinity College Dublin

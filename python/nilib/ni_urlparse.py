@@ -1,5 +1,5 @@
 """
-@package ni_urlparse
+@package nilib
 @file ni_urlparse.py
 @brief Parse (absolute and relative) URLs.
 

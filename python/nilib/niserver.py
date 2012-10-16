@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-@package ni
+@package nilib
 @file niserver.py
 @brief Lightweight dedicated NI NetInf HTTP convergence layer (CL) server and NRS server.
-@version $Revision: 0.09 $ $Author: elwynd $
+@version $Revision: 1.01 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
@@ -170,6 +170,7 @@ Version   Date       Author         Notes
 0.0       12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 @endcode
 """
+
 #==============================================================================#
 ##@var NISERVER_VER
 # Version string for niserver
@@ -224,6 +225,7 @@ except ImportError:
 import ni
 
 #==============================================================================#
+# List of classes/global functions in file
 __all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
            'check_cache_dirs', 'ni_http_server'] 
 #==============================================================================#

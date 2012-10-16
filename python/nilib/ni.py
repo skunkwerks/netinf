@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-@package ni
+@package nilib
 @file ni.py
 @brief This is the external interface for the NI URI handling library
-@version $Revision: 0.2 $ $Author: elwynd $
+@version $Revision: 0.6 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin
 
     This is the NI URI library developed as

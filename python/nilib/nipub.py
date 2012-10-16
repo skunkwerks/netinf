@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-@package ni
+@package nilib
 @file nipub.py
 @brief Command line client to perform a NetInf 'publish' operation using http convergence layer.
-@version $Revision: 0.02 $ $Author: elwynd $
+@version $Revision: 0.04 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)

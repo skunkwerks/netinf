@@ -1,5 +1,5 @@
 """
-@package ni
+@package nilib
 @file __init__.py
 @brief Python package __init__ file  for Python nilib.
 @version $Revision: 0.00 $ $Author: elwynd $

@@ -1,10 +1,11 @@
 """
-@package ni
+@package nilib
 @file streaminghttp.py
 @brief Streaming HTTP uploads module.
-@version $Revision: 0.8.1 $ $Author: Chris Atlee $
+@version $Revision: 0.9 $ $Author: Chris Atlee and Elwyn Davies $
 
 Copyright (c) 2011 Chris AtLee
+Copyright (c) 2012 Trinity College Dublin/Folly Consulting Ltd
 
     This version of this module is incorporated in the NI URI library
     developed as part of the SAIL project. (http://sail-project.eu)
@@ -64,6 +65,9 @@ Example usage:
 
 >>> req = urllib2.Request("http://localhost:5000", f,
 ...                       {'Content-Length': str(len(s))})
+
+=============================================================================
+
 """
 
 import httplib, urllib2, socket

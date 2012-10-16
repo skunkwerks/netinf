@@ -1,6 +1,6 @@
 #!/usr/bin/python
 """
-@package ni
+@package nilib
 @file nisearch.py
 @brief Command line client to perform a NetInf 'search' operation using http convergence layer.
 @version $Revision: 0.01 $ $Author: elwynd $

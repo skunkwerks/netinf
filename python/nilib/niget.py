@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-@package niget
+@package nilib
 @file niget.py
 @brief Command line client to perform a NetInf 'get' operation using http convergence layer.
-@version $Revision: 0.01 $ $Author: elwynd $
+@version $Revision: 0.05 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)

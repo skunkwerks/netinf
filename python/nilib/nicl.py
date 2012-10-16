@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-@package nicl
+@package nilib
 @file nicl.py
 @brief Basic command line client for NI names, make 'em and check 'em
-@version $Revision: 0.01 $ $Author: elwynd $
+@version $Revision: 0.04 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
@@ -26,6 +26,22 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+================================================================================@code
+
+@code
+Revision History
+================
+Version   Date       Author         Notes
+
+0.4       16/06/2012 Elwyn Davies   Completed revision history and ref number.
+0.3       12/10/2012 Elwyn Davies   Renamed main routine for convenience with
+                                    setuputils in nilib package.
+0.2       12/10/2012 Elwyn Davies   Updated coments and specification refs.
+0.1       01/06/2012 Elwyn Davies   Updated to provide -w, -m and -b and
+                                    cope with nih: scheme.
+0.0	  12/02/2012 Elwyn Davies   Created for NetInf codsprint.
+@endcode
 """
 import sys
 from optparse import OptionParser

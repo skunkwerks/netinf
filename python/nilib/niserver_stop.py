@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
-@package ni
+@package nilib
 @file niserver_stop.py
 @brief Control application for stopping running niserver NI HTTP convergence layer server.
 @version $Revision: 0.02 $ $Author: elwynd $
