@@ -147,6 +147,9 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       16/10/2012 Elwyn Davies   Fixed bug in netinf_publish - em_str -> ext_str
+                                    Changed various logerror to loginfo/logwarn 'cos
+                                    they are user errors rather than program problems.
 1.1       13/10/2012 Elwyn Davies   Added size to metadata. Added limited check for
                                     consistent metadata (just written by same server).
 1.0       13/10/2012 Elwyn Davies   Added QR code display screen.
@@ -1838,11 +1841,11 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         file_uploaded = False
         if full_put:
             if not "octets" in form.keys():
-                self.logerror("Expected 'octets' form field to be present with 'fullPut' set")
+                self.loginfo("Expected 'octets' form field to be present with 'fullPut' set")
                 self.send_error(412, "Form field 'octets' not present when 'fullPut' set.")
                 return
             if form["octets"].filename is None:
-                self.logerror("Expected 'octets' form field to be a file but has no filename attribute")
+                self.loginfo("Expected 'octets' form field to be a file but has no filename attribute")
                 self.send_error(412, "Form field 'octets' does not contain an uploaded file")
                 return
             # Record that there is a file ready
@@ -1866,13 +1869,15 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                     if "meta" in ext_json.keys():
                         extrameta = ext_json["meta"]
                         if type(extrameta) is not dict:
-                            self.logerror("Value of 'meta' item in JSON form field "
-                                          "'ext' '%s' is not a JSON object." % str(extrameta))
-                            self.send_error(412, "'meta' item in form field 'ext' is not a JSON object")
+                            self.loginfo("Value of 'meta' item in JSON form field "
+                                         "'ext' '%s' is not a JSON object." % str(extrameta))
+                            self.send_error(412, "'meta' item in form field 'ext' "
+                                                 "is not a JSON object")
                             return                        
                         self.logdebug("Metadata: %s" % json.dumps(extrameta))
                 except Exception, e:
-                    self.logerror("Value of form field 'ext' '%s' is not a valid JSON string." % em_str)
+                    self.loginfo("Value of form field 'ext' '%s' is not a valid JSON string." %
+                                 ext_str)
                     self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
                     return
 
@@ -1880,7 +1885,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if "rform" in form.keys():
             rform = fov["rform"].lower()
             if not((rform == "json") or (rform == "html") or (rform == "plain")):
-                self.logerror("Unhandled publish response format requested '%s'." % rform)
+                self.loginfo("Unhandled publish response format requested '%s'." % rform)
                 self.send_error(412, "Response format '%s' not available." % rform)
                 return
         else:
@@ -1959,7 +1964,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             # Check the file was completely sent (not interrupted or cancelled by user
             if form["octets"].done == -1:
-                self.logdebug("File referenced by 'octets' form field incompletely uploaded")
+                self.loginfo("File referenced by 'octets' form field incompletely uploaded")
                 self.send_error(412, "Upload of file referenced by 'octets' form field cancelled or interrupted by user")
                 return
          
@@ -1988,7 +1993,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             # Check digest matches with digest in ni name in URI field
             if (digest != ni_name.get_digest()):
-                self.logerror("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
+                self.logwarn("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
                 self.send_error(401, "Digest of incoming file does not match digest in URI: %s" % form["URI"].value)
                 os.remove(temp_name)
                 return
@@ -1998,9 +2003,9 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
             if ((ctype is None) or (ctype == self.DFLT_MIME_TYPE)):
                 ctype = magic.from_file(temp_name, mime=True)
-                self.logdebug("Guessed content type from file is %s" % ctype)
+                self.loginfo("Guessed content type from file is %s" % ctype)
             else:
-                self.logdebug("Supplied content type from form is %s" % ctype)
+                self.loginfo("Supplied content type from form is %s" % ctype)
 
         # If ct= query string supplied in URL field..
         #   Override type got via received file if there was one but log warning if different
@@ -2055,7 +2060,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     os.remove(temp_name)
                 except Exception, e:
-                    self.loginfo("Failed to unlink temp file %s: %s)" %
+                    self.logerror("Failed to unlink temp file %s: %s)" %
                                  (temp_name, str(e)))
                     self.send_error(500, "Cannot unlink temporary file")
                     return
@@ -2156,13 +2161,13 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         if "rform" in form.keys():
             rform = fov["rform"].lower()
             if not((rform == "json") or (rform == "html") or (rform == "plain")):
-                self.logerror("Unhandled search response format requested '%s'." % rform)
+                self.loginfo("Unhandled search response format requested '%s'." % rform)
                 self.send_error(412, "Response format '%s' not available." % rform)
                 return
         else:
             # Default of json
             rform = "json"
-            self.logdebug("Using default rform - json")                
+            self.loginfo("Using default rform - json")                
         
         # Record timestamp for this operation
         op_timestamp = self.metadata_timestamp_for_now()
@@ -2188,7 +2193,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         try:
             http_object = urllib2.urlopen(wikireq)
         except Exception, e:
-            self.logerror("Error: Unable to access Wikipedia URL %s: %s" % (wikireq, str(e)))
+            self.logwarn("Error: Unable to access Wikipedia URL %s: %s" % (wikireq, str(e)))
             self.send_error(404, "Unable to access Wikipedia URL: %s" % str(e))
             return
 
@@ -2217,7 +2222,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Verify length and digest if HTTP result code was 200 - Success
         if (http_result != 200):
-                self.logerror("Wikipedia request returned HTTP code %d" % http_result)
+                self.logwarn("Wikipedia request returned HTTP code %d" % http_result)
                 self.send_error(http_result, "Wikipedia non-success response")
                 return
 
