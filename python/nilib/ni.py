@@ -67,6 +67,7 @@ the digests in the nih scheme. See http://en.wikipedia.org/Luhn_algorithm.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       24/10/2012 Elwyn Davies   Added get_canonical_ni_url.
 1.0       23/10/2012 Elwyn Davies   Added nih <-> ni translation and conversion.
                                     Corrected NIname validation.
                                     Added error counting to testing and fixed tests.
@@ -750,6 +751,28 @@ class NIname:
             trans_params = self.trans_nih_to_ni()
             return ni_urlparse.urlunparse((NI_SCHEME, self.netloc, self.path,
                                            trans_params, self.query, self.fragment))
+        
+    #--------------------------------------------------------------------------#
+    def get_canonical_ni_url(self):
+        """
+        @brief for a validated NIname, return the url as an ni scheme URL with
+               empty netloc and no query string
+        @return equivalent ni scheme url, translated from nih scheme if required
+        @throw UnvalidatedNIname unless validated is True
+        @throw EmptyParams if NIname has empty params value
+        """
+        if not self.validated:
+            raise UnvalidatedNIname, "Cannot translate unvalidated ni digest"
+
+        if not self.params:
+            raise EmptyParams, "Cannot translate NIname with empty params."
+
+        if self.scheme == NI_SCHEME:
+            trans_params = self.params
+        else:
+            trans_params = self.trans_nih_to_ni()
+        return ni_urlparse.urlunparse((NI_SCHEME, "", self.path,
+                                           trans_params, "", self.fragment))
         
     #--------------------------------------------------------------------------#
     def get_url_as_nih(self):
