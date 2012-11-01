@@ -147,6 +147,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       01/11/2012 Elwyn Davies   Fixed bug in send_get_header - remove leading \n from final_mb
 1.2       16/10/2012 Elwyn Davies   Fixed bug in netinf_publish - em_str -> ext_str
                                     Changed various logerror to loginfo/logwarn 'cos
                                     they are user errors rather than program problems.
@@ -230,7 +231,7 @@ import ni
 #==============================================================================#
 # List of classes/global functions in file
 __all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
-           'check_cache_dirs', 'ni_http_server'] 
+           'check_cache_dirs', 'ni_http_server', 'NETINF_VER'] 
 #==============================================================================#
 # GLOBAL VARIABLES
 
@@ -1300,7 +1301,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Assemble body for message and calculate length
             # Put together the part before the content file in a StringIO
             mb = self.mime_boundary()
-            final_mb = "\n--" + mb + "--"
+            final_mb = "--" + mb + "--"
             f = StringIO()
             # Initial MIME boundary
             f.write("--" + mb + "\n")
