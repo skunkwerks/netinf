@@ -147,6 +147,11 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       17/11/2012 Elwyn Davies   Prepare for alternative use of WSGI framework:
+                                    Copy items accessed by self.server in NIHTTPHandler into this
+                                    class in 'handle' so that self.server is not used in
+                                    actual processing of requests.
+                                    Fix bug in nrsconfig check_form_data call.
 1.3       01/11/2012 Elwyn Davies   Fixed bug in send_get_header - remove leading \n from final_mb
 1.2       16/10/2012 Elwyn Davies   Fixed bug in netinf_publish - em_str -> ext_str
                                     Changed various logerror to loginfo/logwarn 'cos
@@ -806,6 +811,18 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         self.logwarn = self.server.logger.warn
         self.logerror = self.server.logger.error
 
+        # Copy items referenced via self.server to instance varisbles
+        # Allows alternative use of WSGI environ by actual handler routiens.
+        self.storage_root = self.server.storage_root
+        self.getputform = self.server.getputform
+        self.nrsform = self.server.nrsform
+        self.provide_nrs = self.server.provide_nrs
+        self.favicon = self.server.favicon
+        self.authority = self.server.authority
+        self.server_name = self.server.server_name
+        self.server_port = self.server.server_port
+        self.nrs_redis = self.server.nrs_redis
+
         self.loginfo("New HTTP request connection from %s" % self.client_address[0])
 
         # Delegate to super class handler
@@ -961,7 +978,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # The HTML code is in a file with pathname configured and
         # passed to server.
         if (self.path.lower() == self.NI_ACCESS_FORM):
-            return self.send_fixed_file( self.server.getputform,
+            return self.send_fixed_file( self.getputform,
                                          "text/html",
                                          "form definition")
 
@@ -969,20 +986,20 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # The HTML code is in a file with pathname configured and
         # passed to server.
         if (self.path.lower() == self.NRS_CONF_FORM):
-            if not self.server.provide_nrs:
+            if not self.provide_nrs:
                 self.loginfo("Request for NRS configuration form when not running NRS server")
                 self.send_error(404, "NRS server not running at this location")
                 return None
             # Display the form
-            return self.send_fixed_file( self.server.nrsform,
+            return self.send_fixed_file( self.nrsform,
                                          "text/html",
                                          "form definition")
 
         # Return the 'favicon' usually displayed in browser headers
-        # Filename is configured and stored in self.server.favicon
+        # Filename is configured and stored in self.favicon
         if (self.path.lower() == self.FAVICON_FILE) :
             self.logdebug("Getting favicon")
-            return self.send_fixed_file( self.server.favicon,
+            return self.send_fixed_file( self.favicon,
                                          "image/x-icon",
                                          "form definition")
         
@@ -993,22 +1010,22 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Return content from http:///ni_cache/<alg>;<digest> URL
         if (self.path.lower().startswith(self.CONT_PRF)):
             ndo_path, meta_path = self.redirect_name_to_file_names( \
-                                                self.server.storage_root,
+                                                self.storage_root,
                                                 self.path)
             # TO DO: Really ought to get msgid as a query string?
             return self.send_get_header(ndo_path, meta_path, None)
 
         # Return metadata from http:///ni_meta/<alg>;<digest> URL
         if (self.path.lower().startswith(self.META_PRF)):
-            return self.send_meta_header(self.path, self.server.storage_root) 
+            return self.send_meta_header(self.path, self.storage_root) 
 
         # Return QRcode image from http:///ni_qrcode/<alg>;<digest> URL
         if (self.path.lower().startswith(self.QRCODE_PRF)):
-            return self.send_qrcode_header(self.path, self.server.storage_root) 
+            return self.send_qrcode_header(self.path, self.storage_root) 
 
         # Process /.well-known/ni[h]/<alg name>/<digest>
-        rv, ni_name, ndo_path, meta_path = self.translate_wkn_path(self.server.authority,
-                                                                   self.server.storage_root,
+        rv, ni_name, ndo_path, meta_path = self.translate_wkn_path(self.authority,
+                                                                   self.storage_root,
                                                                    self.path)
         if rv is not ni.ni_errs.niSUCCESS:
             self.loginfo("Path format for %s inappropriate: %s" % (self.path,
@@ -1081,16 +1098,16 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         # Set up a StringIO buffer to gather the HTML
         f = StringIO()
         f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
-        f.write("<html>\n<title>Named Data Object Cache Listing for server %s</title>\n" % self.server.server_name)
-        f.write("<body>\n<h1>Named Data Object Cache Listing for server %s</h1>\n" % self.server.server_name)
+        f.write("<html>\n<title>Named Data Object Cache Listing for server %s</title>\n" % self.server_name)
+        f.write("<body>\n<h1>Named Data Object Cache Listing for server %s</h1>\n" % self.server_name)
         f.write("<hr>\n<ul>")
 
         # Server access netloc
-        if (self.server.server_port == 80):
+        if (self.server_port == 80):
             # Can omit the default HTTP port
-            netloc = self.server.server_name
+            netloc = self.server_name
         else:
-            netloc = "%s:%d" % (self.server.server_name, self.server.server_port)
+            netloc = "%s:%d" % (self.server_name, self.server_port)
 
         # List all the algorithms selected as HTTP style URLs
         # Within each pair of selected algorithm directories
@@ -1099,14 +1116,14 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         #   because can upload just metadata and/or have content expired.
         # - Create union of sets
         for alg in algs_list:
-            meta_dirpath = "%s%s%s" % (self.server.storage_root, META_DIR, alg)
+            meta_dirpath = "%s%s%s" % (self.storage_root, META_DIR, alg)
             try:
                 meta_set = set(os.listdir(meta_dirpath))
             except os.error:
                 self.send_error(404, "No permission to list directory for algorithm %s" % alg)
                 return None
             
-            ndo_dirpath = "%s%s%s" % (self.server.storage_root, NDO_DIR, alg)
+            ndo_dirpath = "%s%s%s" % (self.storage_root, NDO_DIR, alg)
             try:
                 ndo_set = set(os.listdir(ndo_dirpath))
             except os.error:
@@ -1546,7 +1563,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         self.send_response(307, "Redirect for .well-known version of '%s'" %
                            ni_name.get_url())
-        self.send_header("Location", "http://%s%s%s;%s" % (self.server.authority,
+        self.send_header("Location", "http://%s%s%s;%s" % (self.authority,
                                                             self.CONT_PRF,
                                                             ni_name.get_alg_name(),
                                                             ni_name.get_digest()))
@@ -1587,7 +1604,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         - nrsvals: retrieve all the NRS entries with keys matching a pattern
        
         The cache is a directory tree rooted at the location specified
-        in self.server.storage_root with two parallel trees for NDO content
+        in self.storage_root with two parallel trees for NDO content
         and corresponding metadata.  Each tree in the cache has a directory per
         hash digest algorithm used to generate names using the names of the
         algorithms as directory names. (The main server program ensures
@@ -1677,7 +1694,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             self.netinf_publish(form)
         elif (self.path == self.NETINF_SEARCH):
             self.netinf_search(form)
-        elif self.server.provide_nrs:
+        elif self.provide_nrs:
             if (self.path == self.NRS_CONF):
                 self.nrs_conf(form)
             elif (self.path == self.NRS_LOOKUP):
@@ -1750,7 +1767,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Turn the ni_name into paths for NDO and metadata.
         # Then send the headers if all is well
-        (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root, ni_name)
+        (ndo_path, meta_path) = self.ni_name_to_file_names(self.storage_root, ni_name)
         # send_get_header returns open file pointer to file to be returned (or None)
         f = self.send_get_header(ndo_path, meta_path, form["msgid"].value)
         if f:
@@ -1921,7 +1938,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return
 
         # Turn the ni_name into NDO and metadata file paths
-        (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root,
+        (ndo_path, meta_path) = self.ni_name_to_file_names(self.storage_root,
                                                           ni_name)
 
         # We don't know what the content type or the length are yet
@@ -1935,7 +1952,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # once the digest has been verified.
             # This file name is unique to this thread and because it has # in it
             # should never conflict with a digested file name which doesn't use #.
-            temp_name = "%s%s%s/publish#temp#%d" % (self.server.storage_root,
+            temp_name = "%s%s%s/publish#temp#%d" % (self.storage_root,
                                                     NDO_DIR,
                                                     ni_name.get_alg_name(),
                                                     self.thread_num)
@@ -2338,7 +2355,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # once the digest has been verified.
             # This file name is unique to this thread and because it has # in it
             # should never conflict with a digested file name which doesn't use #.
-            temp_name = "%s%s%s/search#temp#%d" % (self.server.storage_root,
+            temp_name = "%s%s%s/search#temp#%d" % (self.storage_root,
                                                    NDO_DIR,
                                                    ni_name.get_alg_name(),
                                                    self.thread_num)
@@ -2418,7 +2435,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
                 continue
 
             # Determine file names for metadata and content
-            (ndo_path, meta_path) = self.ni_name_to_file_names(self.server.storage_root,
+            (ndo_path, meta_path) = self.ni_name_to_file_names(self.storage_root,
                                                               ni_name)
 
             # Check if metadata file exists already - then either store new or update
@@ -2512,17 +2529,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             # Iterate through cached results outputting link and information
             for item in cached_results:
                 ni_name = item["ni_obj"]
-                ni_name.set_netloc(self.server.authority)
-                cl = "http://%s%s%s/%s/%s" % (self.server.authority,
+                ni_name.set_netloc(self.authority)
+                cl = "http://%s%s%s/%s/%s" % (self.authority,
                                               self.WKN,
                                               ni_name.get_scheme(),
                                               ni_name.get_alg_name(),
                                               ni_name.get_digest())
-                ml = "http://%s%s%s;%s" % (self.server.authority,
+                ml = "http://%s%s%s;%s" % (self.authority,
                                              self.META_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
-                ql = "http://%s%s%s;%s" % (self.server.authority,
+                ql = "http://%s%s%s;%s" % (self.authority,
                                              self.QRCODE_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
@@ -2551,17 +2568,17 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             for item in cached_results:
                 f.write("<li>\n")
                 ni_name = item["ni_obj"]
-                ni_name.set_netloc(self.server.authority)
-                cl = "http://%s%s%s/%s/%s" % (self.server.authority,
+                ni_name.set_netloc(self.authority)
+                cl = "http://%s%s%s/%s/%s" % (self.authority,
                                               self.WKN,
                                               ni_name.get_scheme(),
                                               ni_name.get_alg_name(),
                                               ni_name.get_digest())
-                ml = "http://%s%s%s;%s" % (self.server.authority,
+                ml = "http://%s%s%s;%s" % (self.authority,
                                              self.META_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
-                ql = "http://%s%s%s;%s" % (self.server.authority,
+                ql = "http://%s%s%s;%s" % (self.authority,
                                              self.QRCODE_PRF,
                                              ni_name.get_alg_name(),
                                              ni_name.get_digest())
@@ -2620,10 +2637,10 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Validate form data
         # Check only expected keys and no more
-        fov = {}
         mandatory = ["URI"]
         optional = ["hint1", "hint2", "loc1", "loc2", "meta"]
-        if not self.check_form_data(form, mandatory, optional, fov, "nrsconf"):
+        form_ok, fov =  self.check_form_data(form, mandatory, optional, "nrsconf")
+        if not form_ok:
             return
 
         # Make Redis entry
@@ -2640,7 +2657,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Do the database entry
         try:
-            if not self.server.nrs_redis.hmset(redis_key, redis_vals):
+            if not self.nrs_redis.hmset(redis_key, redis_vals):
                 self.logerror("Failed to update Redis entry for '%s' - vals |%s|" %
                               (redis_key, str(redis_vals)))
                 self.send_error(412, "Unable to update NRS database entry")
@@ -2781,7 +2798,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if not self.server.nrs_redis.delete(redis_key):
+            if not self.nrs_redis.delete(redis_key):
                 self.loginfo("Deleting Redis entry for '%s' failed" % redis_key)
                 self.send_error(404, "Deleting entry for key '%s' failed" % redis_key)
                 return
@@ -2863,7 +2880,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Find keys matching pattern
         try:
-            key_list = self.server.nrs_redis.keys(redis_patt)
+            key_list = self.nrs_redis.keys(redis_patt)
         except Exception, e:
             self.logerror("Reading Redis keys for pattern '%s' caused exception %s" %
                           (redis_patt, str(e)))
@@ -2934,7 +2951,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
 
         # Always add this server's authority as a locator when creating metadata file
         md = NetInfMetaData(uri, timestamp, ctype, file_len,
-                            self.server.authority, loc1, loc2, extrameta)
+                            self.authority, loc1, loc2, extrameta)
         try:
             json.dump(md.json_val(), f)
         except Exception, e:
@@ -3395,7 +3412,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
         """
         # Check if there is any entry
         try:
-            all_vals = self.server.nrs_redis.hgetall(redis_key)
+            all_vals = self.nrs_redis.hgetall(redis_key)
         except Exception, e:
             return None
 
@@ -3403,7 +3420,7 @@ class NIHTTPHandler(BaseHTTPRequestHandler):
             return None
         
         try:
-            vals = self.server.nrs_redis.hmget(redis_key, val_names)
+            vals = self.nrs_redis.hmget(redis_key, val_names)
         except Exception, e:
             return None
 
@@ -3570,6 +3587,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
             except Exception, e:
                 logger.error("Unable to connect to Redis server: %s" % str(e))
                 sys.exit(-1)
+        else:
+            self.nrs_redis = None
         
         self.running_threads = set()
         self.next_handler_num = 1
@@ -3821,8 +3840,8 @@ aaabbb
         sd = "/tmp/niserver_test"
 
         server = NIHTTPServer((HOST, PORT), sd, "example.com", logger,
-                              "./getputform.html", "./nrsconfig.html",
-                              False, "./favicon.ico")
+                              "./data/getputform.html", "./data/nrsconfig.html",
+                              False, "./data/favicon.ico")
 
         # Create a dummy file to get
         shutil.rmtree(sd, ignore_errors=True)
