@@ -45,7 +45,7 @@ Version   Date       Author         Notes
 from setuptools import setup
 
 setup(name='nilib',
-      version='r21.0',
+      version='r2.0',
       description='Library, HTTP CL server and clients for Nilib NetInf protocol package',
       author='Elwyn Davies',
       author_email='davieseb@scss.tcd.ie',
