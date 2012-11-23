@@ -60,7 +60,8 @@ Command line utilities:
 - nisearch.py -     command line tool to perform NetInf search requests over HTTP.
 - pynilib_test.sh - shell script used for checking ni.py and nicl.py.
 
- Lightweight NI NDO cache server:
+Lightweight NI NDO cache server:
+================================
      
  Provides an HTTP server that just serves as the server end of the NetInf
  protocol, manages a local cache of NDOs and provides http: access using
@@ -79,9 +80,20 @@ The server can be configured to provide Name Resolution Services (NRS):
  - Delete an NRS database entry (responds on POSTs on /netinfproto/nrsdelete)
  - Examine available NRS database entries (responds on POSTs on /netinfproto/nrsvals)
 
- Uses the following files:
+The server uses the standard Python BaseHTTPHandler paradigm with threading and
+various improvements to the handler to allow streaming of input and output 
+between the handler and the socket server.  The handler has been made generic 
+so that it can be used both with this server and also with WSGI based servers
+(see below).  An adaptor shim (httpshim.py) is provided to link the generic
+handler and the HTTP server class.
+
+Uses the following files:
  - niserver_main.py - the main server controller
  - niserver.py - the guts of the server
+ - nihandler.py - the request handler with the bulk of the NetInf specific code
+ - httpshim.py - shim that links the generic NIHTTPHandler class in nihandler
+                 to the BaseHTTPHandler derived code needed by niserver.py
+ - netinf_ver.py - version strings
  - niserver.conf - main configuration file - specifies locations for logs, cache
  - niserver_log.conf - configuration file for Python logging system for server
 
@@ -100,6 +112,45 @@ Support modules (acquired from http://atlee.ca/software/poster/index.html):
 - streaminghttp.py - allows large uploads to be handled without requiring 
                equally large memory buffers by allowing iterables and coping
                with Python generators (essentially as-is from Poster site).
+
+WSGI Test Server
+================
+The same NetInf functionality as with the server based on BaseHTTPServer can
+be obtained using a WSGI-based server (see http://www.python.org/peps/pep-0333/)
+using the standard Python wsgiref modules.
+
+This server is only single threaded and is configured using environment
+variables rather than a configuration file.  As such it is more useful for
+testing improvements to the handler rather than a production system.  The 
+server is also easier to start and stop than the BaseHTTPServer version.
+Also logging goes to standard error (stderr) rather than a specified log
+file.
+
+Exactly the same main handler is used but an alternative shim (wsgishim.py)
+provides the necessary adaptation for the WSGI interface. 
+
+Uses the following files:
+ - niwsgiserver.py - the server controller
+ - nihandler.py - the request handler with the bulk of the NetInf specific code
+ - wsgishim.py - shim that links the generic NIHTTPHandler class in nihandler
+                 to the WSGI interface needed by niswsgierver.py
+ - netinf_ver.py - version strings
+
+Apache WSGI mod_wsgi script:
+============================
+
+The NetInf functionality can also be integrated into the Apache 2 web server
+using mod_wsgi.  In this case the configuration is handled via Apache
+SetEnv commands (see netinf.wsgi). Logging goes to the Apache error log.  
+
+Uses the following files:
+ - netinf.wsgi - has the 'application' function called by mod_wsgi for each 
+                 request.
+ - nihandler.py - the request handler with the bulk of the NetInf specific code
+ - wsgishim.py - shim that links the generic NIHTTPHandler class in nihandler
+                 to the WSGI interface needed by niswsgierver.py
+ - netinf_ver.py - version strings
+
 
 --------------------------------------------------------------------------------
 INSTALLATION
@@ -139,8 +190,9 @@ RUNNING AN INSTALLED VERSION
 
 During installation scripts are created to run the various command line tools
 and the niserver startup script.  These are:
-- pyniserver     - runs niserver_main.py - starts niserver
+- pyniserver     - runs niserver_main.py - starts BaseHTTPServer niserver
 - pystopniserver - runs niserver_stop.py - stops niserver
+- pyniwsgiserver - runs niwsgiserver.py - starts WSGI niserver (stop with Ctrl/C)
 - pynicl         - runs nicl.py - command line to generate and validate digests
 - pyniget        - runs niget.py - command line to send NetInf GET message
 - pynipub        - runs nipub.py - command line to send NetInf PUBLISH message
@@ -167,7 +219,13 @@ Limitations
    content-disposition header for form data item with file.
                
 CHANGES
-  2012-20-13
+  2012-11-22
+        - Modified to allow handler code to work with either BaseHTTPServer
+          or WSGI-based servers, including Apache 2 mopd_wsgi.  Separated
+          out main handler code from niserver.py into nihandler.py.
+          Added alternative shims httpshim.py and wsgishim.py that
+          provided the interface to BaseHTTPHandler and WSGI respectively.
+  2012-10-13
         - Reorganized to work with Python distribute/setuputils.
           Added notes for installation and installed scripts.
   2012-10-12

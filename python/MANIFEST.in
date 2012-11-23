@@ -30,10 +30,13 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
+# 0.3	  22/11/2012 Elwyn Davies   Added niwsgiserver.py, netinf_ver.py and test dir.
+# 0.2	  19/11/2012 Elwyn Davies   Added nihandler.py, httpshim.py and wgsishim.py.
 # 0.1	  15/10/2012 Elwyn Davies   Moved LICENSE and README to doc directory.
 # 0.0	  13/10/2012 Elwyn Davies   Created.
 # @endcode
 
-# Just have to specify the data and doc files explicitly
+# Just have to specify the data, doc and test files explicitly
 recursive-include nilib/data *
 recursive-include nilib/doc *
+recursive-include nilib/test *

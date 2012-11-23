@@ -162,14 +162,8 @@ Revision History
 Version   Date       Author         Notes
 0.0       17/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
                                     allow use with either WSGI or BaseHTTPHandler.
-
 @endcode
 """
-
-#==============================================================================#
-##@var NISERVER_VER
-# Version string for niserver
-NISERVER_VER = "1.2"
 
 #==============================================================================#
 #=== Standard modules for Python 2.[567].x distributions ===
@@ -191,11 +185,6 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-if "niserver" in sys.modules:
-    from httpshim import HTTPRequestShim
-else:
-    from wsgishim import HTTPRequestShim
-    
 import cgi
 import urllib
 import urllib2
@@ -208,29 +197,21 @@ import magic
 import DNS
 import qrcode
 
-##@var redis_loaded
-# Flag indicating if it was possible to load the Redis module.
-# The program can do without Redis if not providing NRS services.
-try:
-    import redis
-    redis_loaded = True
-except ImportError:
-    redis_loaded = False
-
 #=== Local package modules ===
 
+from netinf_ver import NETINF_VER, NISERVER_VER
 import ni
-
+if "niserver" in sys.modules:
+    from httpshim import HTTPRequestShim
+else:
+    from wsgishim import HTTPRequestShim
+    
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
-           'check_cache_dirs', 'ni_http_server', 'NETINF_VER'] 
-#==============================================================================#
-# GLOBAL VARIABLES
+__all__ = ['NetInfMetaData', 'NIHTTPHandler', 'check_cache_dirs']
 
-##@var NETINF_VER
-# Version of NetInf implemented - written into metadata instances 
-NETINF_VER = "v0.3 Elwyn"
+#==============================================================================#
+# === GLOBAL VARIABLES ===
 
 ##@var NDO_DIR
 # Pathname component identifying sub-directory under storage base for content files
@@ -626,7 +607,7 @@ class NIHTTPHandler(HTTPRequestShim):
     for calling the logger.  The logger uses the thread name in the logged
     messages to differentiate messages from different handlers.
 
-    Note: All instance variables are defined in the superclass.
+    Note: Many instance variables are defined in the superclass.
     """
 
     #--------------------------------------------------------------------------#
@@ -742,13 +723,6 @@ class NIHTTPHandler(HTTPRequestShim):
 
     #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
-
-    # === Thread information ===
-    ##@var request_thread
-    # The thread identifier retrieved from threading.CurrentThread()
-    ##@var thread_num
-    # Sequence number for threads controlled by next_handler_num in
-    # the NIHTTPServers.  Incorporated in thread name to identify thread.
 
     # === Application Variables ===
     ##@var storage_root
@@ -1261,7 +1235,7 @@ class NIHTTPHandler(HTTPRequestShim):
             self.send_header("Content-Length", str(length))
             # Ensure response not cached
             self.send_header("Expires", "Thu, 01-Jan-70 00:00:01 GMT")
-            self.send_header("Last-Modified", md.get_timestamp())
+            self.send_header("Last-Modified", str(md.get_timestamp()))
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
             # IE extensions - extra header
             self.send_header("Cache-Control", "post-check=0, pre-check=0")
@@ -1878,7 +1852,7 @@ class NIHTTPHandler(HTTPRequestShim):
                 return
             file_len = 0
             g = form["octets"].file
-            while 1:
+            while True:
                 buf = g.read(16 * 1024)
                 if not buf:
                     break
@@ -2266,7 +2240,7 @@ class NIHTTPHandler(HTTPRequestShim):
             temp_name = "%s%s%s/search#temp#%d" % (self.storage_root,
                                                    NDO_DIR,
                                                    ni_name.get_alg_name(),
-                                                   self.thread_num)
+                                                   self.unique_id)
             self.logdebug("Copying and digesting to temporary file %s" % temp_name)
 
             # Prepare hashing mechanisms
@@ -3099,6 +3073,11 @@ class NIHTTPHandler(HTTPRequestShim):
 
         Determine if path has '?' or '#' or '?' followed by '#' that are introducers for
         respectively query string and fragments.
+
+        NOTE: If the URI was supplied by a reputable web browser or other
+        HTTP client, the URI should not contain any fragments as the fragment
+        specifier is supposed to be applied to the returned resoource and is
+        not sent over the wire.
         """
         split_query_frag = path.split("?", 1)
         if len(split_query_frag) > 1:
@@ -3108,6 +3087,9 @@ class NIHTTPHandler(HTTPRequestShim):
             has_query_string = False
             split_frag = split_query_frag[0].split("#", 1)
         has_fragments = (len(split_frag) > 1)
+        if has_fragments:
+            self.logwarning("URI supplied with fragment identifier (%s) - should not happen" %
+                            path)
 
         return (has_query_string, has_fragments)
 

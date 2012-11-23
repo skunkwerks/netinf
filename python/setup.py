@@ -31,6 +31,12 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+0.3       22/11/2012 Elwyn Davies   Version 2.0: Modify nihandler.py, http_shim.py, add 
+                                    wsgishim.py, netinf_ver.py, niwsgiserver.py and test
+                                    code for WSGI server to allow NIHTTPHandler to be 
+                                    driven form any one of BaseHTTPServer, wsgiref server
+                                    or the mod_wsgi in an Apache server. 
+0.2       19/11/2012 Elwyn Davies   Split nihandler.py and httpshim.py out of niserver.py. 
 0.1       15/10/2012 Elwyn Davies   Moved README and LICENSE files to doc directory.
 0.0	  13/10/2012 Elwyn Davies   Created.
 @endcode
@@ -39,7 +45,7 @@ Version   Date       Author         Notes
 from setuptools import setup
 
 setup(name='nilib',
-      version='1.0',
+      version='r21.0',
       description='Library, HTTP CL server and clients for Nilib NetInf protocol package',
       author='Elwyn Davies',
       author_email='davieseb@scss.tcd.ie',
@@ -55,7 +61,8 @@ setup(name='nilib',
                            'pynicl = nilib.nicl:py_nicl',
                            'pyniget = nilib.niget:py_niget',
                            'pynipub = nilib.nipub:py_nipub',
-                           'pynisearch = nilib.nisearch:py_nisearch']
+                           'pynisearch = nilib.nisearch:py_nisearch',
+			   'pyniwgsiserver = nilib.niwsgiserver.py:py_niwsgiserver']
                     },
       include_package_data=True,
       data_files=[('/var/niserver',
@@ -63,7 +70,8 @@ setup(name='nilib',
                        'nilib/data/niserver_log.conf',
                        'nilib/data/getputform.html',
                        'nilib/data/nrsconfig.html',
-                       'nilib/data/favicon.ico'])],
+                       'nilib/data/favicon.ico',
+                       'nilib/scripts/netinf.wsgi'])],
       license='Apache License, Version 2.0',
       platforms=['Linux', 'Mac OS', 'Windows'],
       long_description='Python scripts and modules used to provide an HTTP \n' +
@@ -72,12 +80,21 @@ setup(name='nilib',
       'routines to generate and check the hash digests of files that \n' +
       'are given names from the ni URI scheme.\n\n' +
 
-      "Also included is an implementation of a 'lightweight' NetInf/HTTP/TCP \n" +
-      'server and command line clients that can send GET, PUBLISH and SEARCH \n' +
-      'NetInf messages to the server, together with a command line tool for \n' +
+      "Also included is an implementation of a 'lightweight' multithreaded \n" +
+      'NetInf/HTTP/TCP server using the standard Python BaseHTTPServer framework, \n' +
+      'a simple Python WSGI server using the standard Python wsgiref framework \n' +
+      "intended primarily for testing the handler code and a 'wsgi' script that \n" +
+      'allows the handler to be invoked from an Apache 2  mod_wsgi WSGI module. \n' +
+      "All of these server implementations use a common handler module 'nihandler.py'. \n" +
+      'Also provided are command line clients that can send GET, PUBLISH and SEARCH \n' +
+      'NetInf messages to the servers, together with a command line tool for \n' +
       'constructing ni URIs for files to be published using the client.\n\n' +
 
       'The library code is installed as the module nilib in the Python site \n' +
       "library. The command line scripts are installed as 'pynicl', 'pyniserver', \n" +
-      "'pyniget', 'pynipublish' and 'pynisearch'.\n"
+      "'pyniwsgiserver', 'pyniget', 'pynipublish' and 'pynisearch'.\n" +
+
+      "There is some testing code bth at the end of various modules and in the  \n" +
+      "'text' directory.  The code in the 'test' directory  is not copied during \n" +
+      "installation process." 
       )

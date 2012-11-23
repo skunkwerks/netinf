@@ -112,9 +112,15 @@ Version   Date       Author         Notes
 
 @endcode
 """
+#==============================================================================#
+#=== Standard modules for Python 2.[567].x distributions ===
 import threading
 import shutil
 from BaseHTTPServer import BaseHTTPRequestHandler
+
+#=== Local package modules ===
+
+from netinf_ver import NETINF_VER, NISERVER_VER
 
 #==============================================================================#
 class HTTPRequestShim(BaseHTTPRequestHandler):
@@ -170,9 +176,18 @@ class HTTPRequestShim(BaseHTTPRequestHandler):
         self.request_thread.setName("NI HTTP handler - %d" %
                                     self.thread_num)
 
+        # Used for creating unique temporary file names
+        self.unique_id = self.thread_num
+
+        # Used for creating unique temporary file names
+        self.unique_id = self.thread_num
+
         # Tell listener we are running
         self.server.add_thread(self)
         
+        # Add info to server_version string
+        self.server_version += " %s %s" % (NISERVER_VER, NETINF_VER)
+
         # Logging functions
         self.loginfo = self.server.logger.info
         self.logdebug = self.server.logger.debug
