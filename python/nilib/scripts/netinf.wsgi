@@ -62,7 +62,7 @@ Version   Date       Author         Notes
 
 #==============================================================================#
 
-from nihandler import NIHTTPHandler, check_cache_dirs
+from nilib.nihandler import NIHTTPHandler, check_cache_dirs
 
 #==============================================================================#
 def application(environ, start_response):

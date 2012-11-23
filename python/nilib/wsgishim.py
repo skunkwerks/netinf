@@ -692,6 +692,13 @@ class HTTPRequestShim:
     ##@var logger
     # object instance of Logger object routing to Apache log via stderr
     # redirection through mod_wsgi.
+    ##@var log_handler
+    # object instance of StreamHandler attached to logger.  Has to be kept
+    # visible so that it can be flushed and closed before the mod_wsgi
+    # wsgi.error object 'expires' when the 'application' function completes.
+    # The StreamHandler (probably) runs asynchronously so that log messages
+    # are queued up for output so they don't get flushed till the garbage
+    # coilector cleans up the logger instance.
     ##@var log_level
     # integer normally one of logging.[ERROR, WARN, INFO, DEBUG] used to set
     # logging level in logger.
@@ -756,6 +763,7 @@ class HTTPRequestShim:
         fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(message)s")
         ch.setFormatter(fmt)
         self.logger.addHandler(ch)
+        self.log_handler = ch
 
         # Logging functions
         self.loginfo = self.logger.info
@@ -865,7 +873,7 @@ class HTTPRequestShim:
 
         # Basic CGI environment        
         self.server_name, rv     = set_from_env("SERVER_NAME", rv, "CGI")
-        self.server_port, rv     = set_from_env("SERVER_PORT", rv, "CGI")
+        server_port, rv          = set_from_env("SERVER_PORT", rv, "CGI")
         self.client_address, rv  = set_from_env("REMOTE_ADDR", rv, "CGI")
         self.server_version, rv  = set_from_env("SERVER_SOFTWARE", rv, "CGI")
         self.request_version, rv = set_from_env("SERVER_PROTOCOL", rv, "CGI")
@@ -876,8 +884,10 @@ class HTTPRequestShim:
             # Try for a 500 error
             self.send_error(500, "Expected CGI environment not found")
             return self.trigger_response(start_response)
+
+        self.server_port = int(server_port)
         
-        self.authority = "%s:%s" % (self.server_name, self.server_port)
+        self.authority = "%s:%d" % (self.server_name, self.server_port)
 
         self.requestline = "%s %s %s" % (self.request_version,
                                          self.command,
@@ -960,6 +970,13 @@ class HTTPRequestShim:
         @return iterator which will return reponse body wehn asked
         """
         self.ready_to_iterate = True
+
+        # To avoid log object having expired by the time log messages are output
+        # have to flush and close the log_handler.  Otherwise mesaages queued
+        # messages may cause later exceptions.
+        self.log_handler.flush()
+        self.log_handler.close()
+        
         start_response(self.response_status, self.response_headers)
         return iter(self)
 
