@@ -2203,13 +2203,24 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         # Url, Text and Description elements
         results = []
         try:
-            for sect in root.iter(tag=section_name):
-                for item in sect.iter(tag=item_name):
-                    r = {}
-                    r["url"] = item.find(url_name).text
-                    r["text"] = item.find(text_name).text.encode('ascii','replace')
-                    r["desc"] = item.find(desc_name).text.encode('ascii','replace')
-                    results.append(r)
+            if hasattr(root, "iter"):
+                for sect in root.iter(tag=section_name):
+                    for item in sect.iter(tag=item_name):
+                        r = {}
+                        r["url"] = item.find(url_name).text
+                        r["text"] = item.find(text_name).text.encode('ascii','replace')
+                        r["desc"] = item.find(desc_name).text.encode('ascii','replace')
+                        results.append(r)
+            else:
+                # Python 2.6/ElementTree 1.2
+                for sect in root.getiterator(tag=section_name):
+                    for item in sect.getiterator(tag=item_name):
+                        r = {}
+                        r["url"] = item.find(url_name).text
+                        r["text"] = item.find(text_name).text.encode('ascii','replace')
+                        r["desc"] = item.find(desc_name).text.encode('ascii','replace')
+                        results.append(r)
+                
         except Exception, e:
             self.logerror("Extraction of elements from Wikipedia results failed: %s" % str(e))
             self.send_error(422, "Extraction of elements from Wikipedia results failed: %s" % str(e))

@@ -175,11 +175,6 @@ Version   Date       Author         Notes
 """
 
 #==============================================================================#
-##@var NISERVER_VER
-# Version string for niserver
-NISERVER_VER = "1.1"
-
-#==============================================================================#
 #=== Standard modules for Python 2.[567].x distributions ===
 import os
 import stat
@@ -201,7 +196,6 @@ except ImportError:
 
 from BaseHTTPServer import HTTPServer
 from SocketServer import ThreadingMixIn
-from nihandler import NIHTTPRequestHandler, check_cache_dirs
 
 import cgi
 import urllib
@@ -226,12 +220,13 @@ except ImportError:
 
 #=== Local package modules ===
 
+import netinf_ver
 import ni
+from nihandler import NIHTTPRequestHandler, check_cache_dirs
 
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPRequestHandler',
-           'check_cache_dirs', 'ni_http_server', 'NETINF_VER'] 
+__all__ = ['NetInfMetaData', 'NIHTTPServer', 'ni_http_server'] 
 #==============================================================================#
 # GLOBAL VARIABLES
 

@@ -44,12 +44,19 @@ Requires the Python 'qrcode' module (version 2.4.2 or later) to provide the
 capability to output QRcode images.  This module can be downloaded from
 https://github.com/lincolnloop/python-qrcode/
 
+Requires the Python Imaging Library ('pil') module (version 1.1.7 or later)
+to provide support for the QR code images.  This module can be downloaded
+from 
+http://www.pythonware.com/products/pil/
+
 (In each case the modules can be installed using:
 sudo python setup.py install
 assuming you have the distutils module installed).
 
 They are also all in the PyPi repository and the Python setup checks that they
-have been installed, and installs them for you if they are missing.
+have been installed, and installs them for you if they are missing. They can
+be individually installed using 
+sudo pip install <modulename>
 
 Provides:
 
@@ -163,6 +170,10 @@ From the Python subdirectory issue:
 By default it will install into /usr/local/bin for various scripts,
 /usr/local/lib/python2.7/dist-packages/nilib-1.0-py2.7.egg for the Python
 code and /var/niserver for the configuration files, HTML code and icon file.
+
+The destination for the configuration files, etc., can be altered by 
+setting the environment variable NILIB_DATA_DIR to the alternative root
+directory path before running the python installation.
 
 This requires the Python distribute system to be installed. See
 http://packages.python.org/distribute/setuptools.html

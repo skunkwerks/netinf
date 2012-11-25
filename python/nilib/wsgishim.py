@@ -1077,7 +1077,7 @@ class wsgiHTTPRequestShim:
         # Get the response going
         # Check that the method has flagged all the headers finished and
         # entered a status - override with an error if not so
-        if not (self.response_status and self.resp_headers_done):
+        if not (self.response_status and self.response_headers_done):
             self.response_headers = []
             self.response_body = []
             self.send_error(500,
@@ -1164,7 +1164,7 @@ class wsgiHTTPRequestShim:
         """
         self.response_status = None
         self.response_headers = []
-        self.resp_headers_done = False
+        self.response_headers_done = False
         # On initialisation response_body deosn't yet exist
         try:
             # Close any file descriptors in the response_body array
@@ -1291,7 +1291,7 @@ class wsgiHTTPRequestShim:
         output onto the wire.
         """
         self.log_request(self.http_response_code, self.response_length)
-        self.resp_headers_done = True
+        self.response_headers_done = True
         return
 
     #--------------------------------------------------------------------------#

@@ -149,7 +149,7 @@ def py_niserver_start(default_config_file):
     # SERVER_PORT is used as a fallback if neither command line nor config file specify
     parser.add_option("-p", "--server-port", dest="server_port",
                       type="int", default=None,
-                      help="Control port for sending server stop instruction.")
+                      help="Server port on which to listen for HTTP requests.")
     parser.add_option("-u", "--nrs-server", dest="provide_nrs",
                       default=0, action="count",
                       help="If present, offer NRS services from server.")

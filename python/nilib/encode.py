@@ -5,6 +5,7 @@
 @version $Revision: 0.9 $ $Author: Chris Atlee and Elwyn Davies $
 
 Copyright (c) 2011 Chris AtLee
+
 Copyright (c) 2012 Elwyn Davies, Folly Consulting and Trinity College Dublin
 
 .
@@ -14,6 +15,7 @@ Copyright (c) 2012 Elwyn Davies, Folly Consulting and Trinity College Dublin
     Specification(s) - note, versions may change
           - http://tools.ietf.org/html/draft-farrell-decade-ni-10
           - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
 
 Ths module is a modified version of part of the 'poster' software written
 by Chris Atlee.  The original code is available at

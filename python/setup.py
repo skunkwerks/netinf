@@ -31,6 +31,10 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+0.4       25/11/2012 Elwyn Davies   Add requirement for PIL (Python Imaging Library).
+                                    Organize directory image for mod_wsgi setup.
+                                    Provide for specification of data installation
+                                    directory via environment variable NETINF_DAT_DIR.
 0.3       22/11/2012 Elwyn Davies   Version 2.0: Modify nihandler.py, http_shim.py, add 
                                     wsgishim.py, netinf_ver.py, niwsgiserver.py and test
                                     code for WSGI server to allow NIHTTPHandler to be 
@@ -60,7 +64,7 @@ setup(name='nilib',
       url='https://sourceforge.net/p/netinf/',
       packages=['nilib'],
       install_requires=['redis', 'python-stdnum', 'PyDNS',
-                        'python-magic', 'qrcode'],
+                        'python-magic', 'qrcode', 'pil', 'doxypy'],
       scripts=['nilib/scripts/pynilib_test.sh'],
       entry_points={
                       'console_scripts': [
@@ -78,8 +82,24 @@ setup(name='nilib',
                        'nilib/data/niserver_log.conf',
                        'nilib/data/getputform.html',
                        'nilib/data/nrsconfig.html',
-                       'nilib/data/favicon.ico',
-                       'nilib/scripts/netinf.wsgi'])],
+                       'nilib/data/favicon.ico'
+                       ]),
+                  (datadir+"/wsgi/wsgi-apps",
+                      ['nilib/scripts/netinf.wsgi',
+                       'nilib/scripts/test.wsgi',
+                       'nilib/scripts/showenv.wsgi'
+                       ]),
+                  (datadir+"/wsgi/www",
+                      ['nilib/data/getputform.html',
+                       'nilib/data/nrsconfig.html',
+                       'nilib/data/favicon.ico'
+                       ]),
+                  (datadir+"/wsgi/doc",
+                      [ # Create empty directory ready for Doxygen documentation.
+                       ]),
+                  (datadir+"/wsgi/cache",
+                      [ # Create empty directory ready for cache
+                       ])],
       license='Apache License, Version 2.0',
       platforms=['Linux', 'Mac OS', 'Windows'],
       long_description='Python scripts and modules used to provide an HTTP \n' +

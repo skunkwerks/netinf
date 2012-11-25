@@ -47,8 +47,8 @@ query string.  It has a number of classmethods that can be used to access fixed
 intended for creating and checking the digests associated with a file or buffer
 that are incorporated into ni: scheme URIs referring to an object.  A single
 globally accessible instance is created and made available as 'NIproc'.
--ni::NIdigester: A helper class intneded for use in conjunction with
-encode::MultipartParam (file: encode.py).  The pont of the complexity here is
+- ni::NIdigester: A helper class intneded for use in conjunction with
+encode::MultipartParam (file: encode.py).  The point of the complexity here is
 to avoid either reading all of a file to be both digested and sent over an HTTP
 connection from a client twice or reading it into a buffer before calculating the
 digest needed for an ni scheme URI.  When used in conjunction with the tricks in
