@@ -60,13 +60,13 @@ Version   Date       Author         Notes
 # Test WSGI server
 from wsgiref.simple_server import make_server
 
-from wsgishim import HTTPRequestShim
+from nilib.wsgishim import wsgiHTTPRequestShim
 
 #==============================================================================#
 # TESTING CODE
 #==============================================================================#
 #==== TEST CLASS ====
-class EnvPrintHandler(HTTPRequestShim):
+class EnvPrintHandler(wsgiHTTPRequestShim):
     def do_GET(self):
         bl = 0
         for key, value in sorted(self.environ.items()):

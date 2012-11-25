@@ -282,18 +282,25 @@ class NIname:
     #=== Instance Variables ===
     ##@var alg_name
     # string the algorithm name identifier for this URI
+    
     ##@var url
     # string the complete URI string built from components
+    
     ##@var validated
-    # boolean indicating if URI has been validated 
+    # boolean indicating if URI has been validated
+    
     ##@var scheme
     # string the scheme part of the URI (either ni or nih)
+    
     ##@var netloc
     # string the netloc part of the URI (FQDN, port, etc)
+    
     ##@var hash_alg_info
     # tuple value from hash_algs corresponding to alg_name
+    
     ##@var params
     # string the params part of the URI (i.e., the representation of the digest)
+    
     ##@var query
     # string the query string part of the URI
     
@@ -934,12 +941,16 @@ class NIdigester(ParamDigester):
 
     ##@var algorithm
     # Textual name of digester algorithm in use
+    
     ##@var hash_function
     # Object instance from hashlib for constructing digest using algorithm above.
+    
     ##@var digest
     # Generated digest in final form (b64 encoded or hex encoded)
+    
     ##@var ni_name
-    # Object instance of NIname containing Uri under construction 
+    # Object instance of NIname containing Uri under construction
+    
     ##@var initialized
     # boolean set after set_url has been called successfully
     
@@ -1090,7 +1101,7 @@ class NI:
     def digest_file(self, ni_url, file_name):
         """
         @brief Apply the algorithm selected in ni_url to the whole contents of a file
-        @param ni validated NIname object providing digest algorithm info (in)
+        @param ni_url validated NIname object providing digest algorithm info (in)
         @param file_name of file to be hashed (in)
         @return tuple (binary digest as string or None if failed, result code) 
         Returns result code
@@ -1189,7 +1200,7 @@ class NI:
     def makenif(self, ni_url, file_name):
         """
         @brief make an ni or nih scheme URI for a named file
-        @param ni_url is the URI - expects NIname object (in/out)
+        @param ni_url object intsance is the URI - expects NIname object (in/out)
         @param file_name is a file name - string (in)
         @return result code from ni_errs enumeration:
 
@@ -1238,8 +1249,8 @@ class NI:
     def checknif(self, ni_url, file_name):
         """
         @brief check if an ni or nih scheme URI matches a file's content
-        @param ni_URL is the URI - expects NIname object with params(in)
-        @param file_name is a file name - string (in)
+        @param ni_url string is the URI - expects NIname object with params(in)
+        @param file_name string is a file name (in)
         @return result code taken from ni_errs enumeration
 
         Extract the hash algorithm for the URI, use to hash the file
@@ -1354,9 +1365,8 @@ class NI:
     def checknib(self, ni_url, buf):
         """
         @brief check if an ni or nih scheme URI matches a buffer
-        @param ni_url is the URI - expects NIname object with non-empty params (in)
-        @param buf is the buffer 
-        @param res is the result (out, zero if good)
+        @param ni_url NIname object with non-empty params containing URI
+        @param buf string is the buffer 
         @return result code taken from ni_errs enumeration
 
         Given an ni or nih name and a buffer, hash the buffer and compare the hash to
@@ -1503,7 +1513,7 @@ class NI:
 
 #==============================================================================#
 # GLOBAL VARIABLES
-##@bvar NIproc
+##@var NIproc
 # Global instance for NI operations class
 NIproc = NI()
 

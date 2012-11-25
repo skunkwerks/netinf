@@ -30,8 +30,11 @@ limitations under the License.
 @details
 WSGI wsgiref simple server overview
 
+*** Please run this with python -O niwsgiserver.py ***
+See note below for explanation.
+
 This program creates a single threaded server (listening by default on
-localhost:8055) and using the WSGI shim interface to the NIHTTPHandler
+localhost:8055) and using the WSGI shim interface to the NIHTTPRequestHandler
 class in nihandler.py.  This means loading the HTTPRequestShim from
 wsgishim.py.
 
@@ -53,6 +56,7 @@ before starting the server.
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       22/11/2012 Elwyn Davies   Updated name of shim class.
 1.0       22/11/2012 Elwyn Davies   Created..
 
 @endcode
@@ -64,7 +68,7 @@ import os
 import sys
 import logging
 from wsgiref.simple_server import make_server
-from nihandler import NIHTTPHandler, check_cache_dirs
+from nihandler import NIHTTPRequestHandler, check_cache_dirs
 
 #==============================================================================#
 NETINF_DEFAULTS = {
@@ -96,7 +100,7 @@ def application(environ, start_response):
         else:
             environ[k] = v
 
-    h = NIHTTPHandler(log_stream=environ['wsgi.errors'])
+    h = NIHTTPRequestHandler(log_stream=environ['wsgi.errors'])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    
@@ -135,7 +139,7 @@ def py_niwsgiserver():
     # Create a logger just for check_cache_dirs
     logger = logging.getLogger("WSGI_server")
     logger.setLevel(logging.INFO)
-    ch = logging.StreamHandler(stream=sys.stderr)
+    ch = logging.StreamHandler(sys.stderr)
     fmt = logging.Formatter("NetInf_start - %(asctime)s %(levelname)s %(message)s")
     ch.setFormatter(fmt)
     logger.addHandler(ch)

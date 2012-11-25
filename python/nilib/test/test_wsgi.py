@@ -40,14 +40,15 @@ The test output is written to stdout.
 Revision History
 ================
 Version   Date       Author         Notes
-1.0       22/11/2012 Elwyn Davies   Created..
+1.1       24/11/2012 Elwyn Davies   Changed anme of shim class.
+1.0       22/11/2012 Elwyn Davies   Created.
 
 @endcode
 """
 
 #==============================================================================#
 import sys
-from wsgishim import HTTPRequestShim, HeaderDict
+from nilib.wsgishim import wsgiHTTPRequestShim, HeaderDict
 from StringIO import StringIO
 import os
 
@@ -155,7 +156,7 @@ environ = {
 # TESTING CODE
 #==============================================================================#
 #==== TEST CLASS ====
-class TestHandler(HTTPRequestShim):
+class TestHandler(wsgiHTTPRequestShim):
     """
     @brief Simple test of WSGI handler shim on its own.
 

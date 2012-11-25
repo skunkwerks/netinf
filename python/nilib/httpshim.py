@@ -3,7 +3,8 @@
 @package nilib
 @file httpshim.py
 @brief Request handler shim for  NI NetInf HTTP convergence layer (CL) server
-@brief and NRS server.  Shim to adapt BaseHTTPHandler for NIHTTPHandler.
+@brief and NRS server.  Shim to adapt BaseHTTPRequestHandler for
+@brief NIHTTPRequestHandler.
 @version $Revision: 1.00 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -32,13 +33,15 @@ limitations under the License.
 httpshim.py overview
 
 This module defines a version of the HTTPRequestShim class that adapts the
-standard BaseHTTPHandler class for use with NIHTTPHandler in nihandler.py.
+standard BaseHTTPRequestHandler class for use with NIHTTPRequestHandler in
+nihandler.py.
 
-NIHTTPHandler was initially written as a derivative of BaseHTTPHandler so
-this shim class is fairly minimal.  The reason for having this shim and the
-alternative in wsgishim.py is to allow the same handler code to be used either
-in a lightweight standalone HTTP server specifically for NetInf functionality
-or to be invoked through the mod_wsgi interface from an Apache HTTP server.
+NIHTTPRequestHandler was initially written as a derivative of
+BaseHTTPRequestHandler so this shim class is fairly minimal.  The reason for
+having this shim and the alternative in wsgishim.py is to allow the same handler
+code to be used either in a lightweight standalone HTTP server specifically for
+NetInf functionality or to be invoked through the mod_wsgi interface from an
+Apache HTTP server.
 
 The main functions of the shim are:
 - to provide a common way of accessing the various instance variables listed
@@ -51,50 +54,50 @@ The main functions of the shim are:
 
 The handler expects to have the following instance variables set up:
 
-1) As expected in any handler derived from BaseHTTPHandler
-- server_port      the TCP port used by the HTTP server listener (default 8080)
-- server_name      the hostname part of the address of the HTTP server
-- authority        Combination of server_name and server_port as expected in
-                   netloc portion of a URL.
-- command          the operation in the HTTP request
-- path             the path portion plus query and fragments of the request
-- rfile            file representing input request stream positioned after
-                   any request headers have been read.
-- DEFAULT_ERROR_MESSAGE
-                   template for error response HTML sent by send_error.  
-[Note: BaseHTTPHandler provides some extra items that are not currently used
- by nihandler.py.  If these are pressed into use, they may have to be emulated
- in the WSGI shim case. These include: requestline, raw_requestline,
- protocol_version, request_version, client_address.  See note below regarding
- wfile which should not be used.]
+1) As expected in any handler derived from BaseHTTPRequestHandler
+   - server_port      the TCP port used by the HTTP server listener (default 8080)
+   - server_name      the hostname part of the address of the HTTP server
+   - authority        Combination of server_name and server_port as expected in
+                      netloc portion of a URL.
+   - command          the operation in the HTTP request
+   - path             the path portion plus query and fragments of the request
+   - rfile            file representing input request stream positioned after
+                      any request headers have been read.
+   - DEFAULT_ERROR_MESSAGE
+                      template for error response HTML sent by send_error.  
+[Note: BaseHTTPRequestHandler provides some extra items that are not currently
+ used by nihandler.py.  If these are pressed into use, they may have to be
+ emulated in the WSGI shim case. These include: requestline, raw_requestline,
+ protocol_version, request_version, client_address.
+ **** See note below regarding wfile which should not be used. ****]
                   
 2) Specific items passed from the HTTPServer instance managing the handler:
-- storage_root     the base directory where the content cache is stored
-- provide_nrs      flag indicating if NRS operations should be supported by
-                   this server
-- redis_nrs        REDIS server connection (None if provide_nrs is False)
-- getputform       pathname for a file containing the HTML code uploaded to show
-                   the NetInf GET/PUBLISH/SEARCH forms in a browser
-- nrsform          pathname for file containing the HTML code uploaded to show
-                   the NetInf NRS configuration forms in a browser
-- favicon          pathname for favicon file sent to browsers for display.
+   - storage_root     the base directory where the content cache is stored
+   - provide_nrs      flag indicating if NRS operations should be supported by
+                      this server
+   - redis_nrs        REDIS server connection (None if provide_nrs is False)
+   - getputform       pathname for a file containing the HTML code uploaded to 
+                      show the NetInf GET/PUBLISH/SEARCH forms in a browser
+   - nrsform          pathname for file containing the HTML code uploaded to
+                      show the NetInf NRS configuration forms in a browser
+   - favicon          pathname for favicon file sent to browsers for display.
 
 3) Convenience functions to provide logging functions at various informational
    levels (each takes a string to be logged):
-- logdebug
-- logerror
-- logwarn
-- loginfo
+   - logdebug
+   - logerror
+   - logwarn
+   - loginfo
 
 4) The following routines are used to wrap the sending of strings and whole files
    as part of a response.  This is done so that self.wfile does not appear
    explicitly in the nihandler.py code so that the same interface can be used for
-   the WSGI shim.  [In that case the responses are acumulated as an iterable
+   the WSGI shim.  [In that case the responses are accumulated as an iterable
    rather than being written directly to a file.]
-- send_string
-- send_file
+   - send_string
+   - send_file
 
-The handler expects the following standard methods in BaseHTTPHandler to be available:
+The handler expects the following standard methods in BaseHTTPRequestHandler to be available:
 - date_time_string Date/time string when request processed
 - send_error       Send an HTTP error code and message as response
 - headers          Dictionary like accessor for request headers
@@ -108,7 +111,8 @@ Revision History
 ================
 Version   Date       Author         Notes
 0.0       17/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
-                                    allow use with either WSGI or BaseHTTPHandler.
+                                    allow use with either WSGI or
+                                    BaseHTTPRequestHandler.
 
 @endcode
 """
@@ -123,7 +127,22 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 from netinf_ver import NETINF_VER, NISERVER_VER
 
 #==============================================================================#
-class HTTPRequestShim(BaseHTTPRequestHandler):
+# List of classes/global functions in file
+__all__ = ['directHTTPRequestShim']
+
+#==============================================================================#
+class directHTTPRequestShim(BaseHTTPRequestHandler):
+    """
+    @brief Wrapper for BaseHTTPRequestHandler to allow NIHTTPRequestHandler
+           to be used with BaseHTTPRequestHandler (as here) or WSGI interface.
+
+    This class isolates all the server relationships (mainly represented by
+    self.server) and provides the send_string and send_file functions for
+    writing parts of the response body so that the BaseHTTPRequestHandler
+    wfile attribute is not used directly by NIHTTPREquestHandler since there
+    is no way to emulate that in the WSGI interface.
+    
+    """
     
     #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
@@ -131,17 +150,80 @@ class HTTPRequestShim(BaseHTTPRequestHandler):
     # === Thread information ===
     ##@var request_thread
     # The thread identifier retrieved from threading.CurrentThread()
+    
     ##@var thread_num
     # Sequence number for threads controlled by next_handler_num in
     # the NIHTTPServers.  Incorporated in thread name to identify thread.
 
+    # === Application Variables derived from configuration ===
+    ##@var storage_root
+    # string pathname for base directory of storage cache
+    
+    ##@var getputform
+    # string pathname for file containing HTML form template for netinfproto
+    
+    ##@var nrsform
+    # string pathname for file containing HTML form template for nrsconf
+    
+    ##@var favicon
+    # string pathname for favicon for NetInf operations
+    
+    ##@var provide_nrs
+    # boolean if True server supports NRS operations and needs Redis interface
+    
+    ##@var nrs_redis
+    # object instance of Redis database interface (or None if provide_nrs False)
+
+    ##@var unique_id 
+    # integer random number used to uniquely identify files generated for this
+    # request
+
+    # === BaseHTTPRequestHandler derived variables ===
+    ##@var server_name
+    # string FQDN of server hosting this program
+    
+    ##@var server_port
+    # integer port number on which server is listening
+    
+    ##@var authority
+    # string combination of server_name and server_port as used for netloc
+    # of URLs
+    
+    ##@var command
+    # string the HTTP request type (expecting HEAD, GET or POST)
+    
+    ##@var path
+    # combination of the path and query string components of the URL
+    # i.e., everything after the netloc - shouldn't contain any fragment
+    # specifier as this is supposed to be filtered out by browser, but might
+    # not be.
+    
+    ##@var headers
+    # dictionary(-like) object reprresenting request headers indexed by HTTP
+    # header names.
+    
+    ##@var requestline
+    # string original value of request command line in HTTP (e.g., HTTP/1.1 GET /)
+    
+    ##@var server_version
+    # string with one or more version information units
+    
+    ##@var sys_version
+    # string the version of Python being run
+    
+    ##@var version_string
+    # string concatenation of server_version and sys_version
+    
     # === Logging convenience functions ===
     ##@var loginfo
     # Convenience function for logging informational messages
+    
     ##@var logdebug
     # Convenience function for logging debugging messages
+    
     ##@var logwarn
     # Convenience function for logging warning messages
+    
     ##@var logerror
     # Convenience function for logging error reporting messages
     
@@ -216,13 +298,6 @@ class HTTPRequestShim(BaseHTTPRequestHandler):
         self.loginfo("NI HTTP handler finishing")
         return
 
-    #--------------------------------------------------------------------------#
-    """
-    Unclear that this is needed (or works.. where is request_close?)
-    end_run is defined in the NIHTTPServer class and shuts down the threads.
-    def end_run(self):
-        self.request_close()
-    """
     #--------------------------------------------------------------------------#
     def log_message(self, format, *args):
         """

@@ -3,7 +3,7 @@
 @package nilib
 @file nihandler.py
 @brief Request handler for  NI NetInf HTTP convergence layer (CL) server and
-@brief NRS server.  Designed to be used either via WSGI or BaseHTTPHandler
+@brief NRS server.  Designed to be used either via WSGI or BaseHTTPRequestHandler
 @brief by importing appropriate shim.
 @version $Revision: 1.02 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
@@ -56,6 +56,7 @@ The handler deals with a limited set of URLs
                  - /nrsconfig.html, (when running NRS server)
                  - /favicon.ico, and<
                  - /netinfproto/list
+                 - /netinfproto/checkcache
 - POST on paths (basic system):
                  - /netinfproto/get,
                  - /netinfproto/publish,
@@ -95,20 +96,27 @@ levels (each takes a string to be logged):
 
 TO DO: Add configuration to connect to non-default Redis server.
 
-The handler is designed so that it can either be used from a mod_wsgi
-'application' function or via a standalone server based on the
-HTTPServer/BaseHTTPHandler paradigm.  The adaptation is handled by inheriting
-from an appropriate shim.  The shim is selected at run time depending on which
-module imports the handler - the shim class name is HTTPRequestShim.
+The handler is designed so that it can be used from
+- an Apache 2 mod_wsgi 'application' function,
+- any other WSGI server framework (a simple example using the standard Python
+  wsgiref simple_server reference implementation can be found in
+  nilib/test/test_wsgi_server.py), or
+- via a standalone server based on the HTTPServer/BaseHTTPRequestHandler
+  paradigm as implemented in niserver_main.py and niserver.py.
 
-In either case server manages a local cache of published information.  In the
-storage_root directory there are two parallel sub-directories: an ni_ndo and an
-ni_meta sub-directory where the content and affiliated data of the content,
-respectively, are stored. In this program, the file storing the affiliated data
-is called the 'metadata file'. See the draft-kutscher-icnrg-netinfproto
-specification for the relationship between the terms 'affiliated data' and
-'metadata': broadly, the affiliated data represents all the extra attributes
-that need to be maintained in association with the NDO.
+The adaptation is handled by inheriting HTTPRequestShim from an appropriate
+shim module.  The shim is selected at run time depending on which
+module imports the handler.
+
+In either case the server manages a local cache of published information.  In
+the storage_root directory there are two parallel sub-directories: an ni_ndo
+and an ni_meta sub-directory where the content and affiliated data of the
+content, respectively, are stored. In this program, the file storing the
+affiliated data is called the 'metadata file'.
+See the draft-kutscher-icnrg-netinfproto specification for the relationship
+between the terms 'affiliated data' and 'metadata': broadly, the affiliated
+data represents all the extra attributes that need to be maintained in
+association with the NDO.
 
 In each sub-directory there is a sub-directory for each digest algorithm.  Each of
 these directories contains the file names are the digest of the content (i.e., the
@@ -131,16 +139,17 @@ memory, it is managed as a Python dictionary (to which it bears an uncanny
 resemblance!).  This is encapsulated in an instance of the niserver::NetInfMetaData
 class.
 
-The vast majority of the code of the server is contained in the NIHTTPHandler
-class in this module.  This was originally a subclass of the standard
-BaseHTTPRequestHandler.  To allow alternative use via the WSGI Python web server
-interface, the 'handle' initializer routine that sets up instance variables is
-moved to the shim for the BaseHTTPHandler case - all references to the link
-to the (NI)HTTPServer through self.server are confined to the shim.  The
-alternative WSGI shim takes values from the WSGI environment and emulates the
-BaseHTTPHandler interface.  The only extra routines needed are to handle the
-writing of files and multiple sections of output to the 'response' stream - this
-has to be organized as an iterable for WSGI.
+The vast majority of the code of the server is contained in the
+NIHTTPRequestHandler class in this module.  This was originally a subclass of
+the standard BaseHTTPequestHandler.  To allow alternative use via the WSGI
+Python web server interface, the 'handle' initializer routine that sets up
+instance variables is moved to the shim for the BaseHTTPRequestHandler case -
+all references to the link to the (NI)HTTPServer through self.server are
+confined to the shim.  The alternative WSGI shim takes values from the WSGI
+environment and emulates the BaseHTTPRequestHandler interface.  The only extra
+routines needed are to handle the writing of files and multiple sections of
+output to the 'response' stream - this has to be organized as an iterable for
+WSGI.
 
 If specified in the configuration (provide_nrs is True), the handler will also
 provide NetInf Name Resolution Service support.  A database is set up using the
@@ -160,8 +169,13 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       24/11/2012 Elwyn Davies   Updated header comments.  Changed shim imports
+                                    to alias HTTPRequestShim so that Doxygen
+                                    doesn't get confused. Add GET request to
+                                    check cache dirs (convenience for WSGI case).
 0.0       17/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
-                                    allow use with either WSGI or BaseHTTPHandler.
+                                    allow use with either WSGI or
+                                    BaseHTTPRequestHandler.
 @endcode
 """
 
@@ -202,13 +216,13 @@ import qrcode
 from netinf_ver import NETINF_VER, NISERVER_VER
 import ni
 if "niserver" in sys.modules:
-    from httpshim import HTTPRequestShim
+    from httpshim import directHTTPRequestShim as HTTPRequestShim
 else:
-    from wsgishim import HTTPRequestShim
+    from wsgishim import wsgiHTTPRequestShim as HTTPRequestShim
     
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['NetInfMetaData', 'NIHTTPHandler', 'check_cache_dirs']
+__all__ = ['NetInfMetaData', 'NIHTTPRequestHandler', 'check_cache_dirs']
 
 #==============================================================================#
 # === GLOBAL VARIABLES ===
@@ -299,7 +313,6 @@ class NetInfMetaData:
         @brief Append a new details entry to the array of objects
 
         @param timestamp string initial creation timestamp (format: see class header)
-        @param ctype string MIME type of NDO (may be empty string if not yet known)
         @param myloc string locator derived from authority in ni name (i.e., local server)
         @param loc1 string locator for NDO
         @param loc2 string locator for NDO
@@ -417,7 +430,7 @@ class NetInfMetaData:
     def set_timestamp(self, timestamp):
         """
         @brief Set the timestamp item ("ts") in curr_detail
-        @param string timestamp (for format see class header)
+        @param timestamp string (for format see class header)
         @return (none)
         """
         if timestamp is None:
@@ -578,36 +591,28 @@ class NetInfMetaData:
 
 #==============================================================================#
 
-class NIHTTPHandler(HTTPRequestShim):
+class NIHTTPRequestHandler(HTTPRequestShim):
     """
     @brief Action routines for all requests handled by niserver.
 
     @details
-    The class (name) for this class is passed to the NIHTTPServer base class
-    HTTPServer when the NIHTTPServer is instantiated (see below).  The server
-    is set up as a threaded server.
 
-    When the HTTPServer listener receives a connection request, it creates
-    a new thread to handle the request(s) that is(are) passed over the
-    connection and calls the overridden 'handle' method. It then reads in the
-    request headers of the first request and passes the request to the
-    appropriate routine out of 'do_HEAD', 'do_GET' and 'do_POST', depending on
-    the request type.
+    This class provides methods for processing HTTP requests according to the
+    request received which may be HEAD, GET or POST.
 
-    Depending on the value of the 'Connection' header in the request, the thread may
-    remain active to receive additional requests ('keep-alive' value) or close
-    and terminate the thread after processing the request ('close' value).
+    The shim superclass from which this is derived sets up the instance
+    variables form the information it receives when setup and called to process
+    an HTTP request that has been received.
 
-    When a new connection is opened and the thread created, the handle() function
-    in this class is called.  This function sets up a name for the thread and
-    calls add_thread in the NIHTTPServer to record the running threads so that
-    they can be enumerated and closed down when the server terminates if they have
-    been left running because of 'Connection: keep-alive' specifications.  The
-    handle function also sets up instance variables with convenience functions
-    for calling the logger.  The logger uses the thread name in the logged
-    messages to differentiate messages from different handlers.
+    Depending on the request, one of do_HEAD, do_GET or do_POST will be called.
 
-    Note: Many instance variables are defined in the superclass.
+    These routines examine the request, determine if it is one which they
+    are setup to process and then either use send_error to respond with an error
+    code or use a combination of send_request, send_header and end_headerss to set up
+    the response preamble and a combination of send_string and send_file calls to
+    cobfigure the response body.
+    
+    Note: Many instance variables are defined in the superclass(es).
     """
 
     #--------------------------------------------------------------------------#
@@ -621,27 +626,34 @@ class NIHTTPHandler(HTTPRequestShim):
     ##@var WKN
     # Start of path for http://<netloc>/.well_known/ni[h]/<alg name>/digest
     WKN             = "/.well-known/"
+    
     ##@var CONT_PRF
     # Start of path for http://<netloc>/ni_cache/<alg name>;<digest>
     # for accessing content files directly
     CONT_PRF        = "/ni_cache/"
+    
     ##@var META_PRF
     # Start of path for http://<netloc>/ni_meta/<alg name>;<digest>
     # for accessing metadata files directly
     META_PRF        = "/ni_meta/"
+    
     ##@var QRCODE_PRF
     # Start of path for http://<netloc>/ni_qrcode/<alg name>;<digest>
     # for accessing QRcode image encoding an ni[h] URI 
     QRCODE_PRF      = "/ni_qrcode/"
+    
     ##@var NI_HTTP
     # Path prefix for /.well-known/ni 
     NI_HTTP         = WKN + "ni"
+    
     ##@var NIH_HTTP
     # Path prefix for /.well-known/nih 
     NIH_HTTP        = WKN + "nih"
+    
     ##@var FAVICON_FILE
     # Path value for accessing favicon file
     FAVICON_FILE    = "/favicon.ico"
+    
     ##@var METADATA_TIMESTAMP_TEMPLATE
     # Template as used by datetime strftime for timestanps in metadata files
     METADATA_TIMESTAMP_TEMPLATE = "%y-%m-%dT%H:%M:%S+00:00"
@@ -650,32 +662,42 @@ class NIHTTPHandler(HTTPRequestShim):
     ##@var DFLT_MIME_TYPE
     # Default mimetype to use when we don't know.
     DFLT_MIME_TYPE  = "application/octet-stream"
+    
     ##@var TI
     # Type introducer string for query string in cached file names
     # not currently used - should be specified as RE
     TI              = "?ct="
 
-    # === NetInf NDO Cache listing ===
+    # === NetInf NDO Cache listing and checking ===
     ##@var NETINF_LIST
-    # URL path to invoke return of cache list
+    # URL path to invoke return of cache list via GET
     NETINF_LIST     = "/netinfproto/list"
+    
     ##@var ALG_QUERY
     # Query string prefix for selecting the digest algorithm when listing the cache.
     ALG_QUERY       = "?alg="
+    
+    ##@var NETINF_CHECK
+    # URL path to invoke check/creation of cache directory tree via GET
+    NETINF_CHECK   = "/netinfproto/checkcache"
 
     # === NetInf GET/PUBLISH/SEARCH form names used from the getputform ===
     ##@var NI_ACCESS_FORM
     # Path value for accessing GET/PUBLISH/SEARCH form
-    NI_ACCESS_FORM  = "/getputform.html"    
+    NI_ACCESS_FORM  = "/getputform.html"
+    
     ##@var NETINF_GET
     # Path to which to send form for NetInf GET operation
     NETINF_GET      = "/netinfproto/get"
+    
     ##@var NETINF_PUBLISH
     # Path to which to send form for NetInf PUBLISH operation
-    NETINF_PUBLISH  = "/netinfproto/publish" 
+    NETINF_PUBLISH  = "/netinfproto/publish"
+    
     ##@var NETINF_PUT
     # Alternative path to which to send form for NetInf PUBLISH operation
     NETINF_PUT      = "/netinfproto/put"
+    
     ##@var NETINF_SEARCH
     # Path to which to send form for NetInf SEARCH operation
     NETINF_SEARCH   = "/netinfproto/search"
@@ -684,21 +706,26 @@ class NIHTTPHandler(HTTPRequestShim):
     ##@var WIKI_LOC
     # Server name for Wikipedia searches
     WIKI_LOC        = "en.wikipedia.org"
+    
     ##@var WIKI_SRCH_API
     # Template for OpenSearch interface to Wikipedia
     WIKI_SRCH_API   = ("http://%s/w/api.php?action=opensearch&search=%s&" + \
                        "limit=10&namespace=0&format=xml")
+    
     ##@var SRCH_NAMESPACE
     # XML namespace used by OpenSearch suggestions returned from Wikipedia
     SRCH_NAMESPACE  = "http://opensearch.org/searchsuggest2"
+    
     ##@var SEARCH_REF
     # String recorded in 'searcher' field of NDO metadata after a search done
     # by this program.
     SEARCH_REF      = ("Python niserver.py %s" % NISERVER_VER)
+    
     ##@var SRCH_CACHE_SCHM
     # URL scheme for names constructed for NDOs created from search responses
     # flagged by Wikipedia.
     SRCH_CACHE_SCHM = "ni"
+    
     ##@var SRCH_CACHE_DGST
     # Digest algorithm used for NDOs created from search responses flagged by
     # Wikipedia.
@@ -708,15 +735,19 @@ class NIHTTPHandler(HTTPRequestShim):
     ##@var NRS_CONF_FORM
     # Path value for accessing NRS configuration form
     NRS_CONF_FORM   = "/nrsconfig.html"
+    
     ##@var NRS_CONF
     # Path to which to send form for NetInf GET operation
     NRS_CONF        = "/netinfproto/nrsconf"
+    
     ##@var NRS_LOOKUP
     # Path to which to send form for NetInf GET operation
     NRS_LOOKUP      = "/netinfproto/nrslookup"
+    
     ##@var NRS_DELETE
     # Path to which to send form for NetInf GET operation
     NRS_DELETE      = "/netinfproto/nrsdelete"
+    
     ##@var NRS_VALS
     # Path to which to send form for NetInf GET operation
     NRS_VALS        = "/netinfproto/nrsvals"
@@ -727,30 +758,42 @@ class NIHTTPHandler(HTTPRequestShim):
     # === Application Variables ===
     ##@var storage_root
     # string pathname for base directory of storage cache
+    
     ##@var getputform
     # string pathname for file containing HTML form template for netinfproto
+    
     ##@var nrsform
     # string pathname for file containing HTML form template for nrsconf
+    
     ##@var favicon
     # string pathname for favicon for NetInf operations
+    
     ##@var provide_nrs
     # boolean if True server supports NRS operations and needs Redis interface
+    
     ##@var server_name
     # string FQDN of server hosting this program
+    
     ##@var server_port
     # integer port number on which server is listening
+    
     ##@var authority
-    # string combination of server_name and server_port as used for netloc of URLs
+    # string combination of server_name and server_port as used for netloc
+    # of URLs
+    
     ##@var nrs_redis
     # object instance of Redis database interface (or None if provide_nrs False)
 
     # === Logging convenience functions ===
     ##@var loginfo
     # Convenience function for logging informational messages
+    
     ##@var logdebug
     # Convenience function for logging debugging messages
+    
     ##@var logwarn
     # Convenience function for logging warning messages
+    
     ##@var logerror
     # Convenience function for logging error reporting messages
     
@@ -3153,9 +3196,10 @@ class NIHTTPHandler(HTTPRequestShim):
         """
         @brief Translate a /-separated .well-known PATH to a ni_name and the local
         filename syntax. 
-        @param the FQDN of this node used to build ni name
-        @param the root of the directory tree where ni Named Data Objects are cached
-        @param the path from the HTTP request
+        @param authority string the FQDN of this node used to build ni name
+        @param storage_root string the root of the directory tree where ni
+                                Named Data Objects are cached
+        @param path string the path part from the HTTP request
         @retval 4-tuple: (niSUCCESS, NIname instance, NDO path, metadata path) on success
         @retval 4-tuple: (error code from ni_errs, None, None, None) if errors found.
 

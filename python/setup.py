@@ -43,6 +43,14 @@ Version   Date       Author         Notes
 """
 
 from setuptools import setup
+import os
+datadir_envvar = "NILIB_DATA_DIR"
+if datadir_envvar in os.environ:
+	datadir = os.environ[datadir_envvar]
+	print("Installing NI server data files in %s" % datadir)
+else:
+	datadir = "/var/niserver"
+	print("Installing NI server fata files in default location (%s)" %datadir)
 
 setup(name='nilib',
       version='r2.0',
@@ -65,7 +73,7 @@ setup(name='nilib',
 			   'pyniwgsiserver = nilib.niwsgiserver.py:py_niwsgiserver']
                     },
       include_package_data=True,
-      data_files=[('/var/niserver',
+      data_files=[(datadir,
                       ['nilib/data/niserver.conf',
                        'nilib/data/niserver_log.conf',
                        'nilib/data/getputform.html',

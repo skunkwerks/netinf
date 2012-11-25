@@ -3,7 +3,8 @@
 @package nilib
 @file wsgishim.py
 @brief Request handler shim for  NI NetInf HTTP convergence layer (CL) server
-@brief and NRS server.  Shim to link the mod_wsgi application with NIHTTPHandler.
+@brief and NRS server.  Shim to link the mod_wsgi application with
+@brief NIHTTPRequestHandler.
 @version $Revision: 1.00 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -32,77 +33,81 @@ limitations under the License.
 wsgishim.py overview
 
 This module defines a version of the HTTPRequestShim class that links the
-standard mod_wsgi with NIHTTPHandler in nihandler.py so that requests
+standard mod_wsgi with NIHTTPRequestHandler in nihandler.py so that requests
 coming through Apache can be processed using the same module as used with
-BaseHTTPServer/BaseHTTPHandler.
+BaseHTTPServer/BaseHTTPRequestHandler.
 
 The main functions of the shim are:
 - to provide a common way of accessing the various instance variables listed
   independent of how the information is supplied by the server that invokes the
   handler,
-- to extract values from the environ dictionary using the keys exepected by
-  NIHTTPHandler (with several of the assignments defined by BaseHTTPHandler and
-  StreamRequestHandler,
+- to extract values from the environ dictionary using appropriate keys
+  corresponding to instance variables expected by NIHTTPRequestHandler (with
+  several of the assignments defined by BaseHTTPRequestHandler and
+  StreamRequestHandler),
 - to provide the equivalent functionality to Handle and HandleOneRequest
-  methods in BaseHTTPHandler, 
+  methods in BaseHTTPRequestHandler, 
 - to set up uniform logging capabilities, and
 - to provide a uniform interface to the generation of the response body for a
   request.
 
 The handler expects to have the following instance variables set up:
 
-1) As expected in any handler derived from BaseHTTPHandler
-- server_port      the TCP port used by the HTTP server listener (default 8080)
-- server_name      the hostname part of the address of the HTTP server
-- authority        Combination of server_name and server_port as expected in
-                   netloc portion of a URL.
-- command          the operation in the HTTP request
-- path             the path portion plus query and fragments of the request
-- rfile            file representing input request stream positioned after
-                   any request headers have been read.
-- DEFAULT_ERROR_MESSAGE
+1) As expected in any handler derived from BaseHTTPRequestHandler
+   - server_port      the TCP port used by the HTTP server listener (default 8080)
+   - server_name      the hostname part of the address of the HTTP server
+   - authority        Combination of server_name and server_port as expected in
+                      netloc portion of a URL.
+   - command          the operation in the HTTP request
+   - path             the path portion plus query and fragments of the request
+   - rfile            file representing input request stream positioned after
+                      any request headers have been read.
+   - default_error_message
                    template for error response HTML sent by send_error.  
-[Note: BaseHTTPHandler provides some extra items that are not currently used
- by nihandler.py.  If these are pressed into use, they may have to be emulated
- in the WSGI shim case. These include: requestline, raw_requestline,
- request_version, client_address.  See note below regarding
- wfile which should not be used.]
+[Note: BaseHTTPRequestHandler provides some extra items that are not currently
+ used by nihandler.py.  If these are pressed into use, they may have to be
+ emulated in the WSGI shim case. These include: requestline, raw_requestline,
+ request_version, client_address.
+ **** See note below regarding wfile which should not be used.****]
                   
-2) Specific items controlled by Apache/mod_wsgi configuration variables:
-- storage_root     the base directory where the content cache is stored
-- getputform       pathname for a file containing the HTML code uploaded to show
-                   the NetInf GET/PUBLISH/SEARCH forms in a browser
-- nrsform          pathname for file containing the HTML code uploaded to show
-                   the NetInf NRS configuration forms in a browser
-- favicon          pathname for favicon file sent to browsers for display.
-- provide_nrs      flag indicating if NRS operations should be supported by
-                   this server
-- redis_nrs        REDIS server connection (None if provide_nrs is False) -
-                   doesn't need a configuration variable - set up dynamically.
+2) Specific items controlled by Apache/mod_wsgi configuration variables if
+   using mod_wsgi or alternatively can be inserted into WSGI environ dictionary
+   before invoking handler:
+   - storage_root     the base directory where the content cache is stored
+   - getputform       pathname for a file containing the HTML code uploaded to
+                      show the NetInf GET/PUBLISH/SEARCH forms in a browser
+   - nrsform          pathname for file containing the HTML code uploaded to show
+                      the NetInf NRS configuration forms in a browser
+   - favicon          pathname for favicon file sent to browsers for display.
+   - provide_nrs      flag indicating if NRS operations should be supported by
+                      this server
+-    redis_nrs        REDIS server connection (None if provide_nrs is False) -
+                      doesn't need a configuration variable - set up dynamically.
 Corresponding Apache environment variables:
 SetEnv NETINF_STORAGE_ROOT <directory path>
 SetEnv NETINF_GETPUTFORM <file path name>
 SetEnv NETINF_NRSFORM <file path name>
 SetEnv NETINF_FAVICON <file path name>
 SetEnv NETINF_PROVIDE_NRS <boolean> [yes/true/1|no/false/0]
-vi README
+
 3) Convenience functions to provide logging functions at various informational
    levels (each takes a string to be logged).  The resulting string is fed
    to the Apache logger by writing to environ["esgi.errors"]:
-- logdebug
-- logerror
-- logwarn
-- loginfo
+   - logdebug
+   - logerror
+   - logwarn
+   - loginfo
 
-4) The following routines are used to wrap the sending of strings and whole files
-   as part of a response.  This is done so that self.wfile does not appear
-   explicitly in the nihandler.py code so that the same interface can be used for
-   the WSGI shim.  [In that case the responses are acumulated as an iterable
-   rather than being written directly to a file.]
-- send_string
-- send_file
+4) The following routines are used to wrap the sending of strings and whole
+   files as part of a response.  This is done so that self.wfile does not appear
+   explicitly in the nihandler.py code so that the same interface can be used
+   for the BaseHTTPRequestHandler shim.  The responses are acumulated for
+   delivery via an iterable rather than being written directly to a 'file' as is
+   the case with directHTTPRequestShim and BaseHTTPRequestHandler.
+   - send_string
+   - send_file
 
-The handler expects the following standard methods in BaseHTTPHandler to be available:
+The handler expects the following standard methods in BaseHTTPRequestHandler to be available:
 - date_time_string Date/time string when request processed
 - send_error       Send an HTTP error code and message as response
 - headers          Dictionary like accessor for request headers
@@ -116,8 +121,11 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       24/11/2012 Elwyn Davies   Renamed HTTPRequestShim to
+                                    wsgiHTTPRequestShim to satisfy Doxygen.
 0.0       19/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
-                                    allow use with either WSGI or BaseHTTPHandler.
+                                    allow use with either WSGI or
+                                    BaseHTTPRequestHandler.
 
 @endcode
 """
@@ -145,7 +153,7 @@ from netinf_ver import NETINF_VER, NISERVER_VER
 
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['HTTPRequestShim', 'HeaderDict']
+__all__ = ['wsgiHTTPRequestShim', 'HeaderDict']
 
 #==============================================================================#
 # === GLOBAL CONSTANTS AND VARIABLES ===
@@ -251,8 +259,12 @@ class HeaderDict:
     #--------------------------------------------------------------------------#
     # === INSTANCE VARIABLES ===
 
+    ##@var environ
+    # dictionary environ dictionary as supplied to constructor
+    
     ##@var dict
     # dictionary indexed by W3C HTTP header names with values taken from environ.
+
     ##@var headers
     # array of strings resconstructed lines from request "key: value" 
     
@@ -527,8 +539,82 @@ class HeaderDict:
         return
                                               
 #==============================================================================#
-class HTTPRequestShim:
-    
+class wsgiHTTPRequestShim:
+    """
+    @brief Interface shim to allow NIHTTPRequestHandler to be used from a WSGI
+           application funtion
+
+    Typically a WSGI application function using this class and a real hanfler
+    would look like
+
+    @code
+
+    # Trivial handler
+    class TrivialHandler(wsgiHTTPRequestShim):
+        def do_GET(self):
+            self.send_response(200, "OK")
+            response_str = "Hello World!"
+            self.send_header("Content-Length", str(len(response_str)))
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.send_string(response_str)
+            return
+
+        def do_POST(self):
+            ...
+            
+    def application(environ, start_response):  # WSGI boilerplate
+
+        # These entries have to be present for the NIHTTPRequestHandler
+        # but aren't used in the example.  They can be set by
+        # Apache SetEnv directives if used with mod_wsgi.
+        environ["NETINF_STORAGE_ROOT"] = "/tmp/cache"
+        environ["NETINF_GETPUTFORM"] = "/var/niserver/getputform.html"
+        environ["NETINF_NRSFORM"] = "/var/niserver/nrsconfig.html"
+        environ["NETINF_FAVICON"] = "/var/niserver/favicon.ico"
+        environ["NETINF_PROVIDE_NRS"] = "no"
+        # Optionally...
+        environ["NETINF_LOG_LEVEL"] = "NETINF_LOG_INFO"
+
+        # Handle the request
+        handler = TrivialHandler(log_stream=environ["wsgi.error"]))
+        return handler.handle_request(environ, start_response)
+    @endcode
+
+    The class constructor sets up a logger that writes to the logger stream
+    provided by WSGI (environ["wsgi.error"]).  Note that care has to be taken
+    to flush and close the logger before completing the request because
+    the WSGI logger may not accept more input after the application function
+    returns and the logger can operate asynchronously.
+
+    The method 'handle_request' sets up the equivalent of the environment
+    that is used by a class derived from BaseHTTPRequestHandler, which is what
+    NIHTTPRequestHandler expects, using the 'environ' dictionary supplied by
+    WSGI as a parameter to 'application'.  When used with mod_wsgi the NETINF
+    specific values can be supplied by Apache SetEnv directives but must be in
+    'environ' when 'handle_request' is called.
+
+    In 'handle_request' the headers from the request are converted into a
+    'pseudo-dictionary' using an instance of 'HeaderDict'.
+
+    Then depending on the value of environ["REQUEST_METHOD"] (GET, POST, etc),
+    the appropriate 'do_...' method is called in the handler subclass.
+
+    The various 'send_...' methods called by the handler class method assemble
+    the reponse line, the response headers and chunks of the response body into
+    - response_status
+    - respomse_headers
+    - response_body
+
+    Response_status and response_headers are passed to the WSGI start_response
+    function when the handler finishes by calling the 'trigger_response'
+    method which also flushes the log.
+
+    The whole class is configured as an iterator (see 'next' method) and is
+    passed back to WSGI as the return value of 'application'.  WSGI then
+    grabs all the chunks of reponse body by iterating through the reponse
+    body via the 'next' method.
+    """
     #--------------------------------------------------------------------------#
     # CONSTANT VALUES USED BY CLASS
 
@@ -645,53 +731,73 @@ class HTTPRequestShim:
     
 
     # === Application Variables derived from configuration ===
+    
     ##@var storage_root
     # string pathname for base directory of storage cache
+    
     ##@var getputform
     # string pathname for file containing HTML form template for netinfproto
+    
     ##@var nrsform
     # string pathname for file containing HTML form template for nrsconf
+    
     ##@var favicon
     # string pathname for favicon for NetInf operations
+    
     ##@var provide_nrs
     # boolean if True server supports NRS operations and needs Redis interface
+    
     ##@var nrs_redis
     # object instance of Redis database interface (or None if provide_nrs False)
 
     # === CGI derived variables ===
+    
     ##@var server_name
     # string FQDN of server hosting this program
+    
     ##@var server_port
     # integer port number on which server is listening
+    
     ##@var authority
     # string combination of server_name and server_port as used for netloc of URLs
+    
     ##@var command
     # string the HTTP request type (expecting HEAD, GET or POST)
+    
     ##@var path
     # combination of the path and query string components of the URL
     # i.e., everything after the netloc - shouldn't contain any fragment
     # specifier as this is supposed to be filtered out by browser, but might not be.
+    
     ##@var rfile
     # object instance of file(-like) object on which any request body can be read.
+    
     ##@var headers
     # dictionary(-like) object reprresenting request headers indexed by HTTP
     # header names.
+    
     ##@var requestline
     # string original value of request command line in HTTP (e.g., HTTP/1.1 GET /)
+    
     ##@var environ
-    # dictionary of environment variable keys and values as suplied by WSGI 
+    # dictionary of environment variable keys and values as suplied by WSGI
+    
     ##@var server_version
     # string with one or more version information units, started with the
     # value of SERVER_SOFTWARE and adding information abut NetInf server
+    
     ##@var sys_version
     # string the version of Python being run
+    
     ##@var version_string
     # string concatenation of server_version and sys_version
     
     # === Logging convenience functions etc ===
+    
     ##@var logger
     # object instance of Logger object routing to Apache log via stderr
     # redirection through mod_wsgi.
+    
     ##@var log_handler
     # object instance of StreamHandler attached to logger.  Has to be kept
     # visible so that it can be flushed and closed before the mod_wsgi
@@ -699,22 +805,29 @@ class HTTPRequestShim:
     # The StreamHandler (probably) runs asynchronously so that log messages
     # are queued up for output so they don't get flushed till the garbage
     # coilector cleans up the logger instance.
+    
     ##@var log_level
-    # integer normally one of logging.[ERROR, WARN, INFO, DEBUG] used to set
+    # integer normally one of logging.ERROR/WARN/INFO/DEBUG used to set
     # logging level in logger.
+    
     ##@var loginfo
     # Convenience function for logging informational messages
+    
     ##@var logdebug
     # Convenience function for logging debugging messages
+    
     ##@var logwarn
     # Convenience function for logging warning messages
+    
     ##@var logerror
     # Convenience function for logging error reporting messages
+    
     ##@var error_message_format
     # string template for error document sent by send_error
     #        May be modified if a different format is wanted
     #        Remember to alter error_content_type if appropriate.
     error_message_format = DEFAULT_ERROR_MESSAGE
+    
     ##@var error_content_type
     # string corresponding content type for error_message_format 
     error_content_type = DEFAULT_ERROR_CONTENT_TYPE
@@ -722,26 +835,35 @@ class HTTPRequestShim:
     # === Response gathering ===
     ##@var response_status
     # string HTTP response code and status message separated by a space
+    
     ##@var response_headers
     # array of 2-tuples consisting of HTTP header name string and value string
+
     ##@var response_body
     # array of strings or readable file-like object instances.
     # Iterated over to form response body.
+    
     ##@var response_headers_done
     # boolean set True when end_headers is called to signify the header set is
     # complete
+    
     ##@var response_length
     # string overall length of response body cnverted to a string
+    
     ##@var http_response_code
     # integer HTTP reesponse code to be returned from this request
+    
     ##@var resp_curr_index
     # integer index into response_body array used when iterating over array
+    
     ##@var ready_to_iterate
     # boolean True when the reponse is ready to pass back to WSGI
+    
     ##@var error_sent
     # boolean True if send_error has been called while processing this request.
     # If send_error is called again an error message will be logged but the
     # original message won't be modified.
+    
     ##@var unique_id 
     # integer random number used to uniquely identify files generated for this
     # request
@@ -749,7 +871,7 @@ class HTTPRequestShim:
     #--------------------------------------------------------------------------#
     def __init__(self, log_stream=None):
         """
-        @brief Constructore - sets up logging
+        @brief Constructor - sets up logging
         @param log_stream file like object with write capability or None
 
         Uses the Python logging module
@@ -759,7 +881,7 @@ class HTTPRequestShim:
         
         self.logger = logging.getLogger("NetInf")
         self.logger.setLevel(logging.INFO)
-        ch = logging.StreamHandler(stream=log_stream)
+        ch = logging.StreamHandler(log_stream)
         fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(message)s")
         ch.setFormatter(fmt)
         self.logger.addHandler(ch)
@@ -1064,7 +1186,7 @@ class HTTPRequestShim:
         """
         @brief Send and log an error reply.
         @param code integer HTTP error code
-        @param string optional error message (defaults supplied if missing)
+        @param message string optional error message (defaults supplied if missing)
 
         Arguments are the error code, and a detailed message.
         The detailed message defaults to the short entry matching the
@@ -1163,7 +1285,7 @@ class HTTPRequestShim:
         be called last after send_request and any calls to send_header.
 
         In the WSGI case the order is not critical but for the alternative
-        BaseHTTPHandler usage of the handler, the *order is important*:
+        BaseHTTPRequestHandler usage of the handler, the *order is important*:
         Need to call send_request, then zero or more calls of send header
         completed by a call to end_headers because they actually push the
         output onto the wire.

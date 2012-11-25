@@ -66,21 +66,18 @@ Creates a threaded HTTP server that responds to a limited set of URLs
 
 A new thread is created for each incoming request.  Most of the work is done
 by HTTP Server (effectively TCPServer) and BaseHTTPRequestHandler from the
-standard Python module BaseHTTPServer.
+standard Python module BaseHTTPServer.  The actual handler can be found in
+nihandler.py.
 
 The logging and thread management was inspired by the PyMail program from the
 N4C project.
-
-The basic GET and POST handlers are inspired by Doug Hellmann's writing on
-on BaseHTTPServer in his Python Module of the Week series at
-http://www.doughellmann.com/PyMOTW/BaseHTTPServer/index.html
 
 Should be used with Python 2.x where x is 6 or greater (the TCP socket
 server up to version 2.5 is badly flawed (euphemism)).
 
 The server uses a configuration file to specify various items (see
 niserver_main.py) and set up logging.  The items that are significant
-for the internal operations here are:
+for the operation of the server are:
 
 - server_port     the TCP port used by the HTTP server listener (default 8080)
 - authority       the hostname part of the address of the HTTP server
@@ -88,11 +85,6 @@ for the internal operations here are:
 - logger          a logger to be used by the server (uses Python logging module)
 - provide-nrs     flag indicating if NRS operations should be supported by
                   this server
-- getputform      pathname for a file containing the HTML code uploaded to show
-                  the NetInf GET/PUBLISH/SEARCH forms in a browser
-- nrsform         pathname for file containing the HTML code uploaded to show
-                  the NetInf NRS configuration forms in a browser
-- favicon         pathname for favicon file sent to browsers for display.
 
 TO DO: Add configuration to connect to non-default Redis server. 
 
@@ -126,8 +118,10 @@ memory, it is managed as a Python dictionary (to which it bears an uncanny
 resemblance!).  This is encapsulated in an instance of the niserver::NetInfMetaData
 class.
 
-The vast majority of the code is contained in the NIHTTPHandler class which
-is a subclass of the standard BaseHTTPRequestHandler.
+The vast majority of the code is contained in the NIHTTPRequestHandler class
+which was originally designed as a subclass of the standard
+BaseHTTPRequestHandler but can now also be used in conjunction with the Python
+WSGI Web Server interface.
 
 If specified in the configuration file (provide_nrs = yes), the server will also
 provide NetInf Name Resolution Service support.  A database is set up using the
@@ -148,9 +142,9 @@ Revision History
 ================
 Version   Date       Author         Notes
 1.4       17/11/2012 Elwyn Davies   Prepare for alternative use of WSGI framework:
-                                    Copy items accessed by self.server in NIHTTPHandler into this
-                                    class in 'handle' so that self.server is not used in
-                                    actual processing of requests.
+                                    Copy items accessed by self.server in NIHTTPRequestHandler
+                                    into this class in 'handle' so that self.server is not
+                                    used in actual processing of requests.
                                     Fix bug in nrsconfig check_form_data call.
 1.3       01/11/2012 Elwyn Davies   Fixed bug in send_get_header - remove leading \n from final_mb
 1.2       16/10/2012 Elwyn Davies   Fixed bug in netinf_publish - em_str -> ext_str
@@ -207,7 +201,7 @@ except ImportError:
 
 from BaseHTTPServer import HTTPServer
 from SocketServer import ThreadingMixIn
-from nihandler import NIHTTPHandler, check_cache_dirs
+from nihandler import NIHTTPRequestHandler, check_cache_dirs
 
 import cgi
 import urllib
@@ -236,7 +230,7 @@ import ni
 
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPHandler',
+__all__ = ['NetInfMetaData', 'NIHTTPServer', 'NIHTTPRequestHandler',
            'check_cache_dirs', 'ni_http_server', 'NETINF_VER'] 
 #==============================================================================#
 # GLOBAL VARIABLES
@@ -256,8 +250,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     The ThreadingMixIn from the SocketServer module overrides the process_request
     method in the HTTP/TCP/SocketServer so that it creates a new thread whenever
     a new connection is made and accepted.  Each thread creates an instance of
-    the NIHTTPHandler class that processes the requests that come in on this
-    connection.
+    the NIHTTPRequestHandler class that processes the requests that come in on
+    this connection.
 
     This wrapper provides additional management for keeping track of what threads
     are in use and naming them for convenience in identifying logging messages,
@@ -271,31 +265,47 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
     ##@var storage_root
     # string pathname for root of cache directory tree
+    
     ##@var server_name
     # string FQDN of server
+    
     ##@var server_port
     # integer server port number used
+    
     ##@var authority
     # string combination of server FQDN and server port as URL 'netloc'
+    
     ##@var logger
     # object logger instance to output messages
+    
     ##@var getputform
     # string pathname of GET/PUBLISH/SEARCH form HTML file
+    
     ##@var nrsform
     # string pathname of NRS configuration form HTML file
+    
     ##@var provide_nrs
     # boolean True if server is to offer NRS server function
+    
     ##@var favicon
     # string pathname for browser favicon.ico icon file
+    
     ##@var nrs_redis
-    # object StrictRedis instance used for communication between the NRS server and the Redis database.
+    # object StrictRedis instance used for communication between the NRS server
+    # and the Redis database.
+    
     ##@var thread_running_lock
-    # object Lock instance used to serialize access to running_threads and next_handler_num
+    # object Lock instance used to serialize access to running_threads and
+    # next_handler_num
+    
     ##@var running_threads
-    # set contains NIHTTPHandler instances that are associated with the current running threads.
+    # set contains NIHTTPRequestHandler instances that are associated with the
+    # current running threads.
+    
     ##@var next_handler_num
     # integer initialized to 0, incremented by one whenever a handler thread is created,
     # and the previous value used as part of the name for the thread.
+    
     ##@var allow_reuse_address
     # boolean (from TCPServer) if set, when the listener socket is bound to the server
     # address, the ioctl SO_REUSEADDR is called on the socket before being bound.This is
@@ -303,6 +313,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     # significant period (typically at least 4 minutes) while the TIME_WAIT state
     # on the socket from a previous instance terminates before the server can be
     # restarted using the same (address, port) pair.
+    
     ##@var daemon_threads
     # boolean set to make all the spawned handler threads are made daemon threads. This
     # means that the handler threads are terminated when the main thread terminates.
@@ -324,10 +335,11 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         @return (none)
 
         Save the parameters (except for addr) as instance variables.
-        These values can be accessed from the NIHTTPHandler class instance
-        that is created to handle each incoming connection to the server.
-        These handler instances run in separate threads on account of the
-        ThreadingMixIn.  The server maintains a list of active threads
+        These values can be accessed from the directHTTPRequestShim class
+        instance that is created as a superclass of the NIHTTPRequestHandler
+        class that is created to handle each incoming connection to the
+        server. These handler instances run in separate threads on account of
+        the ThreadingMixIn.  The server maintains a list of active threads
         managed by the add_thread and remove_thread routines. Note that a
         thread may actually handle a number of separate requests if a
         sequence of requests is marked with 'Connection: keep-alive' rather
@@ -339,6 +351,15 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         indicating that the IP address can be reused.  Set the HTTPServer
         to generate daemon thread so that they die when the main thread
         dies.
+
+        Depending on the value of the 'Connection' header in the request, the
+        thread may remain active to receive additional requests ('keep-alive'
+        value) or close and terminate the thread after processing the request
+        ('close' value).
+
+        When the HTTPServer listener receives a connection request, and  creates
+        a new thread to handle the request(s) that is(are) passed over the
+        connection, it calls the overridden 'handle' method in the shim class.
         
         """
         # These are used  by individual requests
@@ -371,7 +392,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
         # Setup to produce a daemon thread for each incoming request
         # and be able to reuse address
-        HTTPServer.__init__(self, addr, NIHTTPHandler,
+        HTTPServer.__init__(self, addr, NIHTTPRequestHandler,
                             bind_and_activate=False)
         self.allow_reuse_address = True
         self.server_bind()
@@ -383,7 +404,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     def add_thread(self, thread):
         """
         @brief Record a new handler thread resulting from a server connection.
-        @param thread object NIHTTPHandler instance instantiated to handle connection.
+        @param thread object NIHTTPRequestHandler instance instantiated to
+                             handle connection.
         @return (none)
 
         Add the new thread to the running_threads set.  Need to grab the
@@ -397,7 +419,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     def remove_thread(self, thread):
         """
         @brief Remove a handler thread from the set of running threads.
-        @param thread object NIHTTPHandler instance instantiated to handle connection.
+        @param thread object NIHTTPRequestHandler instance instantiated to
+                             handle this connection.
         @return (none)
 
         Remove the thread from the running_threads set just before the thread dies.
@@ -495,7 +518,7 @@ if __name__ == "__main__":
         """
         @brief Simulate an HTTP client - push message to niserver
         @param my_host string hostname where client is running
-        @param port integer port to use for client
+        @param my_port integer port to use for client
         @param ip string IP address being used by server
         @param port integer port on which server is listening
         @param message string message to send
