@@ -227,7 +227,7 @@ if [[ -d $NILIB_PATH ]]; then
     exit 1
   fi
 fi
-mkdir $NILIB_PATH
+mkdir -p $NILIB_PATH
 
 echo "Setting ownership of ${NILIB_PATH}..."
 chown -R ${APACHE_USERNAME}.${APACHE_GROUPNAME} $NILIB_PATH
