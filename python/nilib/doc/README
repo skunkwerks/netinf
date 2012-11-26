@@ -197,6 +197,26 @@ Apache 2 virtual host.  The Apache 2 server and the WSGI module mod_wsgi
 need to be pre-installed.  On Ubuntu there are apt packages available
 for both of these.
 
+There are two test apps installed by default - accessed from 
+http://<netloc>/testapp and http://<netloc>/showenv.  These are intended
+to be helpful in checking out a new mod_wsgi installation.  They are not
+dependent on the rest of the nilib code in any way. One is a 'Hello World'
+displayer and the other prints the environ dictionary passed to the app
+by mod_wsgi.  This allows you to check you have the NETINF environment 
+variables set correctly.
+
+The default insatllation is optimized so that the fixed forms etc are 
+delivered as statuc files although the netinf.wsgi application would
+also deliver them.
+
+The first thing to do once you are happy the installation is correct
+is to access the URL http://<netloc>/checkcache.  This actually sets up
+the cache directory structure when running with mod_wsgi.  This is done
+to avoid having to call the directory checking code for every request
+which would be somewhat slow. It can be run again at any time to check 
+the cache is still as expected.  It ought to check all the entries
+are compatible with the current code, but that is for another day.
+
 NOTES
 =====
 - The directory structure of the NDO cache has changed from versions prior

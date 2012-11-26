@@ -314,12 +314,17 @@ if [[ -x /usr/sbin/a2ensite ]]; then
   echo "Using a2ensite to enable virtualhost..."
   /usr/sbin/a2ensite ${VIRTHOST}
   echo "Now either use \"sudo apache2ctl graceful\" or"
-  echo "\"sudo service apache2 reload\" to enable new virtualhost"
+  echo "\"sudo service apache2 reload\" to enable new virtual host"
 else
   echo "Please enable virtual host and restart Apache (gracefully)."
   echo "The command \"sudo apache2ctl graceful\" should do the restart."
 fi
 echo "Installation successfully done"
+echo ""
+echo "Post-installation setup:"
+echo "Please access http://${SERVER}/checkcache once the installation"
+echo "is complete.  This will ensure the cache directory structure"
+echo "is initialized"
 
 exit 0
 
