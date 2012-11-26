@@ -3,27 +3,28 @@ HELP for Nilib Python Server
 </title>
 <body>
 <h1>HELP for Nilib Python Server</h1>
-<h2>The server responds to the following at filesys.netinf.eu:
-<h3>GET requests on paths:
+<h2>The server responds to the following at filesys.netinf.eu:</h2>
+<h3><b>GET</b> requests on paths:</h3>
 <ul>
-<li> /help.html</li>
-<li>/.well-known/ni[h]/<digest algorithm id>/<digest>,</li>
-<li>/ni_cache/<digest algorithm id>;<digest>,</li>
-<li>/ni_meta/<digest algorithm id>;<digest>,</li>
+<li>/help.html</li>
+<li>/.well-known/ni[h]/&lt;digest algorithm id>/&lt;digest>,</li>
+<li>/ni_cache/&lt;digest algorithm id>;&lt;digest>,</li>
+<li>/ni_meta/&lt;digest algorithm id>;&lt;digest>,</li>
 <li>/getputform.html,</li>
 <li>/nrsconfig.html, (when running NRS server)</li>
 <li>/favicon.ico, and</li>
 <li>/netinfproto/list</li>
 <li>/netinfproto/checkcache</li>
 </ul>
-<h3>POST on paths (basic system):</h3>
+<h3><b>POST</b> via the <i>getputform.html</i> form on paths (basic system):</h3>
 <ul>
 <li>/netinfproto/get,</li>
 <li>/netinfproto/publish,</li>
 <li>/netinfproto/put, and</li>
 <li>/netinf/search</li>
 </ul>
-<h3>POST on paths (when running NRS server):</h3>
+<h3><b>POST</b> via the <i>nesconfig</i> form on paths (when running NRS server):</h3>
+<ul>
 <li>/netinfproto/nrsconf,</li>
 <li>/netinfproto/nrslookup,</li>
 <li>/netinfproto/nrsdelete, and</li>
