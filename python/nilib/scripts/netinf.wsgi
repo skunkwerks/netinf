@@ -62,7 +62,7 @@ Version   Date       Author         Notes
 
 #==============================================================================#
 
-from nilib.nihandler import NIHTTPHandler, check_cache_dirs
+from nilib.nihandler import NIHTTPRequestHandler, check_cache_dirs
 
 #==============================================================================#
 def application(environ, start_response):
@@ -71,7 +71,7 @@ def application(environ, start_response):
 
     Create an instance of the handler class and have it handle the request.
     """
-    h = NIHTTPHandler(log_stream=environ['wsgi.errors'])
+    h = NIHTTPRequestHandler(log_stream=environ['wsgi.errors'])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    

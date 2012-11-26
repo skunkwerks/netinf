@@ -158,16 +158,24 @@ Uses the following files:
                  to the WSGI interface needed by niswsgierver.py
  - netinf_ver.py - version strings
 
+Installation and support files:
+ - install_netinf_wsgi - sets up the Apache 2 with mod_wsgi to run the niserver
+ - test.wsgi - "Hello World" WSGI application for checking mod_wsgi installation.
+ - showenv.wsgi - Simple WSGI application to show the environ dictionary supplied
+                  to the application to allow checking of configuration for NETINF.
 
 --------------------------------------------------------------------------------
 INSTALLATION
 ============
 
+This code runs with Python v2.6 or v2.7.  It should also run with v2.5
+but this has not been tested.  It is not ready for Python v3.
+
 The Python nilib is setup to use the Python setuptools to install the code.
 From the Python subdirectory issue:
     sudo python setup.py install
 
-By default it will install into /usr/local/bin for various scripts,
+By default it will install into /usr/local/bin for various scripts, e.g.,
 /usr/local/lib/python2.7/dist-packages/nilib-1.0-py2.7.egg for the Python
 code and /var/niserver for the configuration files, HTML code and icon file.
 
@@ -182,6 +190,12 @@ It is quite likely that this is installed as standard.  Note that it is not the
 original distutils package, but the enhanced package.  Extra facilities are
 used to create the scripts that invoke the command line tools automatically
 while leaving the source code in .py files in the nilib distribution.
+
+Run the script 'python/nilib/scripts/install_netinf_wsgi.sh' to setup 
+an Apache 2 web server to use the code to server an NDO cache through an
+Apache 2 virtual host.  The Apache 2 server and the WSGI module mod_wsgi
+need to be pre-installed.  On Ubuntu there are apt packages available
+for both of these.
 
 NOTES
 =====

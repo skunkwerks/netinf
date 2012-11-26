@@ -752,6 +752,17 @@ class NIHTTPRequestHandler(HTTPRequestShim):
     # Path to which to send form for NetInf GET operation
     NRS_VALS        = "/netinfproto/nrsvals"
 
+    ##@var CHECK_CACHE_REPORT
+    # string template used after successful cache check
+    CHECK_CACHE_REPORT = """\
+    <head>
+    <title>NetInf Cache Check</title>
+    </head>
+    <body>
+    <h1>NetInf Cache Check</h1>
+    <p>NetInf Named Data Object cache at %(server)s is correctly configured.
+    </body>
+    """
     #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
 
@@ -849,11 +860,12 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         Reject any requests other than for cache listing that have a
         query string.
 
-        There are four special cases:
+        There are five special cases:
         - 1. Getting a listing of the cache
         - 2. Returning the form code for GET/PUT/SEARCH form
         - 3. If running NRS server, return the form code for NRS configuration 
         - 4. Returning the NETINF favicon
+          5. Running the cache check/create function (check_cache_dirs)
 
         Otherwise, we expect one of
         - 5. a path that starts with the CONT_PRF prefix
@@ -929,7 +941,22 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             return self.send_fixed_file( self.favicon,
                                          "image/x-icon",
                                          "form definition")
-        
+
+        # Eun the check_cache_dirs function
+        if (self.path.lower() == self.NETINF_CHECK):
+            self.logdebug("Running check_cache_dirs")
+            if not check_cache_dirs(self.storage_root, self.logger):
+                self.send_error(500, "Named Data Object cache check failed")
+            else:
+                # Cache is in good shape - report this
+                content = self.CHECK_CACHE_REPORT % { "server": self.server_name}
+                self.send_response(200, "OK")
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.send_string(content)
+            return None          
+                        
         #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
         # Deal with operations that retrieve cached NDO content, metadata files
         # or a QRcode image for the ni scheme URI for the NDO. 

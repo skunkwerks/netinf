@@ -214,7 +214,10 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
     ##@var version_string
     # string concatenation of server_version and sys_version
     
-    # === Logging convenience functions ===
+    # === Logging convenience functions, etc ===
+    ##@var logger
+    # object instance of Logger object configured by NIHTTPServer
+    
     ##@var loginfo
     # Convenience function for logging informational messages
     
@@ -271,6 +274,7 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.server_version += " %s %s" % (NISERVER_VER, NETINF_VER)
 
         # Logging functions
+        self.logger = self.server.logger
         self.loginfo = self.server.logger.info
         self.logdebug = self.server.logger.debug
         self.logwarn = self.server.logger.warn
