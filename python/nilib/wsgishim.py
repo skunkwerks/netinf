@@ -1089,16 +1089,10 @@ class wsgiHTTPRequestShim:
     def trigger_response(self, start_response):
         """
         @brief Inform WSGI that response is ready.
-        @return iterator which will return reponse body wehn asked
+        @return iterator which will return reponse body when asked
         """
         self.ready_to_iterate = True
 
-        # To avoid log object having expired by the time log messages are output
-        # have to flush and close the log_handler.  Otherwise mesaages queued
-        # messages may cause later exceptions.
-        self.log_handler.flush()
-        self.log_handler.close()
-        
         start_response(self.response_status, self.response_headers)
         return iter(self)
 
@@ -1123,6 +1117,8 @@ class wsgiHTTPRequestShim:
         octets.
 
         Note: It would be nice to actually write this as a generator function.
+        [Later: I am not sure this analysis is correct - have seen methods
+         that are generators - but it isn't a big deal here.]
         Unfortunately generator methods do not work in the obvious way that
         stand-alone functions do.  There is a horribly complex recipe for
         applying a decorator to the method that turns it into a generator
@@ -1135,6 +1131,19 @@ class wsgiHTTPRequestShim:
         while True:
             if ((not self.ready_to_iterate) or
                 (self.resp_curr_index >= len(self.response_body))):
+                # Theoretically the close routine for a StramHandler is supposed
+                # to delete it from the list of handlers so that it isn't flushed
+                # and closed by the logger atexit hook.  However this doesn't seem
+                # to be totally reliable.  After this routine has been called
+                # no more messages should be logged and the StreamHandler doesn't
+                # involve any asynchroous threads or such like, so just set the
+                # stream to None after flushing.  There is no StreamHandler
+                # specific close routine - the close just removes it from the list
+                # of handlers.
+                self.log_handler.flush()
+                self.log_handler.stream = None
+                self.log_handler.close()
+                
                 raise StopIteration
 
             segment = self.response_body[self.resp_curr_index]
