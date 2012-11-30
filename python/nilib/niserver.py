@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.5       30/11/2012 Elwyn Davies   Update testing code
 1.4       17/11/2012 Elwyn Davies   Prepare for alternative use of WSGI framework:
                                     Copy items accessed by self.server in NIHTTPRequestHandler
                                     into this class in 'handle' so that self.server is not
@@ -508,6 +509,9 @@ def ni_http_server(storage_root, authority, server_port, logger,
 # TESTING CODE
 #==============================================================================#
 if __name__ == "__main__":
+
+    from nihandler import NDO_DIR, META_DIR
+    from metadata import NetInfMetaData
     #==== TEST FUNCTIONS ====
     def test_client(my_host, my_port, ip, port, message):
         """
@@ -591,7 +595,7 @@ aaabbb
         # Temporary storage root
         sd = "/tmp/niserver_test"
 
-        server = NIHTTPServer((HOST, PORT), sd, "example.com", logger,
+        server = NIHTTPServer((HOST, PORT), sd, "example.com", PORT, logger,
                               "./data/getputform.html", "./data/nrsconfig.html",
                               False, "./data/favicon.ico")
 

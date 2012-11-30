@@ -169,6 +169,9 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       30/11/2012 Elwyn Davies   Split out metadata class.  Manage loading correct
+                                    shim when testing niserver.py and export
+                                    NDO_DIR and META_DIR.
 1.0       24/11/2012 Elwyn Davies   Updated header comments.  Changed shim imports
                                     to alias HTTPRequestShim so that Doxygen
                                     doesn't get confused. Add GET request to
@@ -215,14 +218,25 @@ import qrcode
 
 from netinf_ver import NETINF_VER, NISERVER_VER
 import ni
-if "niserver" in sys.modules:
+
+# See if this is either testing niserver.py or running standalone server
+try:
+    main_mod_file = sys.modules["__main__"].__file__
+except:
+    main_mod_file = ""
+
+if main_mod_file.find("niserver.py") >= 0:
+    from httpshim import directHTTPRequestShim as HTTPRequestShim
+elif "niserver" in sys.modules:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
 else:
+    # Assume we are running under mod_wsgi
     from wsgishim import wsgiHTTPRequestShim as HTTPRequestShim
+from  metadata import NetInfMetaData
     
 #==============================================================================#
 # List of classes/global functions in file
-__all__ = ['NetInfMetaData', 'NIHTTPRequestHandler', 'check_cache_dirs']
+__all__ = ['NIHTTPRequestHandler', 'check_cache_dirs', 'NDO_DIR', 'META_DIR']
 
 #==============================================================================#
 # === GLOBAL VARIABLES ===
@@ -234,360 +248,6 @@ NDO_DIR        = "/ndo_dir/"
 ##@var META_DIR
 # Pathname component identifying sub-directory under storage base for metadata files
 META_DIR       = "/meta_dir/"
-
-#==============================================================================#
-class NetInfMetaData:
-    """
-    @brief Class holding the data from a metadata file.
-    The metadata file holds a serialized version of a JSON object that is
-    read/written to the json_obj held in the class.
-
-    The structure of the JSON object is:
-    - NetInf    Version string for NetInf specification applied
-    - ni        ni[h] name of NDO to which metadata applies
-    - ct        MIME content type of NDO (if known)
-    - size      Length of content in octets or -1 if not known
-    - details   Array of JSON objects containing:
-       - ts         UTC timestamp for object, format "%y-%m-%dT%H:%M:%S+00:00"
-       - metadata   JSON object with arbitrary contents
-       - loc        Array of locators for this NDO
-       - publish    Information about how this was published - string or object
-       - search     JSON object describing search that flagged this NDO with
-          - searcher    The system that did the search (e.g., this code)
-          - engine      The search engine used to perform the search
-          - tokens      The search query run by the engine to flag this NDO
-
-    The initial entries are made when an instance is first created.
-    Subsequent 'details' entries are added whenever the metadata is updated.
-    The content type may not be known on initial creation if the publisher
-    only sent metadata.  It may be updated later if the content is added to
-    the cache.
-
-    The instance variable curr_detail holds the most recent details item
-    at all times.
-    """
-
-    #--------------------------------------------------------------------------#
-    # INSTANCE VARIABLES
-
-    ##@var json_obj
-    # A JSON object holding the representation of the metadata.
-
-    ##@var curr_detail
-    # The most recent (last) JSON object in the array of "details" objects
-
-    #--------------------------------------------------------------------------#
-    def __init__(self, ni_uri="", timestamp=None, ctype=None, file_len=-1,
-                 myloc=None, loc1=None, loc2=None, extrameta=None):
-        """
-        @brief Create a new metadata object from parameters
-        
-        If all the parameters are omitted an empty object will be created
-        that can be populated from a file using the 'set_json_val' method.
-        @param ni_uri string The ni[h]: name to which the metadata applies
-        @param timestamp string initial creation timestamp (format: see class header)
-        @param ctype string MIME type of NDO (may be empty string if not yet known)
-        @param file_len integer Length of content in octets or -1 if not yet known
-        @param myloc string locator derived from authority in ni name (i.e., local server)
-        @param loc1 string locator for NDO
-        @param loc2 string locator for NDO
-        @param extrameta dictionary JSON object with other objects for 'details'
-
-        Creates JSON dictionary for json_obj with initial 'details' object 
-        """
-        self.json_obj = {}
-        self.json_obj["NetInf"] = NETINF_VER
-        self.json_obj["ni"]     = ni_uri
-        if ctype is None:
-            self.json_obj["ct"] = ""
-        else:
-            self.json_obj["ct"] = ctype
-        self.json_obj["size"] = file_len
-        self.json_obj["details"] = []
-        self.add_new_details(timestamp, myloc, loc1, loc2, extrameta)
-        return
-    
-    #--------------------------------------------------------------------------#
-    def add_new_details(self, timestamp, myloc, loc1, loc2, extrameta):
-        """
-        @brief Append a new details entry to the array of objects
-
-        @param timestamp string initial creation timestamp (format: see class header)
-        @param myloc string locator derived from authority in ni name (i.e., local server)
-        @param loc1 string locator for NDO
-        @param loc2 string locator for NDO
-        @param extrameta dictionary JSON object with other objects for 'details'
-        @return (none)
-
-        Creates JSON object dictionary to append to 'details' array from
-        parameters:
-        - The timestamp is used directly via set_timestamp
-        - The parameters myloc, loc1, and loc2 are added to loclist if not None
-        - All the key-value pairs in extrameta are copied to 'metadata'
-
-        Reset the curr_detail instance object to point to new detail item.
-
-        Note: we assume that the 'details' are in timestamp order, i.e., that
-        added details entries have later timestamps.  This is not currently
-        checked and might look odd if the system clock is rest backwards.
-        It doesn't have any significant effect since the output from this
-        object is generally the summary or bits of the most recently added
-        entry - the timestamp is just for convenience.
-        """
-        
-        self.curr_detail = {}
-        self.json_obj["details"].append(self.curr_detail)
-        self.set_timestamp(timestamp)
-        self.append_locs(myloc, loc1, loc2)
-        metadata = {}
-        self.curr_detail["metadata"] = metadata
-        
-        if extrameta != None:
-            try:
-                for k in extrameta.keys():
-                    metadata[k] = extrameta[k]
-            except AttributeError, e:
-                print("Error: extrameta not a dictionary (%s)" % type(extrameta))
-                pass
-        return
-
-    #--------------------------------------------------------------------------#
-    def json_val(self):
-        """
-        @brief Access JSON object representing metadata as Python dictionary
-        @return json_obj
-        """
-        return self.json_obj
-    
-    #--------------------------------------------------------------------------#
-    def set_json_val(self, json_val):
-        """
-        @brief Set json_obj to a dictionary typically derived from
-        @brief an NDO metadata file
-        @param json_val dictionary JSON object in correct form
-        @return booleans indicating if load was successful
-
-        Currently the format of the dictionary is not checked,
-        but we do check that the "NetInf" entry matches with
-        the current NETINF_VER string.
-        TO DO: add more checking and deal with backwards compatibility.
-
-        The curr_detail instance variable is set to the last
-        item in the 'details' array.
-        """
-        if json_val["NetInf"] != NETINF_VER:
-            return False
-        self.json_obj = json_val
-        # Set the current details to be the last entry
-        self.curr_detail = self.json_obj["details"][-1]
-        return True
-
-    #--------------------------------------------------------------------------#
-    def append_locs(self, myloc=None, loc1=None, loc2=None):
-        """
-        @brief Build loclist array from parameters
-        @param myloc string locator derived from authority in ni name (i.e., local server)
-        @param loc1 string locator for NDO
-        @param loc2 string locator for NDO
-        @return (none)
-
-        Build 'loc' array of strings and put into 'curr_detail'
-        object dictionary.  The parameters are only added to the
-        list if they are not None and not the empty string.
-        """
-        loclist = []
-        self.curr_detail["loc"] = loclist
-        if myloc is not None and myloc is not "":
-            if not myloc in loclist: 
-                loclist.append(myloc)
-        if loc1 is not None and loc1 is not "":
-            if not loc1 in loclist: 
-                loclist.append(loc1)
-        if loc2 is not None and loc2 is not "":
-            if not loc2 in loclist: 
-                loclist.append(loc2)
-        return
-    
-    #--------------------------------------------------------------------------#
-    def get_ni(self):
-        """
-        @brief Accessor for NDO ni name in metadata
-        @retval string Value of "ni" item in json_obj.
-        """
-        return self.json_obj["ni"]
-    
-    #--------------------------------------------------------------------------#
-    def get_timestamp(self):
-        """
-        @brief Accessor for NDO most recent update timestamp
-        @retval string Value of "ts" item in curr_detail.
-
-        For format of timestamp see class header
-        """
-        return self.curr_detail["ts"]
-
-    #--------------------------------------------------------------------------#
-    def set_timestamp(self, timestamp):
-        """
-        @brief Set the timestamp item ("ts") in curr_detail
-        @param timestamp string (for format see class header)
-        @return (none)
-        """
-        if timestamp is None:
-            self.curr_detail["ts"] = "(unknown)"
-        else:
-            self.curr_detail["ts"] = timestamp
-        return
-
-    #--------------------------------------------------------------------------#
-    def get_ctype(self):
-        """
-        @brief Accessor for NDO content type in metadata
-        @retval string Value of "ct" item in json_obj.
-        """
-        return self.json_obj["ct"]
-
-    #--------------------------------------------------------------------------#
-    def set_ctype(self, ctype):
-        """
-        @brief Set the content type item ("ct") in json_obj.
-        @param ctype string MIME content type for NDO
-        @return (none)
-
-        Setting is skipped if parameter is None.
-        """
-        if ctype is not None:
-            self.json_obj["ct"] = ctype
-        return
-
-    #--------------------------------------------------------------------------#
-    def get_size(self):
-        """
-        @brief Accessor for NDO content file size in metadata
-        @retval integer Value of "size" item in json_obj.
-        """
-        return self.json_obj["size"]
-
-    #--------------------------------------------------------------------------#
-    def set_size(self, file_len):
-        """
-        @brief Set the content file size item ("size") in json_obj.
-        @param file_len integer content file size for NDO in octets
-        @return (none)
-
-        Setting is skipped if parameter is None.
-        """
-        if file_len is not None:
-            self.json_obj["size"] = file_len
-        return
-
-    #--------------------------------------------------------------------------#
-    def get_loclist(self):
-        """
-        @brief Scan all the details entries and get the set of all
-        @brief distinct entries in loc entries
-        @retval array of strings set of all different locators from "details" entries
-        """
-        loclist = []
-        for d in self.json_obj["details"]:
-            for l in d["loc"]:
-                if not l in loclist:
-                    loclist.append(l)
-        #print("Summarized loclist: %s" % str(loclist))
-        
-        return loclist
-        
-    #--------------------------------------------------------------------------#
-    def get_metadata(self):
-        """
-        @brief Scan all the details entry and get the set of all
-        @brief distinct entries in metadata entries
-        @retval dictionary JSON object with summary of metadata
-
-        Scan the 'metadata' entries from the objects in the
-        'details' array to create a summary object from all the entries.
-
-        For every different key found in the various 'metadata' objects,
-        copy the key-value pair into the summary, except for the
-        'search' keys.
-
-        Treat 'search' key specially - combine the values from any
-        search keys recorded into an array, omitting duplicates.
-        Search key values are deemed to be duplicates if they have the
-        same 'engine' and 'tokens' key values (i.e., the 'searcher' key
-        value is ignored for comparison purposes).  Write the resulting
-        array as the value of the 'searches' key in the summary object.
-
-        For other keys, if their are duplicates, just take the most
-        recently recorded one (they are recorded in time order)
-        """
-        metadict = {}
-        srchlist = []
-        n = -1
-        for d in self.json_obj["details"]:
-            curr_meta = d["metadata"]
-            n += 1
-            for k in curr_meta.keys():
-                if k == "search":
-                    # In case somebody put in a non-standard search entry
-                    try:
-                        se = curr_meta[k]
-                        eng = se["engine"]
-                        tok = se["tokens"]
-                        dup = False
-                        for s in srchlist:
-                            if ((s["engine"] == eng) and (s["tokens"] == tok)):
-                                dup = True
-                                break
-                        if not dup:
-                            srchlist.append(se)
-                    except:
-                        # Non-standard search entry - leave it in place
-                        metadict[k] = curr_meta[k]
-                else:
-                    metadict[k] = curr_meta[k]
-        if len(srchlist) > 0:
-            metadict["searches"] = srchlist
-            
-        #print("Summarized metadata: %s" % str(metadict))
-        
-        return metadict
-
-    #--------------------------------------------------------------------------#
-    def summary(self):
-        """
-        @brief Generate a JSON object dictionary containing summarized metadata.
-        @retval dictionary JSON object containing summarized data
-
-        The summary JSON object dictionary contains:
-        - the 'NetInf', 'ni', 'ct' and 'size' entries copied from json_obj
-        - the timestamp 'ts' from the most recent (last element) of the 'details'
-        - the summarized locator list 'loclist' derived by get_loclist
-        - the summarized 'metadata' object derived by get_metadata.
-        """
-        sd = {}
-        for k in ["NetInf", "ni", "ct", "size"]:
-            sd[k] = self.json_obj[k]
-        sd["ts"] = self.get_timestamp()
-        sd["loclist"] = self.get_loclist()
-        sd["metadata"] = self.get_metadata()
-        return sd
-
-    #--------------------------------------------------------------------------#
-    def __repr__(self):
-        """
-        @brief Output compact string representation of json_obj.
-        @retval string JSON dump of json_obj in maximally compact form.
-        """
-        return json.dumps(self.json_obj, separators=(',',':'))
-        
-    #--------------------------------------------------------------------------#
-    def __str__(self):
-        """
-        @brief Output pretty printed string representation of json_obj.
-        @retval string JSON dump of json_obj with keys sorted and indent 4.
-        """
-        return json.dumps(self.json_obj, sort_keys = True, indent = 4)
 
 #==============================================================================#
 
@@ -1907,7 +1567,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             temp_name = "%s%s%s/publish#temp#%d" % (self.storage_root,
                                                     NDO_DIR,
                                                     ni_name.get_alg_name(),
-                                                    self.unique_id)
+                                                    self.thread_num)
             self.logdebug("Copying and digesting to temporary file %s" % temp_name)
 
             # Prepare hashing mechanisms
@@ -3169,11 +2829,45 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             split_frag = split_query_frag[0].split("#", 1)
         has_fragments = (len(split_frag) > 1)
         if has_fragments:
-            self.logwarning("URI supplied with fragment identifier (%s) - should not happen" %
+            self.logwarn("URI supplied with fragment identifier (%s) - should not happen" %
                             path)
 
         return (has_query_string, has_fragments)
 
+    #--------------------------------------------------------------------------#
+    def path_to_ni_name(self, path, sep):
+        """
+        @brief Take trailing part of pathname and make ni_name instance
+        @param path string path part in the form <alg-name>["/"|";"]<digest>
+        @parame sep string either "/" or ";" - the separator in path
+        @return 2-tuple (rv, validated ni-name instance or None)
+
+        An ni_name instance is created from the path part using ni: scheme
+        It is then validated.
+
+        If the validation is successful, return (niSUCCESS, ni_name instance)
+        Otherwise (error code from validation, None)
+        """
+        assert (sep == ";") or (sep == "/")
+        try:
+            alg_name, remainder = path.split(sep, 1)
+        except:
+            return(ni.niBADURL, None)
+
+        try:
+            i = remainder.index("?")
+            digest, query = remainder.split("?")
+        except:
+            digest = remainder
+            query = ""
+        
+        ni_name = ni.NIname((ni.NI_SCHEME, "", alg_name, digest, query))
+        rslt = ni_name.validate_ni_url()
+        if rslt == ni.niSUCCESS:
+            return (rslt, ni_name)
+        else:
+            return (rslt, None)
+        
     #--------------------------------------------------------------------------#
     def ni_name_to_file_names(self, storage_root, ni_name):
         """
