@@ -1907,7 +1907,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             temp_name = "%s%s%s/publish#temp#%d" % (self.storage_root,
                                                     NDO_DIR,
                                                     ni_name.get_alg_name(),
-                                                    self.thread_num)
+                                                    self.unique_id)
             self.logdebug("Copying and digesting to temporary file %s" % temp_name)
 
             # Prepare hashing mechanisms
