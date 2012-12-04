@@ -110,6 +110,8 @@ The handler expects the following standard methods in BaseHTTPRequestHandler to 
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       04/12/2012 Elwyn Davies   Added cache module: Instance copied from
+                                    server.  Removed duplicate unique_id setup.  
 0.0       17/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
                                     allow use with either WSGI or
                                     BaseHTTPRequestHandler.
@@ -125,6 +127,7 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 #=== Local package modules ===
 
 from netinf_ver import NETINF_VER, NISERVER_VER
+from cache import NetInfCache
 
 #==============================================================================#
 # List of classes/global functions in file
@@ -177,6 +180,9 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
     ##@var unique_id 
     # integer random number used to uniquely identify files generated for this
     # request
+
+    ##@var cache
+    # object instance of NetInfCache interface to cache storage
 
     # === BaseHTTPRequestHandler derived variables ===
     ##@var server_name
@@ -264,9 +270,6 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         # Used for creating unique temporary file names
         self.unique_id = self.thread_num
 
-        # Used for creating unique temporary file names
-        self.unique_id = self.thread_num
-
         # Tell listener we are running
         self.server.add_thread(self)
         
@@ -291,6 +294,7 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.server_name = self.server.server_name
         self.server_port = self.server.server_port
         self.nrs_redis = self.server.nrs_redis
+        self.cache = self.server.cache
 
         self.loginfo("New HTTP request connection from %s" % self.client_address[0])
 

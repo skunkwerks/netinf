@@ -28,11 +28,20 @@ limitations under the License.
 ================================================================================
 
 @details
+Class for building and holding the metadata of a Named Data Object in memory.
+
 ================================================================================
 @code
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       04/12/2012 Elwyn Davies   Add merge_latest_details. Change so that
+                                    local host URL is added to summary rather
+                                    than in initial metadata to avoid creating
+                                    multiple instances when metadata is updated
+                                    by new cache mechanism - remove myloc from
+                                    __init__ and append_locs
+1.0       30/11/2012 Elwyn Davies   Move version string to netinf_ver.py.
 0.0       21/10/2012 Elwyn Davies   Factored out of nilib.
 @endcode
 """
@@ -79,7 +88,7 @@ class NetInfMetaData:
     Subsequent 'details' entries are added whenever the metadata is updated.
     The content type may not be known on initial creation if the publisher
     only sent metadata.  It may be updated later if the content is added to
-    the cache.
+    the cache together with the size of the object.
 
     The instance variable curr_detail holds the most recent details item
     at all times.
@@ -96,7 +105,7 @@ class NetInfMetaData:
 
     #--------------------------------------------------------------------------#
     def __init__(self, ni_uri="", timestamp=None, ctype=None, file_len=-1,
-                 myloc=None, loc1=None, loc2=None, extrameta=None):
+                 loc1=None, loc2=None, extrameta=None):
         """
         @brief Create a new metadata object from parameters
         
@@ -106,9 +115,8 @@ class NetInfMetaData:
         @param timestamp string initial creation timestamp (format: see class header)
         @param ctype string MIME type of NDO (may be empty string if not yet known)
         @param file_len integer Length of content in octets or -1 if not yet known
-        @param myloc string locator derived from authority in ni name (i.e., local server)
-        @param loc1 string locator for NDO
-        @param loc2 string locator for NDO
+        @param loc1 string locator for NDO or None
+        @param loc2 string locator for NDO or None
         @param extrameta dictionary JSON object with other objects for 'details'
 
         Creates JSON dictionary for json_obj with initial 'details' object 
@@ -122,21 +130,20 @@ class NetInfMetaData:
             self.json_obj["ct"] = ctype
         self.json_obj["size"] = file_len
         self.json_obj["details"] = []
-        self.add_new_details(timestamp, myloc, loc1, loc2, extrameta)
+        self.add_new_details(timestamp, loc1, loc2, extrameta)
         return
     
     #--------------------------------------------------------------------------#
-    def add_new_details(self, timestamp, myloc, loc1, loc2, extrameta):
+    def add_new_details(self, timestamp, loc1, loc2, extrameta):
         """
         @brief Append a new details entry to the array of objects
 
         @param timestamp string initial creation timestamp (format: see class header)
         @param ctype string MIME type of NDO (may be empty string if not yet known)
-        @param myloc string locator derived from authority in ni name (i.e., local server)
         @param loc1 string locator for NDO
         @param loc2 string locator for NDO
         @param extrameta dictionary JSON object with other objects for 'details'
-        @return (none)
+        @return dictionary with new details
 
         Creates JSON object dictionary to append to 'details' array from
         parameters:
@@ -157,7 +164,7 @@ class NetInfMetaData:
         self.curr_detail = {}
         self.json_obj["details"].append(self.curr_detail)
         self.set_timestamp(timestamp)
-        self.append_locs(myloc, loc1, loc2)
+        self.append_locs(loc1, loc2)
         metadata = {}
         self.curr_detail["metadata"] = metadata
         
@@ -168,8 +175,41 @@ class NetInfMetaData:
             except AttributeError, e:
                 print("Error: extrameta not a dictionary (%s)" % type(extrameta))
                 pass
-        return
+        return self.curr_detail
 
+    #--------------------------------------------------------------------------#
+    def merge_latest_details(self, metadata_with_extra):
+        """
+        @brief Copy curr_detail entry from parameter to this instance
+        @param metadata_with_extra NetInfMetdata instance with details to copy
+        @return boolean True if two instances have matching ni field .ith size
+                             and content type consistent
+
+        Check for consistency.
+        Add curr_detail from metadata_with_extra to this metadata and
+        set ctype and size in this metadata if present in metadata_with extra
+        """
+        if self.json_obj["ni"] != metadata_with_extra.json_obj["ni"]:
+            return False
+        my_ct = self.get_ctype()
+        xtra_ct = metadata_with_extra.get_ctype()
+        
+        if (my_ct != "") and (xtra_ct != ""):
+            if my_ct != xtra_ct:
+                return False
+        my_size = self.get_size()
+        xtra_size = metadata_with_extra.get_size()
+        if (my_size != (-1)) and (xtra_size != (-1)):
+            if my_size != xtra_size:
+                return False
+        self.curr_detail = metadata_with_extra.curr_detail
+        self.json_obj["details"].append(self.curr_detail)
+        if xtra_ct != "":
+            self.set_ctype(xtra_ct)
+        if xtra_size != (-1):
+            self.set_size(xtra_size)
+        return True
+    
     #--------------------------------------------------------------------------#
     def json_val(self):
         """
@@ -202,10 +242,9 @@ class NetInfMetaData:
         return True
 
     #--------------------------------------------------------------------------#
-    def append_locs(self, myloc=None, loc1=None, loc2=None):
+    def append_locs(self, loc1=None, loc2=None):
         """
         @brief Build loclist array from parameters
-        @param myloc string locator derived from authority in ni name (i.e., local server)
         @param loc1 string locator for NDO
         @param loc2 string locator for NDO
         @return (none)
@@ -216,9 +255,6 @@ class NetInfMetaData:
         """
         loclist = []
         self.curr_detail["loc"] = loclist
-        if myloc is not None and myloc is not "":
-            if not myloc in loclist: 
-                loclist.append(myloc)
         if loc1 is not None and loc1 is not "":
             if not loc1 in loclist: 
                 loclist.append(loc1)
@@ -373,15 +409,17 @@ class NetInfMetaData:
         return metadict
 
     #--------------------------------------------------------------------------#
-    def summary(self):
+    def summary(self, myloc):
         """
         @brief Generate a JSON object dictionary containing summarized metadata.
+        @param myloc string locator derived from authority in ni name (i.e., local server)
         @retval dictionary JSON object containing summarized data
 
         The summary JSON object dictionary contains:
         - the 'NetInf', 'ni', 'ct' and 'size' entries copied from json_obj
         - the timestamp 'ts' from the most recent (last element) of the 'details'
-        - the summarized locator list 'loclist' derived by get_loclist
+        - the summarized locator list 'loclist' derived by get_loclist with
+          myloc added
         - the summarized 'metadata' object derived by get_metadata.
         """
         sd = {}
@@ -389,6 +427,8 @@ class NetInfMetaData:
             sd[k] = self.json_obj[k]
         sd["ts"] = self.get_timestamp()
         sd["loclist"] = self.get_loclist()
+        if myloc is not None:
+            sd["loclist"].append(myloc)
         sd["metadata"] = self.get_metadata()
         return sd
 

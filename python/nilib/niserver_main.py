@@ -35,6 +35,8 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       04/12/2012 Elwyn Davies   Move check_cache_dirs into cache module.
+                                    Now called in niserver.py.
 0.4       11/10/2012 Elwyn Davies   Minor commenting improvements.
 0.3	  07/10/2012 Elwyn Davies   Added favicon option. Improved doxygen stuff.
 0.2	  06/10/2012 Elwyn Davies   Added getputform and nrsform options, and
@@ -57,7 +59,7 @@ import logging.config
 import ConfigParser
 from optparse import OptionParser
 
-from niserver import ni_http_server, check_cache_dirs
+from niserver import ni_http_server
 
 #==============================================================================#
 # GLOBAL VARIABLES
@@ -87,7 +89,7 @@ def py_niserver_start(default_config_file):
     Functions:
     - Parse options and negotiate with configuration file
     - Setup logging
-    - Check object cache directories exist and create if not present
+    - Check stoage root directory exists (cache structure is checked later)
     - Check form and favicon files exist and are readable
     - If NRS server to be provided, check Redis module can be loaded
     - Check authority for server
@@ -397,8 +399,6 @@ def py_niserver_start(default_config_file):
     # Check object cache directories exist and create them if necessary
     if not os.path.isdir(storage_root):
         logerror("Storage root directory %s does not exist." % storage_root)
-        sys.exit(-1)
-    if not check_cache_dirs(storage_root, niserver_logger):
         sys.exit(-1)
                     
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#

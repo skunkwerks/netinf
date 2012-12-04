@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.6       04/12/2012 Elwyn Davies   Use check_cache_dirs from cache module.
 1.5       30/11/2012 Elwyn Davies   Update testing code
 1.4       17/11/2012 Elwyn Davies   Prepare for alternative use of WSGI framework:
                                     Copy items accessed by self.server in NIHTTPRequestHandler
@@ -223,7 +224,8 @@ except ImportError:
 
 import netinf_ver
 import ni
-from nihandler import NIHTTPRequestHandler, check_cache_dirs
+from nihandler import NIHTTPRequestHandler
+from cache_single import NetInfCache
 
 #==============================================================================#
 # List of classes/global functions in file
@@ -289,6 +291,9 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     ##@var nrs_redis
     # object StrictRedis instance used for communication between the NRS server
     # and the Redis database.
+
+    ##@var cache
+    # object instance of NetInfCache interface to cache storage
     
     ##@var thread_running_lock
     # object Lock instance used to serialize access to running_threads and
@@ -370,6 +375,13 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         self.provide_nrs = provide_nrs
         self.favicon = favicon
 
+        # Initialize cache
+        self.cache = NetInfCache(self.storage_root, self.logger)
+
+        # Check cache is prepared
+        if not self.cache.check_cache_dirs():
+            sys.exit(-1)
+        
         # If an NRS server is wanted, create a Redis client instance
         # Assume it is the default local_host, port 6379 for the time being
         if provide_nrs:
@@ -380,7 +392,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
                 sys.exit(-1)
         else:
             self.nrs_redis = None
-        
+
         self.running_threads = set()
         self.next_handler_num = 1
         # Lock for serializing access to running_threads and next_handler_num

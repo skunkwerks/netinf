@@ -67,6 +67,13 @@ the digests in the nih scheme. See http://en.wikipedia.org/Luhn_algorithm.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       24/10/2012 Elwyn Davies   Added hash_alg_prefixes array: contains
+                                    prefixes of any algorithms so that algorithm
+                                    identifier can be located in paths - "/sha"
+                                    initially.  Changed all 'raise' statements:
+                                    string should be a parameter of the exception
+                                    name rather than a separate item (i.e.,
+                                    'raise excep, "string"' -> 'raise excep("string")' .
 1.1       24/10/2012 Elwyn Davies   Added get_canonical_ni_url.
 1.0       23/10/2012 Elwyn Davies   Added nih <-> ni translation and conversion.
                                     Corrected NIname validation.
@@ -92,7 +99,8 @@ from encode import ParamDigester
 from stdnum import luhn
 
 #==============================================================================#
-__all__ = ['NIname', 'NI', 'NIdigester', 'NIproc']
+__all__ = ['NIname', 'NI', 'NIdigester', 'NIproc', 'NI_SCHEME', 'NIH_SCHEME',
+           'ni_errs', 'ni_errs_txt']
 #==============================================================================#
 # Debug function for usae during testing
 def debug(string):
@@ -254,6 +262,12 @@ class NIname:
                   "sha-256-128": (hashlib.sha256, 32, 16, 22, 2),
                   "sha-256"    : (hashlib.sha256, 32, 32, 43, 1) }
 
+    #--------------------------------------------------------------------------#
+    ##@var hash_alg_prefixes
+    # Array of strings that may be prefixes of hash algorithms plus a /
+    # This allows us to find the start of the algorithm specifier in a URI
+    hash_alg_prefixes = [ "/sha" ]
+    
     #--------------------------------------------------------------------------#
     # Indices for NI.hash_algs value tuples.
     #
@@ -461,17 +475,17 @@ class NIname:
               decoding the nih urlsafe bas64 encoding.
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot translate unvalidated NIname"
+            raise UnvalidatedNIname("Cannot translate unvalidated NIname")
 
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NIH_SCHEME:
             # Just send back existing digest
             return self.params
 
         if self.query or self.netloc:
-            raise NonEmptyNetlocOrQuery, "Cannot translate an ni scheme with netloc or query"
+            raise NonEmptyNetlocOrQuery("Cannot translate an ni scheme with netloc or query")
 
         l = len(self.params)
         # Have to add padding characters if l mod 4 is 2 ("==") or 3 ("=")
@@ -493,10 +507,10 @@ class NIname:
         Note: Discard the check digit if present in nih form
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot translate unvalidated NIname"
+            raise UnvalidatedNIname("Cannot translate unvalidated NIname")
 
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NI_SCHEME:
             # Just send back existing digest
@@ -529,10 +543,10 @@ class NIname:
               the values of these items.
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot convert unvalidated NIname"
+            raise UnvalidatedNIname("Cannot convert unvalidated NIname")
         
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NIH_SCHEME:
             self.params = self.trans_nih_to_ni()
@@ -747,10 +761,10 @@ class NIname:
         @throw EmptyParams if NIname has empty params value
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot translate unvalidated ni digest"
+            raise UnvalidatedNIname("Cannot translate unvalidated ni digest")
 
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NI_SCHEME:
             return self.url
@@ -769,10 +783,10 @@ class NIname:
         @throw EmptyParams if NIname has empty params value
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot translate unvalidated ni digest"
+            raise UnvalidatedNIname("Cannot translate unvalidated ni digest")
 
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NI_SCHEME:
             trans_params = self.params
@@ -790,15 +804,15 @@ class NIname:
         @throw EmptyParams if NIname has empty params value
         """
         if not self.validated:
-            raise UnvalidatedNIname, "Cannot translate unvalidated nih digest"
+            raise UnvalidatedNIname("Cannot translate unvalidated nih digest")
 
         if not self.params:
-            raise EmptyParams, "Cannot translate NIname with empty params."
+            raise EmptyParams("Cannot translate NIname with empty params.")
 
         if self.scheme == NIH_SCHEME:
             return self.url
         elif (self.netloc or self.query):
-            raise NonEmptyNetlocOrQuery, "nih scheme cannot have Netloc or Query parts"
+            raise NonEmptyNetlocOrQuery("nih scheme cannot have Netloc or Query parts")
         else:
             trans_params = self.trans_ni_to_nih()
             return ni_urlparse.urlunparse((NIH_SCHEME, self.netloc, self.path,
@@ -2137,7 +2151,7 @@ if __name__ == "__main__":
             print "Translator trans_nih_to_ni succeeded inappropriately"
             err_cnt += 1
         except UnvalidatedNIname, e:
-            print "Translator trans_nih_to_ni correctly failed."
+            print "Translator trans_nih_to_ni correctly failed.", str(e)
         except Exception, e:
             print "Unexpected exception raised by trans_nih_to_ni"
             err_cnt += 1
