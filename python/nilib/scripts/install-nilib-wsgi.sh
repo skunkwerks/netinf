@@ -31,6 +31,7 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
+# 1.2	  06/12/2012 Elwyn Davies   Add knock-on change to log file location.
 # 1.1	  06/12/2012 Elwyn Davies   Added rsyslog configuration.
 # 1.0	  25/11/2012 Elwyn Davies   Created.
 # @endcode
@@ -103,6 +104,7 @@ variables
 }
 
 email_set=0
+log_set=0
 while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
     case $OPTION in
         h)
@@ -117,6 +119,9 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
             ;;
         r)
             NILIB_PATH=$OPTARG
+            if [[ $log_set -eq 0 ]]; then
+                NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
+            fi
             ;;
         v)
             SITES_PATH=$OPTARG
@@ -126,13 +131,13 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
             ;;
         a)
             SERVER=$OPTARG
-	    if [[ $email_set -eq 0 ]]; then
-              EMAIL=webmaster@${SERVER}
-	    fi
+            if [[ $email_set -eq 0 ]]; then
+                EMAIL=webmaster@${SERVER}
+            fi
             ;;
         e)
             EMAIL=$OPTARG
-	    email_set=1
+            email_set=1
             ;;
         s)
             NILIB_SRC=$OPTARG

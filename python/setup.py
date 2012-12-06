@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+0.6       06/12/2012 Elwyn Davies   Add requirement for Python posix_ipc module.
 0.5       06/12/2012 Elwyn Davies   Add location for syslog log file.
 0.4       25/11/2012 Elwyn Davies   Add requirement for PIL (Python Imaging Library).
                                     Organize directory image for mod_wsgi setup.
@@ -64,7 +65,7 @@ setup(name='nilib',
       author_email='davieseb@scss.tcd.ie',
       url='https://sourceforge.net/p/netinf/',
       packages=['nilib'],
-      install_requires=['redis', 'python-stdnum', 'PyDNS',
+      install_requires=['redis', 'python-stdnum', 'PyDNS', 'posix_ipc',
                         'python-magic', 'qrcode', 'pil', 'doxypy'],
       scripts=['nilib/scripts/pynilib_test.sh'],
       entry_points={
