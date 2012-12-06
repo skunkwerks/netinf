@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+0.5       06/12/2012 Elwyn Davies   Add location for syslog log file.
 0.4       25/11/2012 Elwyn Davies   Add requirement for PIL (Python Imaging Library).
                                     Organize directory image for mod_wsgi setup.
                                     Provide for specification of data installation
@@ -98,6 +99,9 @@ setup(name='nilib',
                        ]),
                   (datadir+"/wsgi/doc",
                       [ # Create empty directory ready for Doxygen documentation.
+                       ]),
+                  (datadir+"/wsgi/log",
+                      [ # Create empty directory ready for syslog log.
                        ]),
                   (datadir+"/wsgi/cache",
                       [ # Create empty directory ready for cache

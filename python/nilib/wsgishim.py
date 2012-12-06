@@ -134,6 +134,12 @@ Version   Date       Author         Notes
 #=== Standard modules for Python 2.[567].x distributions ===
 import sys
 import logging
+from logging.handlers import SysLogHandler
+try:
+    import thread
+    import threading
+except ImportError:
+    thread = None
 import types
 import time
 import random
@@ -150,6 +156,7 @@ except ImportError:
 #=== Local package modules ===
 
 from netinf_ver import NETINF_VER, NISERVER_VER
+from cache_multi import MultiNetInfCache as NetInfCache
 
 #==============================================================================#
 # List of classes/global functions in file
@@ -228,6 +235,26 @@ WSGI_OTHER_ENV_MAP = {
 HTTP_WSGI_HEADER_MAP = {}
 for k in WSGI_HTTP_HEADER_MAP:
     HTTP_WSGI_HEADER_MAP[WSGI_HTTP_HEADER_MAP[k]] = k
+
+
+##@var netinf_logger
+# logging.logger object instance set up by the first instantiation of
+# wsgiHTTPRequestShim in this process.
+netinf_logger = None
+
+##@var netinf_handler
+# logging.handlers.SysLogHandler object instance used by netinf_logger
+# Connected to the syslog 'facility' identified by log_facility parameter
+# to constructor of wsgiHTTPRequestShim.
+netinf_handler = None
+
+##@var netinf_cache
+# NetInfCache object instance used to manage the cache.  Note that this should
+# be a version of the cache manager that is good for multi-threaded and multi-
+# process usage as the Apache 2 mod_wsgi plugin potentially runs several
+# processes each with multi[ple threads running instnces of the handler in
+# parallel.
+netinf_cache = None
 
 #==============================================================================#
 class HeaderDict:
@@ -568,11 +595,14 @@ class wsgiHTTPRequestShim:
         # These entries have to be present for the NIHTTPRequestHandler
         # but aren't used in the example.  They can be set by
         # Apache SetEnv directives if used with mod_wsgi.
+        # The default values from the installation script are shown.
         environ["NETINF_STORAGE_ROOT"] = "/tmp/cache"
         environ["NETINF_GETPUTFORM"] = "/var/niserver/getputform.html"
         environ["NETINF_NRSFORM"] = "/var/niserver/nrsconfig.html"
         environ["NETINF_FAVICON"] = "/var/niserver/favicon.ico"
         environ["NETINF_PROVIDE_NRS"] = "no"
+        environ["NETINF_SYSLOG_FACILITY"]: "local0"
+
         # Optionally...
         environ["NETINF_LOG_LEVEL"] = "NETINF_LOG_INFO"
 
@@ -581,12 +611,19 @@ class wsgiHTTPRequestShim:
         return handler.handle_request(environ, start_response)
     @endcode
 
-    The class constructor sets up a logger that writes to the logger stream
-    provided by WSGI (environ["wsgi.error"]).  Note that care has to be taken
-    to flush and close the logger before completing the request because
-    the WSGI logger may not accept more input after the application function
-    returns and the logger can operate asynchronously.
+    The class constructor sets up a logger that writes to syslog using the
+    facility named in the parameter to the constructor (defaults to 'local0'
+    (aka "LOG_LOCAL0" in syslogd terms).  [Previously it was intended to use
+    the wsgi.error log stream but this was problematic on various counts -
+    mainly that the log stream wazs closed after each request and it was
+    necessary to prevent log writing outside the context of the application.
+    This was a problem because of the way that the Python logging module
+    maintains permanent log instances.  Now a single logger is set up at
+    module level and used whenever a handler class instance is created.
 
+    Similarly, a single cache interface is craeted at module level and used
+    whenever a handler class instance is created.
+    
     The method 'handle_request' sets up the equivalent of the environment
     that is used by a class derived from BaseHTTPRequestHandler, which is what
     NIHTTPRequestHandler expects, using the 'environ' dictionary supplied by
@@ -868,25 +905,38 @@ class wsgiHTTPRequestShim:
     # integer random number used to uniquely identify files generated for this
     # request
 
+    ##@var cache
+    # object instance of NetInfCache interface to cache storage
+
     #--------------------------------------------------------------------------#
-    def __init__(self, log_stream=None):
+    def __init__(self, log_facility="local0"):
         """
         @brief Constructor - sets up logging
         @param log_stream file like object with write capability or None
 
         Uses the Python logging module
-        Defaults to INFO level logging and stderr sttream output.
+        Defaults to INFO level logging and sends logging to syslog
+        The 'facility' that is used by syslog to determine where to
+        store or send logging messages is set according to the
+        'log_facility parameter - defaults to 'local0'.  The (r)syslog
+        has to be configured to direct the log messages to an appropriate
+        file or stream.  See nilib/scripts/install-nilib-wsgi.sh.
+        
         Everything else has to be configured on a per request basis.
         """
+        # Initialize the logger and handler on first instantiation.
+        global netinf_logger, netinf_handler
+        if netinf_logger is None:
+            netinf_logger = logging.getLogger("NetInf")
+            netinf_handler = SysLogHandler(address="/dev/log", facility=log_facility)
+            fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(process)d %(threadName)s %(message)s")
+            netinf_handler.setFormatter(fmt)
+            netinf_logger.addHandler(netinf_handler)
         
-        self.logger = logging.getLogger("NetInf")
+        self.logger = netinf_logger
         self.logger.setLevel(logging.INFO)
-        ch = logging.StreamHandler(log_stream)
-        fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(message)s")
-        ch.setFormatter(fmt)
-        self.logger.addHandler(ch)
-        self.log_handler = ch
-
+        self.log_handler = netinf_handler
+     
         # Logging functions
         self.loginfo = self.logger.info
         self.logdebug = self.logger.debug
@@ -896,6 +946,12 @@ class wsgiHTTPRequestShim:
         # Used for creating unique temporary file names
         r = random.SystemRandom()
         self.unique_id = r.randint(0, 64000)
+
+        if thread:
+            if threading.current_thread().name != "MainThreads":
+                threading.current_thread().name = "Req-%d" % self.unique_id
+
+        self.loginfo("Handler for new request created")
 
         return
 
@@ -914,6 +970,7 @@ class wsgiHTTPRequestShim:
         @brief Process request fed to WSGI via 'spplication' function
         @param environ dictionary containing environment and request headers
         @param start_response callable to return response code etc as per WSGI
+        @param netinf_cache NetInfCache insatnce for access to cache
         @return iterable representing response content
 
         Load instance variables from environ dictionary.
@@ -957,7 +1014,7 @@ class wsgiHTTPRequestShim:
                               (env_type, env_name))
                 return (None, False)
 
-        # Rememeber the environment dictionary
+        # Remember the environment dictionary
         self.environ = environ    
 
         # Set up to record information for response
@@ -1064,7 +1121,19 @@ class wsgiHTTPRequestShim:
         else:
             self.nrs_redis = None
 
-        self.loginfo("New HTTP request connection from %s" % self.client_address[0])
+        # Setup the cache manager instance on first instantiation.
+        global netinf_cache
+        if netinf_cache is None:
+            try:
+                netinf_cache = NetInfCache(self.storage_root, self.logger)
+            except IOError, e:
+                self.send_error(500, "Unable to initialize NDO cache")
+                return self.trigger_response(start_response)            
+        self.cache = netinf_cache
+        
+        self.loginfo("Starting req from %s %s %s" % (self.client_address,
+                                                     self.command,
+                                                     self.path))
 
         # Call appropriate command processor
         mname = 'do_' + self.command
@@ -1131,18 +1200,13 @@ class wsgiHTTPRequestShim:
         while True:
             if ((not self.ready_to_iterate) or
                 (self.resp_curr_index >= len(self.response_body))):
-                # Theoretically the close routine for a StramHandler is supposed
-                # to delete it from the list of handlers so that it isn't flushed
-                # and closed by the logger atexit hook.  However this doesn't seem
-                # to be totally reliable.  After this routine has been called
-                # no more messages should be logged and the StreamHandler doesn't
-                # involve any asynchroous threads or such like, so just set the
-                # stream to None after flushing.  There is no StreamHandler
-                # specific close routine - the close just removes it from the list
-                # of handlers.
+
+                self.loginfo("Finished req from %s %s %s" % (self.client_address,
+                                                             self.command,
+                                                             self.path))
+
+                # This probably does nothing for SysLogHandler
                 self.log_handler.flush()
-                self.log_handler.stream = None
-                self.log_handler.close()
                 
                 raise StopIteration
 

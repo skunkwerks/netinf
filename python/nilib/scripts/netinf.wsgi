@@ -43,6 +43,7 @@ SetEnv NETINF_GETPUTFORM <file path name>
 SetEnv NETINF_NRSFORM <file path name>
 SetEnv NETINF_FAVICON <file path name>
 SetEnv NETINF_PROVIDE_NRS <boolean> [yes/true/1|no/false/0]
+SetEnv NETINF_SYSLOG_FACILITY <facility name> (e.g., "local0")
 SetEnv NETINF_LOG_LEVEL <log level>
 Log level can be any of NETINF_LOG_INFO, ..._ERROR, ..._WARN or ..._DEBUG
 Default is NETINF_LOG_INFO if this variable is not defined.
@@ -55,6 +56,7 @@ problem is under consideration.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       06/12/2012 Elwyn Davies   Added syslog configuration.
 1.0       22/11/2012 Elwyn Davies   Created..
 
 @endcode
@@ -62,7 +64,7 @@ Version   Date       Author         Notes
 
 #==============================================================================#
 
-from nilib.nihandler import NIHTTPRequestHandler, check_cache_dirs
+from nilib.nihandler import NIHTTPRequestHandler
 
 #==============================================================================#
 def application(environ, start_response):
@@ -71,7 +73,7 @@ def application(environ, start_response):
 
     Create an instance of the handler class and have it handle the request.
     """
-    h = NIHTTPRequestHandler(log_stream=environ['wsgi.errors'])
+    h = NIHTTPRequestHandler(log_facility="local0")
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    

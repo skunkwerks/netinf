@@ -211,23 +211,7 @@ ni_errs_txt = { ni_errs.niSUCCESS:      "Successful",
 #==============================================================================#
 #=== Exceptions ===
 #------------------------------------------------------------------------------#
-class UnvalidatedNIname(Exception):
-    """
-    @brief Raised when an inappropriate operation is done on an unvalidated NIname
-    """
-    pass
-
-class EmptyParams(Exception):
-    """
-    @brief Raised when a translation is attempted on an NIname with no params (digest)
-    """
-    pass
-
-class NonEmptyNetlocOrQuery(Exception):
-    """
-    @brief Raised when a translation is attempted on an hih with netloc or query
-    """
-    pass
+from ni_exception import UnvalidatedNIname, EmptyParams, NonEmptyNetlocOrQuery
 
 #==============================================================================#
 class NIname:

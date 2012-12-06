@@ -5,7 +5,7 @@
 @brief Request handler for  NI NetInf HTTP convergence layer (CL) server and
 @brief NRS server.  Designed to be used either via WSGI or BaseHTTPRequestHandler
 @brief by importing appropriate shim.
-@version $Revision: 1.02 $ $Author: elwynd $
+@version $Revision: 1.03 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
       part of the SAIL project. (http://sail-project.eu)
@@ -177,6 +177,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       06/12/2012 Elwyn Davies   Corrected interface to check_cache_dirs.
 1.2       04/12/2012 Elwyn Davies   Major surgery to manage the NDO cache through
                                     a separate class (which of course should have
                                     been done to start with).  Also improved the
@@ -243,20 +244,26 @@ except:
 
 if main_mod_file.find("niserver.py") >= 0:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
+    from cache_single import SingleNetInfCache as NetInfCache
 elif "niserver" in sys.modules:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
+    from cache_multi import MultiNetInfCache as NetInfCache
 else:
     # Assume we are running under mod_wsgi - use the shim in wsgishim.py
     from wsgishim import wsgiHTTPRequestShim as HTTPRequestShim
     
 from  metadata import NetInfMetaData
 
-from cache_single import NetInfCache, InconsistentParams, InvalidMetaData, \
-                         CacheEntryExists, NoCacheEntry
     
 #==============================================================================#
 # List of classes/global functions in file
 __all__ = ['NIHTTPRequestHandler']
+
+#==============================================================================#
+#=== Exceptions ===
+#------------------------------------------------------------------------------#
+from ni_exception import InconsistentParams, InvalidMetaData, \
+                         CacheEntryExists, NoCacheEntry
 
 #==============================================================================#
 
@@ -627,7 +634,11 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         # Eun the check_cache_dirs function
         if (self.path.lower() == self.NETINF_CHECK):
             self.logdebug("Running check_cache_dirs")
-            if not self.cache.check_cache_dirs():
+            try:
+                # Returns temporary directory in use if successful
+                td = self.cache.check_cache_dirs()
+            except IOError, e:
+                self.logerror("Cache tree check failed: %s" % str(e))
                 self.send_error(500, "Named Data Object cache check failed")
             else:
                 # Cache is in good shape - report this

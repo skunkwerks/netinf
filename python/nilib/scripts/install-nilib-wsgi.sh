@@ -31,7 +31,8 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
-# 1.0	  25/12/2012 Elwyn Davies   Created.
+# 1.1	  06/12/2012 Elwyn Davies   Added rsyslog configuration.
+# 1.0	  25/11/2012 Elwyn Davies   Created.
 # @endcode
 
 # Defaults for configuration
@@ -44,7 +45,9 @@ SERVER=netinf.example.com
 EMAIL=webmaster@${SERVER}
 NILIB_SRC=/home/nilib/code
 NILIB_PYTHON_CONF=/var/niserver
-
+NETINF_SYSLOG_FACILITY=local0
+SYSLOG_CONFIG_DIR=/etc/rsyslog.d
+NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
 
 variables() {
 cat <<EOF
@@ -57,6 +60,9 @@ Virtual host server name   $SERVER
 Webmaster email address    $EMAIL
 Nilib source top directory $NILIB_SRC
 Python installed config in $NILIB_PYTHON_CONF
+Syslog facility name       $NETINF_SYSLOG_FACILITY
+Syslog config directory    $SYSLOG_CONFIG_DIR
+Output file for NetInf log $NETINF_SYSLOG
 
 EOF
 }
@@ -65,8 +71,10 @@ usage() {
 cat << EOF
 usage: $0 options
 
-This script installs the Apache virtual host file and data area that allows
-the Python nilib code to be used via mod_wsgi to manage a NetInf NDO cache.
+This script installs the Apache virtual host file, a minimal configuration
+file for the rsyslogd system logger for handling log messages from the 
+NetInf mod_wsgi module, and data area that allows the Python nilib code to 
+be used via mod_wsgi to manage a NetInf NDO cache.
 
 *** The script must be run as root!
 
@@ -81,6 +89,12 @@ OPTIONS:
     -e <email>      The email address for the webmaster of the virtual host
     -s <path>       Top level directory where makefile for nilib is located
     -c <path>       The path where the installed Python nilib has its config data
+    -f <facility>   Name of syslog facility to be used ('local0' ... 'local9')
+    -d <path>       Directory where rsyslog configuration files are stored
+    -l <filepath>   File name for syslog output file (absolute path)
+
+Assumes installation is using rsyslog - if not the syslog will have to be
+configured manually.
 
 Defaults:
 EOF
@@ -89,7 +103,7 @@ variables
 }
 
 email_set=0
-while getopts "hu:g:r:v:n:a:e:s:c:" OPTION; do
+while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
     case $OPTION in
         h)
             usage
@@ -126,6 +140,15 @@ while getopts "hu:g:r:v:n:a:e:s:c:" OPTION; do
         c)
             NILIB_PYTHON_CONF=$OPTARG
             ;;
+        f)
+            NETINF_SYSLOG_FACILITY=$OPTARG
+            ;;
+        d)
+            SYSLOG_CONFIG_DIR=$OPTARG
+            ;;
+        l)
+            NETINF_SYSLOG=$OPTARG
+            ;;
         ?)
             usage
             exit 1
@@ -143,9 +166,14 @@ if [[ ! -d $SITES_PATH ]]; then
   exit 1
 fi
 if [[ ! -d $NILIB_SRC ]]; then
-  echo "Nilib source directory $SITES_PATH does not exist"
+  echo "Nilib source directory $NILIB_SRC does not exist"
   exit 1
 fi
+if [[ ! -d $SYSLOG_CONFIG_DIR ]]; then
+  echo "rsyslog configuration directory $SYSLOG_CONFIG_DIR does not exist"
+  exit 1
+fi
+
 
 echo "Checking for possible overwrites..."
 if [[ -f ${SITES_PATH}/${VIRTHOST} ]]; then
@@ -282,6 +310,7 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 	SetEnv NETINF_NRSFORM ${NILIB_PATH}/www/nrsconfig.html
 	SetEnv NETINF_FAVICON ${NILIB_PATH}/www/favicon.ico
 	SetEnv NETINF_PROVIDE_NRS no
+	SetEnv NETINF_SYSLOG_FACILITY $NETINF_SYSLOG_FACILITY
 	SetEnv NETINF_LOG_LEVEL NETINF_LOG_INFO
 
 	<Directory ${NILIB_PATH}/wsgi-apps/>
@@ -309,6 +338,13 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 </VirtualHost>
 EOF
 
+echo "Creating rsyslog configuration file ${SYSLOG_CONFIG_DIR}/60-netinf.conf ..."
+cat <<EOF >${SYSLOG_CONFIG_DIR}/60-netinf.conf
+# Logging setup used for NetInf mod_wsgi application in Apache
+# Write all messages to single file as a starting position
+${NETINF_SYSLOG_FACILITY}.* ${NETINF_SYSLOG}
+EOF
+
 echo "Checking if script to enable virtual host exists..."
 if [[ -x /usr/sbin/a2ensite ]]; then
   echo "Using a2ensite to enable virtualhost..."
@@ -319,6 +355,7 @@ else
   echo "Please enable virtual host and restart Apache (gracefully)."
   echo "The command \"sudo apache2ctl graceful\" should do the restart."
 fi
+echo "Please use \"sudo service rsyslog restart\" to activate logging for mod_wsgi."
 echo "Installation successfully done"
 echo ""
 echo "Post-installation setup:"

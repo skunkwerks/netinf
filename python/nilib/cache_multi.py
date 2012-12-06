@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
 @package nilib
-@file cache_single.py
-@brief Cache module for lightweight dedicated NI NetInf HTTP convergence layer
-@brief (CL) server and NRS server.
+@file cache_multi.py
+@brief Cache module for Apache mod_wsgi NI NetInf HTTP convergence layer (CL)
+@brief server and NRS server.
 @version $Revision: 1.01 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -31,9 +31,15 @@ limitations under the License.
 @details
 Cache manager for NetInf node infrastructure.
 
-This version of the cache is intended for use with multi-threaded single process
-servers.  The cache is maintained in filesystem files.  Integrity is maintained
-bya threading Lock object.  
+This version of the cache is intended for use with multi-threaded multi-process
+servers.  The cache is maintained in filesystem files. Integrity is maintained
+by a threading Lock object and advisory locks on the metadata files. Unlike
+the version in cache_single it does not maintain an in-memory sub-cache as
+mantaining the integrity of this cache would be difficult across multiple
+instances in multiple processes.  Accordingly, the cache manager is essentially
+stateless apart from its knowledge of the logger and the storage_root which
+are set up when the instance is initialized.  It is recommended that only
+instance of this object is created per process.
 
 The NetInf server manages a local cache of published information, NetInf NDOs.
 In the storage_root directory there are two parallel sub-directories: an ni_ndo
@@ -57,16 +63,12 @@ be present depending on whether it was published (or whether the server
 decides to delete the file because of policy constraints - such as space
 limits or DoS avoidance by deleting files after a certain length of time -
 note that these are not currently implemented but may be in future).
-
-To improve performance an in-memory cache is maintained of recently accessed
-items.
 ================================================================================
 @code
 Revision History
 ================
 Version   Date       Author         Notes
-1.1       05/12/2012 Elwyn Davies   Improved comments. Factored out exception
-                                    definitions. Renamed to SingleNetInfCache.
+1.0       06/12/2012 Elwyn Davies   Created from cache_single.
 1.0       04/12/2012 Elwyn Davies   Provide separate dictionary and shared
                                     memory versions for cache_list.
                                     Sorted out cache_put so that it is thread
@@ -78,6 +80,8 @@ Version   Date       Author         Notes
 """
 
 import os
+import fcntl
+import errno
 import sys
 import time
 import json
@@ -85,14 +89,14 @@ import mmap
 import posix_ipc as pipc
 import tempfile
 import threading
+#from exception import IOError
 
 #=== Local package modules ===
 
 from ni import NIname, UnvalidatedNIname, EmptyParams
 from metadata import NetInfMetaData
 
-#==============================================================================#
-__all__ = ['SingleNetInfCache']
+__all__ = ['MultiNetInfCache']
 
 #==============================================================================#
 #=== Exceptions ===
@@ -101,7 +105,7 @@ from ni_exception import InconsistentParams, InvalidMetaData, \
                          CacheEntryExists, NoCacheEntry
 
 #==============================================================================#
-class SingleNetInfCache:
+class MultiNetInfCache:
     """
     @brief Manage the filing system cache of NetInf NDOs.
 
@@ -122,16 +126,10 @@ class SingleNetInfCache:
     uncanny resemblance!).  This is encapsulated in an instance of the
     NetInfMetaData class.
 
-    To optmize access to the cache a small in-memory sub-cache is maintained
-    using a LRU algorithm. This is indexed by the digest of the item and is
-    implemented as a dictionary.  Each entry in the sub-cache is itself a
-    dictionary with the following fields:
-    hash_alg       name of hash_alg used for digest
-    metadata       NetInfMetaData class instance or None
-    content_path   pathname for content file
-    content_exists flag indicating if content file is present
-    last_access    date/time of last access as time in seconds since the epoch as
-                   returned by time.time()
+    When the class is initialized, the cache directory tree is checked out.  If
+    there is a problem an IOError exception is raised.  Otherwise the check
+    retrns the temporary file directory to use which is fed to the tempfile
+    module.
     """
     #==========================================================================#
     # CLASS CONSTANTS
@@ -150,10 +148,6 @@ class SingleNetInfCache:
     # Pathname component identifying sub-directory under storage base for
     # temporary files
     TEMP_DIR       = "/.cache_temp/"
-
-    ##@var MAX_MEMCACHE
-    # Maximu number of entries to maintain in in-memory sub-cache
-    MAX_MEMCACHE   = 20
 
     #==========================================================================#
     # INSTANCE VARIABLES
@@ -175,9 +169,6 @@ class SingleNetInfCache:
     ##@var logerror
     # callable Convenience function for logging error messages
 
-    ##@var memcache
-    # dictionary containing in memory sub-cache
-
     #==========================================================================#
     #=== Constructor ===
     #==========================================================================#
@@ -191,22 +182,13 @@ class SingleNetInfCache:
         """
 
         self.storage_root = storage_root
-
-        # Setup logging functions
-        self.logger   = logger
-        self.loginfo  = logger.info
-        self.logdebug = logger.debug
-        self.logwarn  = logger.warn
-        self.logerror = logger.error
+        self.set_logger(logger)
 
         try:
             self.temp_path = self.check_cache_dirs()
         except IOError, e:
             self.logerror("Cache directory tree not accessible: %s" % str(e))
             raise IOError("Cache directory tree not accessible")
-
-        # Set up empty in memory cache
-        self.memcache = {}
 
         # Lock for cache access
         self.cache_lock = threading.Lock()
@@ -238,63 +220,29 @@ class SingleNetInfCache:
         """
         return "%s%s%s/%s" % (self.storage_root, self.META_DIR, hash_alg, digest)
     
-    #--------------------------------------------------------------------------#
-    def _make_sub_cache_entry(self, digest, hash_alg, metadata,
-                              content_path, content_exists):
-        """
-        @brief Update eitsing entry or make new entry in sub-cache
-        @param digest string key for entry - digest used to name content entries
-        @param hash_alg string name of hash algorithm used for digest
-        @param metadata object NetInfMetaData instance for cache entry
-        @param content_path string path name for content file (may not exist
-        @param content_exists boolean indicates if content_file present
-
-        Delete oldest entry if already MAX_MEMCACHE entries and need new entry
-        Build new dictionary and store in memcache for new entry
-        Update metadata and content_exists flag for updates
-        Record new last_accessed time.
-        """
-        if self._is_entry_in_sub_cache(digest):
-            # Do update
-            ue = self.memcache[digest]
-            if metadata is not None:
-                ue["metadata"]       = metadata
-            if content_exists is not None:
-                ue["content_exists"] = content_exists
-            ue["last_accessed"]      = time.time()
-            return
-        
-        #Otherwise make new entry
-        while len(self.memcache.keys()) >= self.MAX_MEMCACHE:
-            # Delete the entry with the oldest last_accessed field
-            # .items() returns a list of (key, value) pairs
-            # Apply sorted using "last_accessed" field in value (i[1])
-            # Get first (i.e. oldest) entry in resulting sorted list
-            # Use the key (i[0]) to delete the entry.
-            del self.memcache[(sorted(self.memcache.items(),
-                                      key = lambda i : i[1]["last_accessed"])[0])[0]]
-        ne = {}
-        ne["hash_alg"]       = hash_alg
-        ne["metadata"]       = metadata
-        ne["content_path"]   = content_path
-        ne["content_exists"] = content_exists
-        ne["last_accessed"]  = time.time()
-
-        self.memcache[digest] = ne
-        return
-
-    #--------------------------------------------------------------------------#
-    def _is_entry_in_sub_cache(self,digest):
-        """
-        @brief Check if entry for digest is in memory sub-cache
-        @param digest string key for entry - digest used to name content entries
-        @returns boolean indicating if there is an entry in the sub-cache
-        """
-        return digest in self.memcache
-    
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
+    def set_logger(self, logger):
+        """
+        @brief Record current logger and setup convenience functions
+        @param logger object instance of logger object.
+        @return (none)
+
+        Because the logger used in mod_wsgi changes from request to request
+        it is necessary to reset the logger for each request.
+
+        At present warn is not used.
+        """
+        # Setup logging functions
+        self.logger   = logger
+        self.loginfo  = logger.info
+        self.logdebug = logger.debug
+        #self.logwarn  = logger.warn
+        self.logerror = logger.error
+        return
+    
+    #--------------------------------------------------------------------------#
     def check_cache_dirs(self):
         """
         @brief Check existence of object cache directories and create if necessary
@@ -408,7 +356,10 @@ class SingleNetInfCache:
 
         Determine file names for metadata and content file
 
-        Lock the cache
+        Lock the cache.  This is done by using a threading lock to cater for
+        multiple threads in one process and also putting an exclusive flock
+        lock on the metadata file to be accessed so that access is serialized
+        between processes as well.
 
         Check if files exist:
         - Can't have content without metadata
@@ -426,12 +377,11 @@ class SingleNetInfCache:
           - Merge the supplied metadata with the existing metadata
         - If content file now in place record that content exists
 
-        Raise IOerror exception if any IO error occurs
+        Raise IOError exception if any IO error occurs
         - If there is a failure while entering/updating metadata and
           a new content file was created, then remove it again.
 
-        If all goes well, add new or update entry in sub-cache,
-        release cache lock and return 5-tuple with
+        If all goes well, release cache lock and return 5-tuple with
         - new/updated metadata
         - content file name or None
         - boolean indicating if was new entry
@@ -470,10 +420,35 @@ class SingleNetInfCache:
 
         # Need to hold lock as this can be called from several threads
         with self.cache_lock:
-            mf_exists = os.path.isfile(mfn)
+            # This function will create the metadata file if it doesn't
+            # exist already which is what we need here...
+            # This will work fine even if some other process is trying
+            # to do the same
+            try:
+                mfd = os.open(mfn, os.O_CREAT|os.O_RDWR)
+            except IOError, e:
+                err_str = "cache_put: Unable to open metafile %s: %s" % \
+                          (mfn, str(e)) 
+                self.logerror(err_str) 
+                raise sys.exc_info()[0](err_str)
+                
+            # Try to acquire an exclusive lock
+            # This lock should be acquired (eventually) but it is not
+            # guaranteed that the file will still be empty even if
+            # this process did the creation.  However, unless something
+            # has gone badly wrong the file will either be empty because
+            # this process just created it or contain a valid JSON string
+            # because some other process created it and/or wrote to it before
+            # we got the lock even if this process did the creation.
+            # Assume that we have to update the metadata until it appears
+            # that the metafile is empty (below)
+            fcntl.flock(mfd, fcntl.LOCK_EX)
+
+            # At this point this process and thread have exclusive control
+            # of the cache.
+                
             cf_exists = os.path.isfile(cfn)
 
-            new_entry = not mf_exists
             content_added = False
 
             # We are ready to put new or updated cache entry
@@ -504,18 +479,28 @@ class SingleNetInfCache:
             else:
                 content_exists = False
 
-            if mf_exists:
-                err_str = "put_cache: problem reading metadata file %s: " % \
-                          mfn
-                try:
-                    f = open(mfn, "r+b")
-                    js = json.load(f)
-                except Exception, e:
-                    self.logerror(err_str + str(e))
-                    f.close()
-                    if content_added:
-                        os.remove(cfn)
-                    raise sys.exc_info()[0](err_str + str(e))
+            
+            err_str = "put_cache: problem reading metadata file %s: " % \
+                      mfn
+            try:
+                f = os.fdopen(mfd, "r+b")
+                buf = f.read()
+                if (len(buf) == 0):
+                    empty_mf = True
+                else:
+                    empty_mf = False
+                    js = json.loads(buf)
+            except Exception, e:
+                self.logerror(err_str + str(e))
+                f.close()
+                if content_added:
+                    os.remove(cfn)
+                raise sys.exc_info()[0](err_str + str(e))
+            if empty_mf:
+                new_entry = True
+                old_metadata = metadata
+            else:
+                new_entry = False
                 old_metadata = NetInfMetaData()
                 old_metadata.set_json_val(js)
                 if not old_metadata.merge_latest_details(metadata):
@@ -525,22 +510,15 @@ class SingleNetInfCache:
                     if content_added:
                         os.remove(cfn)
                     raise ValueError(err_str)
-                need_open = False
-            else:
-                # Need to open new file for writing
-                need_open = True
-                old_metadata = metadata
                 
             err_str = "put_cache: problem writing metadata file %s: " % mfn
             try:
-                if need_open:
-                    f = open(mfn, "wb+")
-                else:
-                    # Empty existing file
-                    f.seek(0, os.SEEK_SET)
-                    f.truncate(0)
+                # Empty existing file (might be empty already but don't care)
+                f.seek(0, os.SEEK_SET)
+                f.truncate(0)
 
                 json.dump(old_metadata.json_val(), f)
+                fcntl.flock(mfd, fcntl.LOCK_UN)
                 f.close()
             except Exception, e:
                 self.logerror(err_str + str(e))
@@ -548,8 +526,6 @@ class SingleNetInfCache:
                     os.remove(cfn)
                 raise sys.exc_info()[0](err_str + str(e))
 
-            self._make_sub_cache_entry(ni_digest, ni_hash_alg, metadata,
-                                       cfn, content_exists)
             # End of with self.cache_write_lock
         return (old_metadata, cfn if content_exists else None,
                 new_entry, ignore_duplicate)
@@ -566,13 +542,12 @@ class SingleNetInfCache:
 
         Get canonical uri, hash algorithm name and digest from ni_name.
 
-        If digest is in memory sub-cache return values from there
-        Otherwise, check if there is a metadata file:
+        Check if there is a metadata file:
         - if not, raise NoCacheEntry exception
-        - if so, read metadata and put into NetInfMetaData object instance
+        - if so, get a shared flock lock on it so that no other process can
+          get old of it and update the contents while we are reading it, then
+          read metadata and put into NetInfMetaData object instance
         - check if there is a corresponding content file
-
-        Make a new sub-cache entry with the objects retrieved
 
         Return the metadata and the content file name if the file exists
         Note that this file will not currently be deleted as there is no
@@ -593,21 +568,26 @@ class SingleNetInfCache:
             self.logerror(err_str)
             raise sys.exc_info()[0](err_str)
         
-        if self._is_entry_in_sub_cache(ni_digest):
-            sce = self.memcache[ni_digest]
-            sce["last_accessed"] = time.time()
-            return (sce["metadata"],
-                    sce["content_path"] if sce["content_exists"] else None)
-
         # Need to hold lock as this can be called from several threads
         with self.cache_lock:
             # Check if metadata file exists
             mfn = self._metadata_pathname(ni_hash_alg, ni_digest)
-            if not os.path.isfile(mfn):
-                raise NoCacheEntry("cache_get: no metadata file for %s" % ni_url)
+
             try:
-                f = open(mfn, "rb")
-                js = json.load(f)
+                mfd = os.open(mfn, os.O_RDONLY)
+                fcntl.flock(mfd, fcntl.LOCK_SH)
+            except IOError, e:
+                if e.errno == errno.ENOENT:
+                    raise NoCacheEntry("cache_get: no metadata file for %s" % ni_url)
+                else:
+                    raise
+            try:
+                f = os.fdopen(mfd, "rb")
+                buf = f.read()
+                if (len(buf) == 0):
+                    raise NoCacheEntry("cache_get: empty metadata file for %s" % ni_url)
+                js = json.loads(buf)
+                fcntl.flock(mfd, fcntl.LOCK_UN)
                 f.close()
             except Exception, e:
                 err_str = "cache_get: Failed to read JSON string for metadata file %s: %s" % \
@@ -621,13 +601,9 @@ class SingleNetInfCache:
                 self.logerror(err_str)
                 raise InvalidMetaData(err_str)
 
-            # Check is content file exists
+            # Check if content file exists
             cfn = self._content_pathname(ni_hash_alg, ni_digest)
             content_exists = os.path.isfile(cfn)
-
-            # Write a sub-cache entry for what was just retrieved
-            self._make_sub_cache_entry(ni_digest, ni_hash_alg, metadata,
-                                       cfn, content_exists)
 
         return (metadata, cfn if content_exists else None)
         
@@ -776,11 +752,11 @@ if __name__ == "__main__":
                      (storage_root, str(e)))
         sys.exit(1)
         
-    cache_inst = SingleNetInfCache(storage_root, logger)
+    cache_inst = MultiNetInfCache(storage_root, logger)
     f = open(cache_inst.temp_path+"temp", "w")
     f.write("some_text")
     f.close()
-    cache_inst2 = SingleNetInfCache(storage_root, logger)
+    cache_inst2 = MultiNetInfCache(storage_root, logger)
     if os.path.isfile(cache_inst2.temp_path+"temp"):
         print"Temporaries not cleared"
         
@@ -848,7 +824,7 @@ if __name__ == "__main__":
     try:
         m, f, n, i = cache_inst.cache_put(ni_name, md, None)
         print "cache_put: new entry successfully installed in cache: %s" % str(n)
-        print cache_inst.memcache
+        print "Metadata: ", m
     except Exception, e:
         print "Fault: valid cache_put caused exception"
     try:
@@ -868,7 +844,7 @@ if __name__ == "__main__":
         m, f, n, i = cache_inst.cache_put(ni_name, md, None)
         print "cache_put: updated metadata successfully installed in cache"
         print "New: %s; Ignored: %s" % (n, i)
-        print cache_inst.memcache
+        print "Metadata: ", m
     except Exception, e:
         print "Fault: valid cache_put caused exception: %s" % str(e)
     try:
@@ -879,7 +855,6 @@ if __name__ == "__main__":
         print "Metadata: ", m
         print "Content file: ", f
         print "New: ", n, "Ignored: ", i
-        print cache_inst.memcache
     except Exception, e:
         print "Fault: valid cache_put caused exception: %s" % str(e)
     try:
@@ -888,7 +863,6 @@ if __name__ == "__main__":
         print "Metadata: ", m
         print "Content file: ", f
         print "New: ", n, "Ignored: ", i
-        print cache_inst.memcache
     except Exception, e:
         print "Fault: valid cache_update caused exception: %s" % str(e)
 

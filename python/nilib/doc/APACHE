@@ -1,0 +1,152 @@
+This is the sequence of commands needed to setup an Apache server running the 
+nilib Python code via mod_wsgi on Ubuntu
+
+1. Install Apache2
+sudo apt-get install apache2
+The server is started on installation
+You might want to configure the default virtual host but not essential.
+Use 
+sudo service apache2 reload
+to restart after changing the virtual host file if you do.
+
+2. Install WSGI module mod_wsgi
+sudo apt-get install libapache2-mod-wsgi
+The default configuration is good - we might eventually want to change it to
+do some additional preloading of Python code.
+It is automatically configured and started after installation.
+
+3. Check that Python 2.6 or 2.7 is installed 
+python -V
+If not
+sudo apt-get install python2.7
+
+Maybe also
+sudo apt-get install idle-python2.7
+
+4. Install the Python package installer (PIP)
+sudo apt-get install pip-python
+
+5. Install the Redis server
+sudo apt-get isntall redis-server
+This will automatically be started
+Control with
+sudo service redis-server...
+
+6. For handling QR code display some extra libraries are needed
+sudo apt-get install qrencode libqrencode-dev libpng-dev
+There is currently a bug in the installer for the Python imaging
+library (pil) that stops it handling PNG files.  It is unable to
+find the libz.so compression library as it expects it to be in /usr/lib.
+You will normally find libz.so in one of the subdirectories of 
+/usr/lib - typically either i386-linux-gnu or x86_64-linux-gnu -
+use "find /usr/lib -name 'libz*'" to find where on your system.
+Then make a soft link as follows:
+sudo ln -s /usr/lib/<found dir>/libz.so /usr/lib/libz.so
+(Note the same is true for libjpeg and libfreetype)
+At this stage it is probably wise to try to install the Python
+Imaging library:
+sudo pip install pil
+Check at the end that it says 
+--- ZLIB (PNG/ZLIB) support available
+If it says it you already have the latest, force an upgrade
+sudo pip install pil --upgrade
+
+7. Clone the NetInf Sourceforge repository
+Choose a suitable location and make it your current directory
+If you don't have a login on Sourceforge for NetInf (read only access):
+hg clone http://hg.code.sf.net/p/netinf/code netinf-code
+If you are a developer on NetInf (read/write access):
+hg clone ssh://<userid>@hg.code.sf.net/p/netinf/code netinf-code
+
+8. Install the Python nilib module
+cd netinf-code/code/python
+# If you don't want the installer to put the config files etc in /var/niserver
+# export the environment variable NETINF_DATA_DIR with a different value.
+# You need to remember this for later!
+sudo python setup.py install
+
+9. Decide on the setup for the Apache module.  The module is installed
+with the script netinf-code/code/python/nilib/scripts/install-nilib-wsgi.sh.
+The help page for this reads as follows:
+usage: ../scripts/install-nilib-wsgi.sh options
+
+This script installs the Apache virtual host file and data area that allows
+the Python nilib code to be used via mod_wsgi to manage a NetInf NDO cache.
+
+*** The script must be run as root!
+
+OPTIONS:
+    -h              Show this message
+    -u <username>   The name of the user that Apache uses when running
+    -g <groupname>  The name of the group that Apache uses when running
+    -r <path>       The path to be used as the root of the nilib data tree
+    -v <path>       The directory where Apache virtual host files are stored 
+    -n <virthost>   The name to be used for the Apache virtual host
+    -a <auth>       The Apache server name for the virtual host
+    -e <email>      The email address for the webmaster of the virtual host
+    -s <path>       Top level directory where makefile for nilib is located
+    -c <path>       The path where the installed Python nilib has its config data
+    -f <facility>   Name of syslog facility to be used ('local0' ... 'local9')
+    -d <path>       Directory where rsyslog configuration files are stored
+    -l <filepath>   File name for syslog output file (absolute path)
+
+Assumes installation is using rsyslog - if not the syslog will have to be
+configured manually.
+
+Defaults:
+Apache user name           www-data
+Apache group name          www-data
+Root of nilib data tree    /var/netinf
+Virtual host files store   /etc/apache2/sites-available
+File name for virtual host netinf.vhost
+Virtual host server name   netinf.example.com
+Webmaster email address    webmaster@netinf.example.com
+Nilib source top directory /home/nilib/code
+Python installed config in /var/niserver
+Syslog facility name       local0
+Syslog config directory    /etc/rsyslog.d
+Output file for NetInf log /var/netinf/log/log_mod_wsgi
+
+You will almost certainly want to specify -s, -a and -n when the script is run
+You may also have to specify -c if you changed where the Python module is 
+installing its data.  You may want to specify the email contact explicitly (-e).
+You may want to specify where the NDO cache and other files for the Apache 
+server are stored (-r).  Note that this can be more levels deep.  Exceptionally
+or on distrubtions other than Ubuntu you may have to change -u, -g and -v.
+Thus:
+sudo ./install-nilib-wsgi.sh -a blah.netinf.eu -s /home/baggins/netinf-code/code
+-n some.virthost -e rabbit@hole.com
+
+You would probably be wise to make a two line script for this command as you may 
+end up running it a few times.   The script is good about asking if you want the 
+cache preserved and reminding you before it scribbles all over precious data
+(I believe).
+
+10. When you are happy, turn on the virtual host
+sudo service apache2 reload
+Alternatively...
+sudo apache2ctl graceful
+
+11. Restart the rsyslog
+sudo service rsyslog restart
+(Note that 'service rsyslog reload' doesn't get it to work with the new file.) 
+
+12.  Check out mod_wsgi by accessing from a browser:
+http://<netloc>/testapp
+This should deliver a page saying
+Hello World!
+
+13. Then try:
+http://<netloc>/showenv
+This should deliver an environment listing with various NETINF_xxx variables 
+defined.   
+
+14. To initialize the cache or check it is in good shape, access:
+http://<netloc>/checkcache
+This can be done at any time and repeatedly.
+
+15. Finally you are up and running.
+Try 
+http://<netloc>/help.html
+
+

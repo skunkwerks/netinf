@@ -68,19 +68,33 @@ import os
 import sys
 import logging
 from wsgiref.simple_server import make_server
-from nihandler import NIHTTPRequestHandler, check_cache_dirs
+from nihandler import NIHTTPRequestHandler
 
 #==============================================================================#
+# GLOBAL VARIABLES
+
+#=== Configuration Defaults ===
+##@var NETINF_DEFAULTS
+# dictionary default entries to add to environment dictionary if not set by user
 NETINF_DEFAULTS = {
     "NETINF_STORAGE_ROOT": "/tmp/cache",
     "NETINF_GETPUTFORM": "/var/niserver/getputform.html",
     "NETINF_NRSFORM": "/var/niserver/nrsconfig.html",
     "NETINF_FAVICON": "/var/niserver/favicon.ico",
     "NETINF_PROVIDE_NRS": "yes",
+    "NETINF_SYSLOG_FACILITY": "local0",
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"
 }
+
+##@var WSGI_PORT
+# string environment variable specifying port number for this server
+WSGI_PORT = "WSGI_PORT"
+
+##@var WSGI_PORT_DEFAULT
+# integer default port number on which to run the server
+WSGI_PORT_DEFAULT = 8055
 
 #==============================================================================#
 def application(environ, start_response):
@@ -100,7 +114,7 @@ def application(environ, start_response):
         else:
             environ[k] = v
 
-    h = NIHTTPRequestHandler(log_stream=environ['wsgi.errors'])
+    h = NIHTTPRequestHandler(log_facility=environ["NETINF_SYSLOG_FACILITY"])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    
@@ -111,7 +125,8 @@ def py_niwsgiserver():
     Designed as a test harness for development work on the nihandler.py code
     using the WSGI reference code supplied as standard with Python 2.[567].
 
-    This harness runs a 
+    This harness runs the application function above whenever an HTTP request
+    is received on the port set up in WSGI_TEST_PORT
 
     NOTE:  There is a strange 'assert' in the debugging code of the standard
     file wsgiref/handlers.py at around line 179.  This objects to some of the
@@ -135,28 +150,21 @@ def py_niwsgiserver():
     why it should barf on hop-by-hop heasders.
     
     """
-
-    # Create a logger just for check_cache_dirs
-    logger = logging.getLogger("WSGI_server")
-    logger.setLevel(logging.INFO)
-    ch = logging.StreamHandler(sys.stderr)
-    fmt = logging.Formatter("NetInf_start - %(asctime)s %(levelname)s %(message)s")
-    ch.setFormatter(fmt)
-    logger.addHandler(ch)
-
-    storage_root_env = "NETINF_STORAGE_ROOT"
-
-    if storage_root_env in os.environ:
-        storage_root = os.environ[storage_root_env]
+    if WSGI_PORT in os.environ:
+        try:
+            wsgi_port_num = int(os.environ[WSGI_PORT])
+        except ValueError:
+            print("Environment variable %s (%s) cannot be converted to an integer" %
+                  (WSGI_PORT, os.environ[WSGI_PORT]))
+            os._exit(1)
     else:
-        storage_root = NETINF_DEFAULTS[storage_root_env]
+        wsgi_port_num = WSGI_PORT_DEFAULT
 
-    if not check_cache_dirs(storage_root, logger):
-        logger.error("NetInf Cache diretcories are not correctly initialized")
-        sys.exit(1)
-
+    print("Serving for localhost on port %d" % wsgi_port_num)
+    print("Use Ctrl/C to terminate server.")
+    
     httpd = make_server('localhost', 8055, application)
-    # Now it is serve_forever() in instead of handle_request().
+    # Start the server to service request indefinitely.
     # In Windows you can kill it in the Task Manager (python.exe).
     # In Linux a Ctrl-C will do it.
     httpd.serve_forever()
