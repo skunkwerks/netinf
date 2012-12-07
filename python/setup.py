@@ -56,7 +56,7 @@ if datadir_envvar in os.environ:
 	print("Installing NI server data files in %s" % datadir)
 else:
 	datadir = "/var/niserver"
-	print("Installing NI server fata files in default location (%s)" %datadir)
+	print("Installing NI server data files in default location (%s)" %datadir)
 
 setup(name='nilib',
       version='r2.0',
