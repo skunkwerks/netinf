@@ -43,8 +43,9 @@ niserver.py, niserver_main.py and httpshim.py) are *not* used for this
 simple server.  The configuration can be done via OS (shell) environment
 variables - see the NETINF_DEFAULTS dictionary below.  The defaults use
 the same installation directory as the configuration file (/var/niserver)
-and the same dwefault cache storage root (/tmp/cache).  However the log
-is written to stderr - it is not intended that this server be used for
+and the same default cache storage root (/tmp/cache).  The log
+is written to stderr by default but can be modified to write to a file
+or even a syslog stream. It is not intended that this server be used for
 production.  Instead either install mod_wsgi on an Apache server or use
 the BaseHTTPServer version.  It should be quite useful for testing as it
 can be stopped and started very readily.
@@ -52,11 +53,18 @@ can be stopped and started very readily.
 Remember that the storage root directory has to exist and be writeable
 before starting the server.
 
+The log can be sendt to a file by setting NETINF_SYSLOG_FACILITY to a
+file name.  The file path needs to be such that the file can be created
+if not there and can be written.  The file name "local0" ... "local9" are
+treated specially - they are used for syslog streams and the log is sent
+via the syslogger.
+
 @code
 Revision History
 ================
 Version   Date       Author         Notes
-1.0       22/11/2012 Elwyn Davies   Updated name of shim class.
+1.2       07/12/2012 Elwyn Davies   Alter logging setup.
+1.1       22/11/2012 Elwyn Davies   Updated name of shim class.
 1.0       22/11/2012 Elwyn Davies   Created..
 
 @endcode
@@ -82,7 +90,7 @@ NETINF_DEFAULTS = {
     "NETINF_NRSFORM": "/var/niserver/nrsconfig.html",
     "NETINF_FAVICON": "/var/niserver/favicon.ico",
     "NETINF_PROVIDE_NRS": "yes",
-    "NETINF_SYSLOG_FACILITY": "local0",
+    "NETINF_SYSLOG_FACILITY": "", # Use stderr by default
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"

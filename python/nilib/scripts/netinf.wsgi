@@ -73,7 +73,13 @@ def application(environ, start_response):
 
     Create an instance of the handler class and have it handle the request.
     """
-    h = NIHTTPRequestHandler(log_facility="local0")
+    # Determine which syslog stream to use
+    if "NETINF_SYSLOG_FACILITY" in environ:
+        lf = environ["NETINF_LOG_FACILITY"]
+    else:
+        lf = "local0"
+        
+    h = NIHTTPRequestHandler(log_facility=lf)
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    

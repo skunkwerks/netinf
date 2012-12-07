@@ -909,30 +909,57 @@ class wsgiHTTPRequestShim:
     # object instance of NetInfCache interface to cache storage
 
     #--------------------------------------------------------------------------#
-    def __init__(self, log_facility="local0"):
+    def __init__(self, log_facility=None):
         """
         @brief Constructor - sets up logging
         @param log_stream file like object with write capability or None
 
-        Uses the Python logging module
+        Uses the Python logging module.
         Defaults to INFO level logging and sends logging to syslog
         The 'facility' that is used by syslog to determine where to
         store or send logging messages is set according to the
         'log_facility parameter - defaults to 'local0'.  The (r)syslog
         has to be configured to direct the log messages to an appropriate
         file or stream.  See nilib/scripts/install-nilib-wsgi.sh.
+
+        The handler used depends on the value of log_facility.  The value
+        is checked in turn to see if it matches:
+        - Empty string or None: Use StreamHandler directed to stderr.
+        - String "local[0..9]": Use SysLogHandler with this as facility name
+        - Other non-empty string: Use FileHandler with this as file name
+          Fallback to sstderr if file cannot be created or written
         
         Everything else has to be configured on a per request basis.
         """
         # Initialize the logger and handler on first instantiation.
         global netinf_logger, netinf_handler
+        log_creation_ok = True
         if netinf_logger is None:
             netinf_logger = logging.getLogger("NetInf")
-            netinf_handler = SysLogHandler(address="/dev/log", facility=log_facility)
+            if (log_facility is None) or (log_facility == ""):
+                netinf_handler = logging.StreamHandler(sys.stderr)
+            elif log_facility.startswith("local") and \
+                 (len(log_facility) == (len("local") + 1)) and \
+                 log_facility[len("local"):].isdigit():
+                netinf_handler = SysLogHandler(address="/dev/log",
+                                               facility=log_facility)
+            else:
+                try:
+                    # This will barf if the file cannot be created/written
+                    netinf_handler = logging.FileHandler(log_facility)
+                except IOError, e:
+                    # Use a default so can tell the user what happened
+                    log_creation_ok = False
+                    netinf_handler = logging.StreamHandler(sys.stderr)
+                    err_str = "FileHandler creation failed for %s : %s; Using default stderr" % \
+                              (log_facility, str(e))                    
+                
             fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(process)d %(threadName)s %(message)s")
             netinf_handler.setFormatter(fmt)
             netinf_logger.addHandler(netinf_handler)
-        
+            if not log_creation_ok:
+                netinf_logger.error("Logger setup failed: %s" % err_str)
+                
         self.logger = netinf_logger
         self.logger.setLevel(logging.INFO)
         self.log_handler = netinf_handler
