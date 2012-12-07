@@ -601,7 +601,8 @@ class wsgiHTTPRequestShim:
         environ["NETINF_NRSFORM"] = "/var/niserver/nrsconfig.html"
         environ["NETINF_FAVICON"] = "/var/niserver/favicon.ico"
         environ["NETINF_PROVIDE_NRS"] = "no"
-        environ["NETINF_SYSLOG_FACILITY"]: "local0"
+        environ["NETINF_LOG_FACILITY"]: "local0" # or "" (gives stderr) 
+                                                 # or file path
 
         # Optionally...
         environ["NETINF_LOG_LEVEL"] = "NETINF_LOG_INFO"

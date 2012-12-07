@@ -46,7 +46,7 @@ SERVER=netinf.example.com
 EMAIL=webmaster@${SERVER}
 NILIB_SRC=/home/nilib/code
 NILIB_PYTHON_CONF=/var/niserver
-NETINF_SYSLOG_FACILITY=local0
+NETINF_LOG_FACILITY=local0
 SYSLOG_CONFIG_DIR=/etc/rsyslog.d
 NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
 
@@ -61,7 +61,7 @@ Virtual host server name   $SERVER
 Webmaster email address    $EMAIL
 Nilib source top directory $NILIB_SRC
 Python installed config in $NILIB_PYTHON_CONF
-Syslog facility name       $NETINF_SYSLOG_FACILITY
+Syslog facility name       $NETINF_LOG_FACILITY
 Syslog config directory    $SYSLOG_CONFIG_DIR
 Output file for NetInf log $NETINF_SYSLOG
 
@@ -146,7 +146,7 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
             NILIB_PYTHON_CONF=$OPTARG
             ;;
         f)
-            NETINF_SYSLOG_FACILITY=$OPTARG
+            NETINF_LOG_FACILITY=$OPTARG
             ;;
         d)
             SYSLOG_CONFIG_DIR=$OPTARG
@@ -315,7 +315,7 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 	SetEnv NETINF_NRSFORM ${NILIB_PATH}/www/nrsconfig.html
 	SetEnv NETINF_FAVICON ${NILIB_PATH}/www/favicon.ico
 	SetEnv NETINF_PROVIDE_NRS no
-	SetEnv NETINF_SYSLOG_FACILITY $NETINF_SYSLOG_FACILITY
+	SetEnv NETINF_LOG_FACILITY $NETINF_LOG_FACILITY
 	SetEnv NETINF_LOG_LEVEL NETINF_LOG_INFO
 
 	<Directory ${NILIB_PATH}/wsgi-apps/>
@@ -347,7 +347,7 @@ echo "Creating rsyslog configuration file ${SYSLOG_CONFIG_DIR}/60-netinf.conf ..
 cat <<EOF >${SYSLOG_CONFIG_DIR}/60-netinf.conf
 # Logging setup used for NetInf mod_wsgi application in Apache
 # Write all messages to single file as a starting position
-${NETINF_SYSLOG_FACILITY}.* ${NETINF_SYSLOG}
+${NETINF_LOG_FACILITY}.* ${NETINF_SYSLOG}
 EOF
 
 echo "Checking if script to enable virtual host exists..."

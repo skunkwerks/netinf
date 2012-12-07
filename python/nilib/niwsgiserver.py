@@ -53,7 +53,7 @@ can be stopped and started very readily.
 Remember that the storage root directory has to exist and be writeable
 before starting the server.
 
-The log can be sendt to a file by setting NETINF_SYSLOG_FACILITY to a
+The log can be sendt to a file by setting NETINF_LOG_FACILITY to a
 file name.  The file path needs to be such that the file can be created
 if not there and can be written.  The file name "local0" ... "local9" are
 treated specially - they are used for syslog streams and the log is sent
@@ -90,7 +90,7 @@ NETINF_DEFAULTS = {
     "NETINF_NRSFORM": "/var/niserver/nrsconfig.html",
     "NETINF_FAVICON": "/var/niserver/favicon.ico",
     "NETINF_PROVIDE_NRS": "yes",
-    "NETINF_SYSLOG_FACILITY": "", # Use stderr by default
+    "NETINF_LOG_FACILITY": "", # Use stderr by default
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"
@@ -122,7 +122,7 @@ def application(environ, start_response):
         else:
             environ[k] = v
 
-    h = NIHTTPRequestHandler(log_facility=environ["NETINF_SYSLOG_FACILITY"])
+    h = NIHTTPRequestHandler(log_facility=environ["NETINF_LOG_FACILITY"])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    

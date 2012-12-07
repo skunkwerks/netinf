@@ -43,7 +43,7 @@ SetEnv NETINF_GETPUTFORM <file path name>
 SetEnv NETINF_NRSFORM <file path name>
 SetEnv NETINF_FAVICON <file path name>
 SetEnv NETINF_PROVIDE_NRS <boolean> [yes/true/1|no/false/0]
-SetEnv NETINF_SYSLOG_FACILITY <facility name> (e.g., "local0")
+SetEnv NETINF_LOG_FACILITY <facility name> (e.g., "local0")
 SetEnv NETINF_LOG_LEVEL <log level>
 Log level can be any of NETINF_LOG_INFO, ..._ERROR, ..._WARN or ..._DEBUG
 Default is NETINF_LOG_INFO if this variable is not defined.
@@ -74,7 +74,7 @@ def application(environ, start_response):
     Create an instance of the handler class and have it handle the request.
     """
     # Determine which syslog stream to use
-    if "NETINF_SYSLOG_FACILITY" in environ:
+    if "NETINF_LOG_FACILITY" in environ:
         lf = environ["NETINF_LOG_FACILITY"]
     else:
         lf = "local0"

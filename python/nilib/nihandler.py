@@ -177,6 +177,8 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       07/12/2012 Elwyn Davies   Corrected merging of meta parameter and publish ref.
+                                    Fixed two instances of leng that should be len.
 1.3       06/12/2012 Elwyn Davies   Corrected interface to check_cache_dirs.
 1.2       04/12/2012 Elwyn Davies   Major surgery to manage the NDO cache through
                                     a separate class (which of course should have
@@ -1459,7 +1461,6 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         # by a Python dictionary, checking that it is a dictionary (object) in case
         # the user has supplied a garbled piece of JSON.
         extrameta = {}
-        extrameta["publish"] = self.PUBLISH_REF
         if "ext" in form.keys():
             ext_str = form["ext"].value
             if ext_str != "":
@@ -1479,6 +1480,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                                  ext_str)
                     self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
                     return
+        # Add in our publisher reference
+        extrameta["publish"] = self.PUBLISH_REF
 
         # Check that the response type is one we expect - default is JSON if not explicitly requested
         if "rform" in form.keys():
@@ -2450,14 +2453,14 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             info1 = ("File %s and metadata stored in new cache entry" + \
                      " as '%s' (%s)") % (form["octets"].filename,
                                          ni_uri,
-                                         file_leng_str)
+                                         file_len_str)
             info2 = "Object and metadata cached."
             status = 201
         elif ndo_in_cache:
             info1 = ("File %s stored in cache and metadata updated" + \
                      " as '%s' (%s)") % (form["octets"].filename,
                                          ni_uri,
-                                         file_leng_str)
+                                         file_len_str)
             info2 = "Object cached and metadata updated."
             status = 201
         elif first_store:
