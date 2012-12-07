@@ -206,29 +206,37 @@ def pubone(file_name,alg,host):
             print("Error: Could not decode JSON report '%s': %s" % (payload,
                                                                             str(e)))
             nilog("%s, PUBLISH rx error bad json decode" % msgid);
+        return
 
     if verbose: 
         print json.dumps(json_report, indent = 4)
     etime=time.time()
     duration=etime-stime
-    nilog("%s,PUBLISH rx fine,ni,%s,time,%10.10f" % (msgid,json_report["ni"],duration*1000))
+    niuri=json_report["ni"]
+    nilog("%s,PUBLISH rx fine,ni,%s,size,%d,time,%10.10f" % (msgid,niuri,fsize,duration*1000))
 
-    return
+    return niuri
 
 #===============================================================================#
 def pubdirs(path,alg,host):
     from os.path import join
     count = 0
     max = 4
+    goodlist = []
+    badlist = []
     for root, dirs, files in os.walk(path):
         for name in files:
-            pubone(join(root,name),alg,host)
+            niuri=pubone(join(root,name),alg,host)
+            if niuri is None:
+                badlist.append(join(root,name))
+            else:
+                goodlist.append(niuri)
             ## just do a few for now to test stuff
             count = count + 1
             if count==max:
-                return count
+                return (count,goodlist,badlist)
 
-    return count
+    return (count,goodlist,badlist)
 
 #===============================================================================#
 def py_nipubdir():
@@ -286,7 +294,10 @@ def py_nipubdir():
     nilog("Starting nipubdir,dir,%s,to,%s,alg,%s,count,0" % (options.dir_name,options.host,hash_alg))
 
     # loop over all files below directory and putone() for each we find
-    count=pubdirs(options.dir_name,hash_alg,options.host)
+    count,goodlist,badlist=pubdirs(options.dir_name,hash_alg,options.host)
+
+    # print goodlist
+    # print badlist
 
     nilog("Finished nipubdir,dir,%s,to,%s,alg,%s,count,%d" % (options.dir_name,options.host,hash_alg,count))
 
