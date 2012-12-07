@@ -1,0 +1,12 @@
+#!/bin/bash
+# zap the netinf filesys node here
+
+cd /var/netinf/filesys
+rm -rf cache/meta_dir/sha-256/*
+rm -rf cache/ndo_dir/sha-256/*
+rm -rf log/log_mod_wsgi
+sudo -u www-data touch log/log_mod_wsgi
+service rsyslog restart
+/etc/init.d/apache2 restart
+cd /tmp
+wget http://filesys.netinf.eu/netinfproto/checkcache
