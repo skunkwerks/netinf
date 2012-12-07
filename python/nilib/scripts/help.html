@@ -1,0 +1,34 @@
+<title>
+HELP for Nilib Python Server
+</title>
+<body>
+<h1>HELP for Nilib Python Server</h1>
+<h2>The server responds to the following at filesys.netinf.eu:
+<h3>GET requests on paths:
+<ul>
+<li> /help.html</li>
+<li>/.well-known/ni[h]/<digest algorithm id>/<digest>,</li>
+<li>/ni_cache/<digest algorithm id>;<digest>,</li>
+<li>/ni_meta/<digest algorithm id>;<digest>,</li>
+<li>/getputform.html,</li>
+<li>/nrsconfig.html, (when running NRS server)</li>
+<li>/favicon.ico, and</li>
+<li>/netinfproto/list</li>
+<li>/netinfproto/checkcache</li>
+</ul>
+<h3>POST on paths (basic system):</h3>
+<ul>
+<li>/netinfproto/get,</li>
+<li>/netinfproto/publish,</li>
+<li>/netinfproto/put, and</li>
+<li>/netinf/search</li>
+</ul>
+<h3>POST on paths (when running NRS server):</h3>
+<li>/netinfproto/nrsconf,</li>
+<li>/netinfproto/nrslookup,</li>
+<li>/netinfproto/nrsdelete, and</li>
+<li>/netinfproto/nrsvals</li>
+</ul>
+<h2>Documentation:</h2>
+Documentation for the Python nilib code can be accessed at /doc.
+</body>
