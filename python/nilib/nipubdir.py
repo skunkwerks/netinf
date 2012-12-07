@@ -92,6 +92,9 @@ def pubone(file_name,alg,host):
     # verbose = True
     verbose = False
 
+    # record start time of this
+    stime=time.time()
+
     # Create NIdigester for use with form encoder and StreamingHTTP
     ni_digester = NIdigester()
     # Install the template URL built from the scheme, the authority and the digest algorithm
@@ -143,11 +146,12 @@ def pubone(file_name,alg,host):
     http_url = "http://%s/netinfproto/publish" % host
     # debug("Accessing: %s" % http_url)
     # Send POST request to destination server
-    nilog("%s, PUBLISH tx %s to %s" % (msgid,file_name, http_url))
+    fsize=os.path.getsize(file_name)
+    nilog("%s,PUBLISH tx,file,%s,size,%d,to,%s" % (msgid,file_name,fsize,host))
     try:
         req = urllib2.Request(http_url, datagen, headers)
     except Exception, e:
-        nilog("%s, PUBLISH tx error" % msgid);
+        nilog("%s,PUBLISH tx error" % msgid);
         if verbose:
             print("Error: Unable to create request for http URL %s: %s" %
                   (http_url, str(e)))
@@ -157,7 +161,7 @@ def pubone(file_name,alg,host):
     try:
         http_object = urllib2.urlopen(req)
     except Exception, e:
-        nilog("%s, PUBLISH rx error" % msgid);
+        nilog("%s,PUBLISH rx error" % msgid);
         if verbose:
             print("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
         f.close()
@@ -180,7 +184,7 @@ def pubone(file_name,alg,host):
         if verbose:
             debug("Unsuccessful publish request returned HTTP code %d" %
                   http_result) 
-        nilog("%s, PUBLISH rx error bad response status %d" % (msgid,http_result));
+        nilog("%s,PUBLISH rx error bad response status,%d" % (msgid,http_result));
         return
     # Check content type of returned message matches requested response type
     ct = http_object.headers["content-type"]
@@ -188,7 +192,7 @@ def pubone(file_name,alg,host):
         if verbose:
             debug("Error: Expecting JSON coded (application/json) "
                       "response but received Content-Type: %s" % ct)
-        nilog("%s, PUBLISH rx error bad content type %s" % (msgid,ct));
+        nilog("%s,PUBLISH rx error bad content type,%s" % (msgid,ct));
         return
     # If output of response is expected, print in the requested format
     if verbose:
@@ -205,7 +209,9 @@ def pubone(file_name,alg,host):
 
     if verbose: 
         print json.dumps(json_report, indent = 4)
-    nilog("%s, PUBLISH rx fine, %s" % (msgid,json_report["ni"]))
+    etime=time.time()
+    duration=etime-stime
+    nilog("%s,PUBLISH rx fine,ni,%s,time,%10.10f" % (msgid,json_report["ni"],duration*1000))
 
     return
 
@@ -220,9 +226,9 @@ def pubdirs(path,alg,host):
             ## just do a few for now to test stuff
             count = count + 1
             if count==max:
-                return
+                return count
 
-    return
+    return count
 
 #===============================================================================#
 def py_nipubdir():
@@ -277,12 +283,12 @@ def py_nipubdir():
     else: 
         hash_alg=options.hash_alg
 
-    nilog("Starting nipubdir on %s to %s with %s" % (options.dir_name,options.host,options.hash_alg))
+    nilog("Starting nipubdir,dir,%s,to,%s,alg,%s,count,0" % (options.dir_name,options.host,hash_alg))
 
     # loop over all files below directory and putone() for each we find
-    pubdirs(options.dir_name,hash_alg,options.host)
+    count=pubdirs(options.dir_name,hash_alg,options.host)
 
-    nilog("Finished nipubdir on %s to %s with %s" % (options.dir_name,options.host,options.hash_alg))
+    nilog("Finished nipubdir,dir,%s,to,%s,alg,%s,count,%d" % (options.dir_name,options.host,hash_alg,count))
 
     sys.exit(0)
 
