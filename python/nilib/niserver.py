@@ -225,7 +225,7 @@ except ImportError:
 import netinf_ver
 import ni
 from nihandler import NIHTTPRequestHandler
-from cache_single import NetInfCache
+from cache_single import SingleNetInfCache as NetInfCache
 
 #==============================================================================#
 # List of classes/global functions in file

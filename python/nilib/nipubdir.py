@@ -167,6 +167,8 @@ def pubone(file_name,alg,host):
         f.close()
         return
     f.close()
+    if verbose:
+        print("Digester result: %s" % octet_param.get_url())
     # Get message headers
     http_info = http_object.info()
     http_result = http_object.getcode()
