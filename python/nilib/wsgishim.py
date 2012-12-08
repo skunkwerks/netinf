@@ -601,7 +601,7 @@ class wsgiHTTPRequestShim:
         environ["NETINF_NRSFORM"] = "/var/niserver/nrsconfig.html"
         environ["NETINF_FAVICON"] = "/var/niserver/favicon.ico"
         environ["NETINF_PROVIDE_NRS"] = "no"
-        environ["NETINF_LOG_FACILITY"]: "local0"
+        environ["NETINF_SYSLOG_FACILITY"]: "local0"
 
         # Optionally...
         environ["NETINF_LOG_LEVEL"] = "NETINF_LOG_INFO"
@@ -1157,6 +1157,11 @@ class wsgiHTTPRequestShim:
                 self.send_error(500, "Unable to initialize NDO cache")
                 return self.trigger_response(start_response)            
         self.cache = netinf_cache
+
+        # SF more logging
+        self.stime=time.time()
+        self.msgid="dunno"
+        self.psize=-1
         
         self.loginfo("Starting req from %s %s %s" % (self.client_address,
                                                      self.command,
@@ -1228,10 +1233,13 @@ class wsgiHTTPRequestShim:
             if ((not self.ready_to_iterate) or
                 (self.resp_curr_index >= len(self.response_body))):
 
-                self.loginfo("Finished req from %s %s %s" % (self.client_address,
+                # SF
+                etime=time.time()
+                duration=etime-self.stime
+                self.loginfo("Finished req from %s %s %s ,dur,%10.10f,msgid,%s,size,%d" % (self.client_address,
                                                              self.command,
-                                                             self.path))
-
+                                                             self.path,
+                                                             duration*1000, self.msgid,self.psize)) 
                 # This probably does nothing for SysLogHandler
                 self.log_handler.flush()
                 
