@@ -235,8 +235,8 @@ def pubdirs(path,alg,host):
                 goodlist.append(niuri)
             ## just do a few for now to test stuff
             count = count + 1
-            if count==max:
-                return (count,goodlist,badlist)
+            # if count==max:
+                # return (count,goodlist,badlist)
 
     return (count,goodlist,badlist)
 

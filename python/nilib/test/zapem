@@ -1,11 +1,15 @@
 #!/bin/bash
 # zap the netinf filesys node here
 
-cd /var/netinf/filesys
-rm -rf cache/meta_dir/sha-256/*
-rm -rf cache/ndo_dir/sha-256/*
-rm -rf log/log_mod_wsgi
-sudo -u www-data touch log/log_mod_wsgi
+set -x
+
+cd /var/netinf/filesys/cache/meta_dir
+rm -rf sha-256
+sudo -u www-data mkdir sha-256
+cd /var/netinf/filesys/cache/ndo_dir
+rm -rf sha-256
+sudo -u www-data mkdir sha-256
+rm /var/netinf/filesys/log/log_mod_wsgi
 service rsyslog restart
 /etc/init.d/apache2 restart
 cd /tmp
