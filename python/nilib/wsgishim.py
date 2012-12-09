@@ -1157,7 +1157,12 @@ class wsgiHTTPRequestShim:
                 self.send_error(500, "Unable to initialize NDO cache")
                 return self.trigger_response(start_response)            
         self.cache = netinf_cache
-        
+
+        # For logging
+        self.stime = time.time()
+        self.msgid = "dunno"
+        self.req_size = -1
+            
         # Call appropriate command processor
         mname = 'do_' + self.command
         if not hasattr(self, mname):
@@ -1224,8 +1229,17 @@ class wsgiHTTPRequestShim:
             if ((not self.ready_to_iterate) or
                 (self.resp_curr_index >= len(self.response_body))):
 
-                self.loginfo("end,req,%s,from,%s" % (self.command,
-                                                     self.client_address))
+                # Calculate time taken for request
+                etime = time.time()
+                duration = etime - self.stime
+
+                self.loginfo("end,req,%s,path,%s,from,%s,dur,%10.10f,msgid,%s,size,%d" %
+                             (self.command,
+                              self.path,
+                              self.client_address,
+                              duration * 1000,
+                              self.msgid,
+                              self.req_size))
 
                 # This probably does nothing for SysLogHandler
                 self.log_handler.flush()

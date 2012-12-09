@@ -1413,6 +1413,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         if not form_ok:
             return
 
+        self.msgid = fov["msgid"]
+
         self.logdebug("/netinfproto/get: URI: '%s', msgid: '%s', 'ext': '%s'" %
                       (fov["URI"], fov["msgid"], fov["ext"]))
 
@@ -1440,6 +1442,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         self.loginfo("form_get,uri,%s,ctype,%s,size,%s" % (ni_name.get_canonical_ni_url(),
                                                            metadata.get_ctype(),
                                                            metadata.get_size()))
+
+        # Record size for higher level logging
+        self.req_size = int(metadata.get_size())
 
         # send_get_header returns open file pointer to file to be returned
         # (or None)
@@ -1499,6 +1504,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         form_ok, fov = self.check_form_data(form, mandatory, optional, self.path)
         if not form_ok:
             return
+
+        self.msgid = fov["msgid"]
 
         # Record timestamp for this operation
         timestamp = self.metadata_timestamp_for_now()
@@ -1632,6 +1639,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                 hash_function.update(buf)
                 file_len += len(buf)
             f.close()
+
+            # Record for logging at higher level
+            self.req_size = file_len
             self.logdebug("Finished copying")
 
             # Check the file was completely sent (not interrupted or cancelled by user
@@ -1775,6 +1785,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                                             "netinfproto/search")
         if not form_ok:
             return
+
+        self.msgid = fov["msgid"]
 
         # Check that the response type is one we expect - default is JSON if not explicitly requested
         if "rform" in form.keys():

@@ -121,6 +121,7 @@ Version   Date       Author         Notes
 #==============================================================================#
 #=== Standard modules for Python 2.[567].x distributions ===
 import threading
+import time
 import shutil
 from BaseHTTPServer import BaseHTTPRequestHandler
 
@@ -296,13 +297,28 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.nrs_redis = self.server.nrs_redis
         self.cache = self.server.cache
 
+        # For logging
+        self.stime = time.time()
+        self.msgid = "dunno"
+        self.req_size = -1
+        self.command = "DUMMY"
+            
         self.loginfo("new_handler")
 
         # Delegate to super class handler
         BaseHTTPRequestHandler.handle(self)
 
-        self.loginfo("end,req,%s,from,%s" % (self.command,
-                                             self.client_address))
+        # Calculate time taken for request
+        etime = time.time()
+        duration = etime - self.stime
+
+        self.loginfo("end,req,%s,path,%s,from,%s,dur,%10.10f,msgid,%s,size,%d" %
+                     (self.command,
+                      self.path,
+                      self.client_address,
+                      duration * 1000,
+                      self.msgid,
+                      self.req_size))
 
         # Tell listener thread has finished
         self.server.remove_thread(self)
