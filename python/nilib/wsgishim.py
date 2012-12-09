@@ -954,7 +954,7 @@ class wsgiHTTPRequestShim:
                     err_str = "FileHandler creation failed for %s : %s; Using default stderr" % \
                               (log_facility, str(e))                    
                 
-            fmt = logging.Formatter("mod_wsgi.netinf - %(asctime)s %(levelname)s %(process)d %(threadName)s %(message)s")
+            fmt = logging.Formatter(",time,%(asctime)s,level,%(levelname)s,proc,%(process)d,req,%(threadName)s,%(message)s")
             netinf_handler.setFormatter(fmt)
             netinf_logger.addHandler(netinf_handler)
             if not log_creation_ok:
@@ -976,9 +976,9 @@ class wsgiHTTPRequestShim:
 
         if thread:
             if threading.current_thread().name != "MainThreads":
-                threading.current_thread().name = "Req-%d" % self.unique_id
+                threading.current_thread().name = "R%d" % self.unique_id
 
-        self.loginfo("Handler for new request created")
+        self.loginfo("new_handler")
 
         return
 
@@ -1158,10 +1158,6 @@ class wsgiHTTPRequestShim:
                 return self.trigger_response(start_response)            
         self.cache = netinf_cache
         
-        self.loginfo("Starting req from %s %s %s" % (self.client_address,
-                                                     self.command,
-                                                     self.path))
-
         # Call appropriate command processor
         mname = 'do_' + self.command
         if not hasattr(self, mname):
@@ -1228,9 +1224,8 @@ class wsgiHTTPRequestShim:
             if ((not self.ready_to_iterate) or
                 (self.resp_curr_index >= len(self.response_body))):
 
-                self.loginfo("Finished req from %s %s %s" % (self.client_address,
-                                                             self.command,
-                                                             self.path))
+                self.loginfo("end,req,%s,from,%s" % (self.command,
+                                                     self.client_address))
 
                 # This probably does nothing for SysLogHandler
                 self.log_handler.flush()
@@ -1326,7 +1321,7 @@ class wsgiHTTPRequestShim:
         self.send_header('Connection', 'close')
         self.end_headers()
         self.error_sent = True
-        self.loginfo("code: %d, message: %s", code, message)
+        self.loginfo("err,%d,msg,%s" %(code, message))
         return
 
     #--------------------------------------------------------------------------#
@@ -1402,8 +1397,7 @@ class wsgiHTTPRequestShim:
 
         """
 
-        self.loginfo('"%s" %s %s',
-                         self.requestline, str(code), str(size))
+        self.loginfo('rslt,%s,size,%s'% (str(code), str(size)))
 
     #--------------------------------------------------------------------------#
     def send_file(self, source):
@@ -1423,7 +1417,7 @@ class wsgiHTTPRequestShim:
         
         # Verify this is really a file-like readable (StringIO possibly)
         if not hasattr(source, "read"):
-            self.logerror("Arument to send_file is not a file: %s" % str(source))
+            self.logerror("Argument to send_file is not a file: %s" % str(source))
             return
         
         self.response_body.append(source)

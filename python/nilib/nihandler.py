@@ -177,8 +177,6 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
-1.4       07/12/2012 Elwyn Davies   Corrected merging of meta parameter and publish ref.
-                                    Fixed two instances of leng that should be len.
 1.3       06/12/2012 Elwyn Davies   Corrected interface to check_cache_dirs.
 1.2       04/12/2012 Elwyn Davies   Major surgery to manage the NDO cache through
                                     a separate class (which of course should have
@@ -352,8 +350,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
     NETINF_LIST     = "/netinfproto/list"
     
     ##@var ALG_QUERY
-    # Query string prefix for selecting the digest algorithm when listing the cache.
-    ALG_QUERY       = "?alg="
+    # Query string item for selecting the digest algorithm when listing the cache.
+    ALG_QUERY       = "alg"
     
     ##@var NETINF_CHECK
     # URL path to invoke check/creation of cache directory tree via GET
@@ -576,7 +574,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                 can be read or None if the response body has already been
                 transferred (using send_string or send_file).
         """ 
-        self.logdebug("GET or HEAD with path %s" % self.path)
+        self.loginfo("start,req,%s,from,%s,path,%s" % (self.command,
+                                                       self.client_address,
+                                                       self.path))
 
         # Record presence or absence of query string and fragments
         has_query_string, has_fragments = \
@@ -704,6 +704,11 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(500, str(e))
             return None
 
+        self.loginfo("%s,uri,%s,ctype,%s,size,%s" % (prefix_op.op_name,
+                                                     ni_name.get_canonical_ni_url(),
+                                                     metadata.get_ctype(),
+                                                     metadata.get_size()))
+
         # The send_op item in the dictionary is an NIHTTPRequestHandler
         # unbound function instance - so give it the self parameter here
         return prefix_op.send_op(self, ni_name, metadata, content_file, None)
@@ -741,28 +746,51 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         """
         # Determine which directories to list - assume all by default
         algs_list = NIname.get_all_algs()
-        qo = len(self.NETINF_LIST)
-        if (len(path) > qo):
-            # Check if there is a query string
+        query_dict = {}
+        rform = "html"
+        ql = len(self.NETINF_LIST)
+        if (len(path) > ql):
             # Note: the caller has already checked there is no fragment part
-            if not path[qo:].startswith(self.ALG_QUERY):
-                # Not a valid query string
-                if (path[qo] == '?'):
-                    self.send_error(406, "Unrecognized query string in request")
-                else:
-                    self.send_error(400, "Unimplemented request")
+            # Check if there is a query string
+            if (path[ql] != '?'):
+                self.loginfo("Unimplemented request: %s" % path) 
+                self.send_error(404, "Unimplemented request %s" % path)
                 return None
-            if path[(qo + len(self.ALG_QUERY)):] not in algs_list:
-                self.send_error(404, "Cache for unknown algorithm requested")
-                return
-            algs_list = [ path[(qo + len(self.ALG_QUERY)):]]
+            if (len(path) == (ql + 1)):
+                self.loginfo("Empty query string: %s" % path)
+                self.send_error(400, "Empty query string: %s" % path)
+                return None
+            # Turn the query string into a dictionary
+            qi = path[(ql + 1):].split("&")
+            for i in qi:
+                if len(i) == 0:
+                    self.loginfo("Empty query item in query string: %s" % path)
+                    self.send_error(400, "Empty query item in query string: %s" %
+                                    path)
+                    return
+                qp = i.split("=")
+                if len(qp) == 1:
+                    query_dict[qp[0]] = ""
+                elif len(qp) > 2:
+                    self.loginfo("Bad query item in query string: %s" % path)
+                    self.send_error(400, "Bad query item in query string: %s" %
+                                    path)
+                    return
+                else:
+                    query_dict[qp[0]] = qp[1] 
+                    
+            if (self.ALG_QUERY in query_dict):
+                if (query_dict[self.ALG_QUERY] not in algs_list):
+                    self.send_error(404, "Cache for unknown algorithm requested")
+                    return
+                else:
+                    algs_list = [ query_dict[self.ALG_QUERY]]
 
-        # Set up a StringIO buffer to gather the HTML
-        f = StringIO()
-        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
-        f.write("<html>\n<title>Named Data Object Cache Listing for server %s</title>\n" % self.server_name)
-        f.write("<body>\n<h1>Named Data Object Cache Listing for server %s</h1>\n" % self.server_name)
-        f.write("<hr>\n<ul>")
+            rform = query_dict.get("rform", "html")
+            if not ((rform == "html") or (rform == "plain")): 
+                self.loginfo("Unrecognized response format for showcache: %s" % path)
+                self.send_error(400, "Unrecognized response format: %s" % path)
+                return
 
         # Server access netloc
         if (self.server_port == 80):
@@ -776,6 +804,57 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         if cache_list is None:
             self.send_error(500, "Unable to list Named Data Object cache.")
             return None
+        
+        self.loginfo("showcache,algs,%s,rform,%s" % (";".join(algs_list), rform))
+
+        # Do simple plain output if requested
+        if rform == "plain":
+            # Set up a StringIO buffer to gather the text
+            f = StringIO()
+            os = "Named Data Object Cache Listing for server %s\n" % netloc
+            f.write(os)
+            f.write("=" * (len(os) - 1))
+            f.write("\n\n")
+
+            for alg in algs_list:
+                all_ordered = sorted(cache_list[alg],
+                                     key = lambda k: k["dgst"].lower())
+            
+                os = "Cache Listing for Algorithm %s\n" % alg
+                f.write(os)
+                f.write("-" * (len(os) - 1))
+                f.write("\n\n")
+
+                for name in sorted(cache_list[alg],
+                                   key = lambda k: k["dgst"].lower()):
+                    dgst = name["dgst"]
+                    # Indicate what is available
+                    if name["ce"]:
+                        f.write('Metadata and content: %s;%s\n' % (alg, dgst))
+                    else:
+                        f.write('Metadata only:        %s;%s\n' % (alg, dgst))
+                                        
+                f.write("\n")
+                
+            length = f.tell()
+            f.seek(0)
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Content-Disposition", "inline")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Expires", self.date_time_string(time.time()+(24*60*60)))
+            self.send_header("Last-Modified", self.date_time_string())
+            self.end_headers()
+            return f
+
+        # Otherwise do HTML output
+                                          
+        # Set up a StringIO buffer to gather the HTML
+        f = StringIO()
+        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
+        f.write("<html>\n<title>Named Data Object Cache Listing for server %s</title>\n" % self.server_name)
+        f.write("<body>\n<h1>Named Data Object Cache Listing for server %s</h1>\n" % self.server_name)
+        f.write("<hr>\n<ul>")
 
         for alg in algs_list:
             all_ordered = sorted(cache_list[alg],
@@ -844,6 +923,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(404, "Cannot read %s file" % err_string)
             f.close()
             f = None
+
+        self.loginfo("file,%s,length,%d" % (pathname, file_len))
+                     
         return f
 
     #--------------------------------------------------------------------------#
@@ -900,7 +982,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
 
         Note that because of the MIME possible boundaries and sending from
         several sources, for this case the sending of the HTTP body is
-        handled in this routine instead of passing  file object back to
+        handled in this routine instead of passing a file object back to
         top level of handler.
         """
         f = None
@@ -1025,8 +1107,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         ni_name.  The metadata for the entry and (if present) the file name
         of the content_file are passed in as parameters.
 
-        Note: The ni_name and content_file are not used in this method but
-        the interface is common for various GET patterns that result in
+        Note: The ni_name, content_file and msgid are not used in this method 
+        but the interface is common for various GET patterns that result in
         various send_xx_header methods called via the alg_digest_get_dict.
 
         The parameters are all nominally validated and the cache entry
@@ -1065,8 +1147,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         ni_name.  The metadata for the entry and (if present) the file name
         of the content_file are passed in as parameters.
 
-        Note: The metadata and content_file are not used in this method but
-        the interface is common for various GET patterns that result in
+        Note: The metadata, content_file and msgid are not used in this method
+        but the interface is common for various GET patterns that result in
         various send_xx_header methods called via the alg_digest_get_dict.
 
         The parameters are all nominally validated and the cache entry
@@ -1219,6 +1301,10 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         
         """
         
+        self.loginfo("start,req,%s,from,%s,path,%s" % (self.command,
+                                                       self.client_address,
+                                                       self.path))
+
         # Record presence or absence of query string and fragments
         has_query_string, has_fragments = \
                           self.check_path_for_query_and_fragments(self.path)
@@ -1251,7 +1337,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             return
         
         # Parse the form data posted
-        self.loginfo("Headers: %s" % str(self.headers))
+        self.logdebug("Headers: %s" % str(self.headers))
         form = cgi.FieldStorage(
             fp=self.rfile, 
             headers=self.headers,
@@ -1351,7 +1437,12 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(500, str(e))
             return None
             
-        # send_get_header returns open file pointer to file to be returned (or None)
+        self.loginfo("form_get,uri,%s,ctype,%s,size,%s" % (ni_name.get_canonical_ni_url(),
+                                                           metadata.get_ctype(),
+                                                           metadata.get_size()))
+
+        # send_get_header returns open file pointer to file to be returned
+        # (or None)
         f = self.send_get_header(ni_name, metadata, content_file,
                                  form["msgid"].value)
         if f:
@@ -1461,6 +1552,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         # by a Python dictionary, checking that it is a dictionary (object) in case
         # the user has supplied a garbled piece of JSON.
         extrameta = {}
+        extrameta["publish"] = self.PUBLISH_REF
         if "ext" in form.keys():
             ext_str = form["ext"].value
             if ext_str != "":
@@ -1480,8 +1572,6 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                                  ext_str)
                     self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
                     return
-        # Add in our publisher reference
-        extrameta["publish"] = self.PUBLISH_REF
 
         # Check that the response type is one we expect - default is JSON if not explicitly requested
         if "rform" in form.keys():
@@ -1585,9 +1675,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
 
             if ((ctype is None) or (ctype == self.DFLT_MIME_TYPE)):
                 ctype = magic.from_file(temp_name, mime=True)
-                self.loginfo("Guessed content type from file is %s" % ctype)
+                self.logdebug("Guessed content type from file is %s" % ctype)
             else:
-                self.loginfo("Supplied content type from form is %s" % ctype)
+                self.logdebug("Supplied content type from form is %s" % ctype)
 
         # If ct= query string supplied in URL field..
         #   Override type got via received file if there was one but log warning if different
@@ -1696,7 +1786,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         else:
             # Default of json
             rform = "json"
-            self.loginfo("Using default rform - json")                
+            self.logdebug("Using default rform - json")                
         
         # Record timestamp for this operation
         op_timestamp = self.metadata_timestamp_for_now()
@@ -1977,7 +2067,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             cached_results.append(item)
             self.logdebug("Successfully cached URL '%s' as '%s'" % (url, ni_name.get_url()))
 
-        self.logdebug("Finished caching results - %d items cached" % len(cached_results))
+        self.loginfo("search,tokens,%s,results,%d" % (tokens,
+                                                      len(cached_results)))
             
         # Construct response
         f = StringIO()
@@ -2156,6 +2247,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(412, "Reading NRS database entry failed")
             return
 
+        self.loginfo("nrs_put,key,%s,value,%s" % (redis_key, redis_vals))
+
         # Generate successful response output
         f = StringIO()
         f.write(json.dumps(val_dict))
@@ -2222,6 +2315,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         length = f.tell()
         f.seek(0)
         
+        self.loginfo("nrs_get,key,%s,value,%s" % (redis_key, f.getvalue()))
+
         self.send_response(200, "NRS Entry lookup for '%s' successful" % redis_key)
         self.send_header("MIME-Version", "1.0")
         self.send_header("Content-Type", "application/json")
@@ -2288,6 +2383,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(412, "Deleting key in NRS database caused exception: %s" %
                             str(e))
             return
+
+        self.loginfo("nrs_delete,key,%s" % redis_key)
 
         # Generate successful response output
         f = StringIO()
@@ -2378,6 +2475,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         response = {}
         response["pattern"] = redis_patt
         response["results"] = results
+
+        self.loginfo("nrs_vals,pattern,%s,num_results,%d" % (redis_patt,
+                                                             len(results)))
 
         # Generate successful response output
         f = StringIO()
@@ -2472,6 +2572,10 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             info2 = "Metadata for object updated - object not present."
             status = 205
 
+        self.loginfo("publish,status,%d,uri,%s,ctype,%s,size,%s" % (status,
+                                                                    ni_uri,
+                                                                    metadata.get_ctype(),
+                                                                    metadata.get_size()))
             
         # Select response format and construct body in a StringIO pseudo-file
         f = StringIO()
@@ -2728,10 +2832,11 @@ class AlgDigestOp:
     by incorporating the construction in a class method.  Not sure how much
     this helps yet. 
     """
-    def __init__(self, prefix, scheme, sep, errmsg, send_op):
+    def __init__(self, prefix, op_name, scheme, sep, errmsg, send_op):
         """
         @brief Constructor - save the parameters
         @param prefix string the distinguishing prefix in the path
+        @param op_name string operation name for logging
         @param scheme string ni: or nih: scheme to construct
         @param sep string single character that separates alg/digest
         @param errmsg string error message in case path is not in right form
@@ -2740,6 +2845,7 @@ class AlgDigestOp:
                                 in NIHTTPRequestHandler
         """
         self.prefix  = prefix
+        self.op_name = op_name
         self.scheme  = scheme
         self.sep     = sep
         self.errmsg  = errmsg
@@ -2764,24 +2870,24 @@ class AlgDigestOp:
 
 alg_digest_get_dict = {
     NIHTTPRequestHandler.CONT_PRF:
-        AlgDigestOp(NIHTTPRequestHandler.CONT_PRF, NI_SCHEME, ";",
-                    "Content access URL cannot be parsed: %s",
+        AlgDigestOp(NIHTTPRequestHandler.CONT_PRF, "get_content", NI_SCHEME,
+                    ";", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_get_header),
     NIHTTPRequestHandler.META_PRF:
-        AlgDigestOp(NIHTTPRequestHandler.META_PRF, NI_SCHEME, ";",
-                    "Content access URL cannot be parsed: %s",
+        AlgDigestOp(NIHTTPRequestHandler.META_PRF, "get_meta", NI_SCHEME, 
+                    ";", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_meta_header),
     NIHTTPRequestHandler.QRCODE_PRF:
-        AlgDigestOp(NIHTTPRequestHandler.QRCODE_PRF, NI_SCHEME, ";",
-                    "Content access URL cannot be parsed: %s",
+        AlgDigestOp(NIHTTPRequestHandler.QRCODE_PRF, "get_qrcode", NI_SCHEME, 
+                    ";", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_qrcode_header),
     NIHTTPRequestHandler.NI_HTTP:
-        AlgDigestOp(NIHTTPRequestHandler.NI_HTTP, NI_SCHEME, "/",
-                    "Content access URL cannot be parsed: %s",
+        AlgDigestOp(NIHTTPRequestHandler.NI_HTTP, "get_wkn_ni", NI_SCHEME, 
+                    "/", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_get_redirect),
     NIHTTPRequestHandler.NIH_HTTP:
-        AlgDigestOp(NIHTTPRequestHandler.NIH_HTTP, NIH_SCHEME, "/",
-                    "Content access URL cannot be parsed: %s",
+        AlgDigestOp(NIHTTPRequestHandler.NIH_HTTP, "get_wkn_nih", NIH_SCHEME, 
+                    "/", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_get_redirect)
 
 #==============================================================================#

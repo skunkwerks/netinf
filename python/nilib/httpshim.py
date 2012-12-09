@@ -296,14 +296,16 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.nrs_redis = self.server.nrs_redis
         self.cache = self.server.cache
 
-        self.loginfo("New HTTP request connection from %s" % self.client_address[0])
+        self.loginfo("new_handler")
 
         # Delegate to super class handler
         BaseHTTPRequestHandler.handle(self)
 
+        self.loginfo("end,req,%s,from,%s" % (self.command,
+                                             self.client_address))
+
         # Tell listener thread has finished
         self.server.remove_thread(self)
-        self.loginfo("NI HTTP handler finishing")
         return
 
     #--------------------------------------------------------------------------#
@@ -329,9 +331,8 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         every message.
         """
 
-        self.loginfo("%s - - [%s] %s\n" %
+        self.loginfo("log_msg,addr,%s,msg,%s" %
                       (self.address_string(),
-                       self.log_date_time_string(),
                        format % args))
         return
 
