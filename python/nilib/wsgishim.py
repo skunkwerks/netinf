@@ -941,6 +941,8 @@ class wsgiHTTPRequestShim:
             elif log_facility.startswith("local") and \
                  (len(log_facility) == (len("local") + 1)) and \
                  log_facility[len("local"):].isdigit():
+                print >>sys.stderr, "netinf.wsgi: Logging to syslog facility %s" % \
+                      log_facility
                 netinf_handler = SysLogHandler(address="/dev/log",
                                                facility=log_facility)
             else:
