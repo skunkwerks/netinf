@@ -43,6 +43,10 @@ import magic
 import json
 import platform
 import time
+import multiprocessing
+from multiprocessing import Pool, Lock
+import logging
+
 
 import mimetools
 import email.parser
@@ -65,6 +69,16 @@ def debug(string):
     print string
     return
 
+
+
+logger=logging.getLogger('nilog')
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
 def nilog(string):
     """
     @brief Log the node, time, and the string
@@ -74,7 +88,9 @@ def nilog(string):
     now=time.time() 
     nano= "%.10f" %now
     utct = time.strftime("%Y-%m-%dT%H:%M:%S")
-    print 'NILOG: ' + node + ',' + nano + ',' + utct + ',' + string
+    
+    logger.info('NILOG: ' + node + ',' + nano + ',' + utct + ',' + string)
+    
     return
 
 
@@ -219,25 +235,47 @@ def pubone(file_name,alg,host):
 
     return niuri
 
+
+#===============================================================================#
+resuri=""
+def getres(uri):
+    resuri=uri
+    
+
 #===============================================================================#
 def pubdirs(path,alg,host):
     from os.path import join
     count = 0
+    # to just publish a few files uncomment the test of count==max below
     max = 4
     goodlist = []
     badlist = []
+    # start 10 client processes, comment out the next 2 lines for single-thread
+    processes = 10
+    pool = multiprocessing.Pool(processes)
+
     for root, dirs, files in os.walk(path):
         for name in files:
-            niuri=pubone(join(root,name),alg,host)
+            # choose the next line for single-threaded, the one after for multi
+            # niuri=pubone(join(root,name),alg,host)
+            pool.apply_async(pubone,args=(join(root,name),alg,host),callback=getres)
+            niuri=resuri
             if niuri is None:
                 badlist.append(join(root,name))
             else:
                 goodlist.append(niuri)
-            ## just do a few for now to test stuff
+            # count how many we do
             count = count + 1
+            # uncomment these if you just want a few published
             # if count==max:
+                # comment out the next two lines for single-threaded
+                # pool.close()
+                # pool.join()
                 # return (count,goodlist,badlist)
 
+    # comment out the next two lines for single-threaded
+    pool.close()
+    pool.join()
     return (count,goodlist,badlist)
 
 #===============================================================================#
@@ -258,6 +296,7 @@ def py_nipubdir():
     and negative for local errors.
     """
     
+
     # Options parsing and verification stuff
     usage = "%%prog -d <pathname of content directory> -n <FQDN of netinf node> [-a <hash alg>] "
 
@@ -307,4 +346,6 @@ def py_nipubdir():
 
 #===============================================================================#
 if __name__ == "__main__":
+ 
+    loginitted=False
     py_nipubdir()
