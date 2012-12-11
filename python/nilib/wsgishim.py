@@ -121,6 +121,7 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.1       10/12/2012 Elwyn Davies   Adapted for Redis cache.
 1.0       24/11/2012 Elwyn Davies   Renamed HTTPRequestShim to
                                     wsgiHTTPRequestShim to satisfy Doxygen.
@@ -1170,10 +1171,17 @@ class wsgiHTTPRequestShim:
             try:
                 netinf_redis = redis.StrictRedis()
             except Exception, e:
-                self.logerror("Unable to connect to Redis server: %s" % str(e))
+                self.logerror("Unable create connection for Redis server: %s" % str(e))
+                self.send_error(500, "Unable to create connection for Redis server")
+                return self.trigger_response(start_response)
+            # Check there is actually a server there - the connection object
+            # is instantiated without complaint whether or not
+            try:
+                redis_info =netinf_redis.info()
+            except Exception, e:
+                self.logerror("Unable to connect to Redis server - probably not running: %s" % str(e))
                 self.send_error(500, "Unable to connect to Redis server")
                 return self.trigger_response(start_response)
-            
         self.nrs_redis = netinf_redis
 
         # Setup the cache manager instance on first instantiation.

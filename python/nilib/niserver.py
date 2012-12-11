@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.8       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.7       10/12/2012 Elwyn Davies   Select Redis or filesystem cache.
 1.6       04/12/2012 Elwyn Davies   Use check_cache_dirs from cache module.
 1.5       30/11/2012 Elwyn Davies   Update testing code
@@ -403,6 +404,13 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
                 self.nrs_redis = redis.StrictRedis()
             except Exception, e:
                 logger.error("Unable to connect to Redis server: %s" % str(e))
+                sys.exit(-1)
+            # Check there is actually a server there - the connection object
+            # is instantiated without complaint whether or not
+            try:
+                redis_info =netinf_redis.info()
+            except Exception, e:
+                logger.error("Unable to connect to Redis server - probably not running: %s" % str(e))
                 sys.exit(-1)
         else:
             self.nrs_redis = None
