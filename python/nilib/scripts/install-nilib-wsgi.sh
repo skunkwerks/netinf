@@ -48,10 +48,12 @@ SERVER=netinf.example.com
 EMAIL=webmaster@${SERVER}
 NILIB_SRC=/home/nilib/code
 NILIB_PYTHON_CONF=/var/niserver
-NETINF_LOG_FACILITY=local0
+SYSLOG_CHANNEL=0
+NETINF_LOG_FACILITY=local${SYSLOG_CHANNEL}
 SYSLOG_CONFIG_DIR=/etc/rsyslog.d
 NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
 NETINF_CACHE=file
+RSYSLOG_CONF_FILE=60-netinf-${NETINF_CACHE}.conf
 
 variables() {
 cat <<EOF
@@ -68,6 +70,7 @@ Syslog facility name       $NETINF_LOG_FACILITY
 Syslog config directory    $SYSLOG_CONFIG_DIR
 Output file for NetInf log $NETINF_SYSLOG
 NetInf Cache mechanism     $NETINF_CACHE
+Rsyslog configuration file $RSYSLOG_CONF_FILE
 
 EOF
 }
@@ -94,7 +97,7 @@ OPTIONS:
     -e <email>      The email address for the webmaster of the virtual host
     -s <path>       Top level directory where makefile for nilib is located
     -c <path>       The path where the installed Python nilib has its config data
-    -f <facility>   Name of syslog facility to be used ('local0' ... 'local9')
+    -f <channel>    Number of syslog facility channel to be used 'local<n>'(n => '0' ... 9')
     -d <path>       Directory where rsyslog configuration files are stored
     -l <filepath>   File name for syslog output file (absolute path)
     -m <cachemode>  Mechanism to use for NDO cache (file or redis)
@@ -110,6 +113,7 @@ variables
 
 email_set=0
 log_set=0
+syslog_chan_set=0
 while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
     case $OPTION in
         h)
@@ -150,9 +154,6 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
         c)
             NILIB_PYTHON_CONF=$OPTARG
             ;;
-        f)
-            NETINF_LOG_FACILITY=$OPTARG
-            ;;
         d)
             SYSLOG_CONFIG_DIR=$OPTARG
             ;;
@@ -165,12 +166,31 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
 		echo "Unrecognized cache mode (use 'file' or 'redis')"
                 exit 1
             fi
+            if [[ $syslog_chan_set -eq 0 ]]; then
+                if [[ $NETINF_CACHE == "file" ]]; then
+                    SYSLOG_CHANNEL=0
+                else
+                    SYSLOG_CHANNEL=1
+                fi
+                NETINF_LOG_FACILITY=local${SYSLOG_CHANNEL} 
+            fi
+            RSYSLOG_CONF_FILE=60-netinf-${NETINF_CACHE}.conf
+            ;;
+        f)
+            SYSLOG_CHANNEL=$OPTARG
+            if [[ $SYSLOG_CHANNEL -lt 0 || $SYSLOG_CHANNEL -gt 9 ]]; then
+                echo "Illegal syslog local channe; number (use 0 - 9)"
+                exit 1
+            fi
+            syslog_chan_set=1
+            NETINF_LOG_FACILITY=local${SYSLOG_CHANNEL}
             ;;
         ?)
             usage
             exit 1
     esac
 done
+
 
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root" 1>&2
@@ -362,8 +382,8 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 </VirtualHost>
 EOF
 
-echo "Creating rsyslog configuration file ${SYSLOG_CONFIG_DIR}/60-netinf.conf ..."
-cat <<EOF >${SYSLOG_CONFIG_DIR}/60-netinf.conf
+echo "Creating rsyslog configuration file ${SYSLOG_CONFIG_DIR}/${RSYSLOG_CONF_FILE}"
+cat <<EOF >${SYSLOG_CONFIG_DIR}/${RSYSLOG_CONF_FILE}
 # Logging setup used for NetInf mod_wsgi application in Apache
 # Write all messages to single file as a starting position
 ${NETINF_LOG_FACILITY}.* ${NETINF_SYSLOG}

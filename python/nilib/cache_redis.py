@@ -81,6 +81,7 @@ import mmap
 import posix_ipc as pipc
 import tempfile
 import threading
+import redis
 
 #=== Local package modules ===
 

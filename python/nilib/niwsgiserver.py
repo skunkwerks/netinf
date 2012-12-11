@@ -77,7 +77,8 @@ import os
 import sys
 import logging
 from wsgiref.simple_server import make_server
-from nihandler import NIHTTPRequestHandler
+
+# Import nihandler after we have decided what caching scheme to use
 
 #==============================================================================#
 # GLOBAL VARIABLES
@@ -92,7 +93,7 @@ NETINF_DEFAULTS = {
     "NETINF_FAVICON": "/var/niserver/favicon.ico",
     "NETINF_PROVIDE_NRS": "yes",
     "NETINF_SYSLOG_FACILITY": "", # Use stderr by default
-    "NETINF_CACHE": "file"
+    "NETINF_CACHE": "file",
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"
@@ -105,6 +106,12 @@ WSGI_PORT = "WSGI_PORT"
 ##@var WSGI_PORT_DEFAULT
 # integer default port number on which to run the server
 WSGI_PORT_DEFAULT = 8055
+
+##@var request_hdlr_class
+# class used for handling the request.  This is a fudge so that we can postpone
+# importing the handler class until we know what caching to use.
+# It will be the NIHTTPRequestHandler class as imported from nihandler
+request_hdlr_class = None
 
 #==============================================================================#
 def application(environ, start_response):
@@ -124,7 +131,7 @@ def application(environ, start_response):
         else:
             environ[k] = v
 
-    h = NIHTTPRequestHandler(log_facility=environ["NETINF_SYSLOG_FACILITY"])
+    h = request_hdlr_class(log_facility=environ["NETINF_SYSLOG_FACILITY"])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    
@@ -170,10 +177,10 @@ def py_niwsgiserver():
     else:
         wsgi_port_num = WSGI_PORT_DEFAULT
 
-    if NETINF_CACHE in os.environ:
+    if "NETINF_CACHE" in os.environ:
         cache_mode = os.environ["NETINF_CACHE"]
     else:
-        cache_mode = NETINf_DEFAULTS["NETINF_CACHE"]
+        cache_mode = NETINF_DEFAULTS["NETINF_CACHE"]
 
     if cache_mode == "file":
         import file_store
@@ -182,6 +189,10 @@ def py_niwsgiserver():
     else:
         print "Unrecognized cache mode (use 'file' or 'redis')"
         os._exit(1)
+
+    from nihandler import NIHTTPRequestHandler
+    global request_hdlr_class
+    request_hdlr_class = NIHTTPRequestHandler
         
     print("Serving for localhost on port %d" % wsgi_port_num)
     print("Using cache mechanism: %s" % cache_mode)

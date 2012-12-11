@@ -270,7 +270,7 @@ netinf_cache = None
 # The program can do without Redis if not providing NRS services
 # and using filesystem cache.
 
-##@var use_redis_cache
+##@var using_redis_cache
 # Flag indicating if the cache is using the Redis database mmechanism.
 # This is is true if the redis_store module had been loaded.
 
@@ -1162,8 +1162,8 @@ class wsgiHTTPRequestShim:
             return self.trigger_response(start_response)            
 
         # On first instantiation - create Redis client if necessary
-        global netinf_redis, use_redis_cache
-        if (netinf_redis is None) and (self.provide_nrs or use_redis_cache):        
+        global netinf_redis, using_redis_cache
+        if (netinf_redis is None) and (self.provide_nrs or using_redis_cache):        
             # If an NRS server is wanted, create a Redis client instance
             # Assume it is the default local_host, port 6379 for the time being
             try:
