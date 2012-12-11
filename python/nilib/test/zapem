@@ -1,7 +1,7 @@
 #!/bin/bash
 # zap the netinf filesys node here
 
-set -x
+# set -x
 
 cd /var/netinf/filesys/cache/meta_dir
 rm -rf sha-256
