@@ -245,12 +245,9 @@ def getres(uri):
 	
 
 #===============================================================================#
-def pubdirs(path,alg,host,mprocs):
+def pubdirs(path,alg,host,mprocs,limit):
 	from os.path import join
 	count = 0
-	# to just publish a few files uncomment set max to something >0
-	max = 4
-	# max = -1
 	goodlist = []
 	badlist = []
 	# start 10 client processes, comment out the next 2 lines for single-thread
@@ -272,8 +269,8 @@ def pubdirs(path,alg,host,mprocs):
 				goodlist.append(niuri)
 			# count how many we do
 			count = count + 1
-			# uncomment these if you just want a few published
-			if count==max:
+			# if limit > 0 then we'll stop there
+			if count==limit:
 				if multi:
 					pool.close()
 					pool.join()
@@ -305,7 +302,7 @@ def py_nipubdir():
 	
 
 	# Options parsing and verification stuff
-	usage = "%%prog -d <pathname of content directory> -n <FQDN of netinf node> [-a <hash alg>] [-m NN]"
+	usage = "%%prog -d <pathname of content directory> -n <FQDN of netinf node> [-a <hash alg>] [-m NN] [-c count]"
 
 	parser = OptionParser(usage)
 	
@@ -321,6 +318,9 @@ def py_nipubdir():
 	parser.add_option("-m", "--multiprocess", dest="mprocs", default=1,
 					  type="int",
 					  help="The number of client processes to use in a pool (default 1)")
+	parser.add_option("-c", "--count", dest="count", default=0,
+					  type="int",
+					  help="The number of files to publish (default: all)")
 
 	(options, args) = parser.parse_args()
 
@@ -339,11 +339,11 @@ def py_nipubdir():
 		parser.error("You must supply a host name with -n")
 		sys.exit(-1)
 
-	nilog("Starting nipubdir,dir,%s,to,%s,alg,%s,processes,%d,count,0" 
-			% (options.dir_name,options.host,options.hash_alg,options.mprocs))
+	nilog("Starting nipubdir,dir,%s,to,%s,alg,%s,processes,%d,count,%d" 
+			% (options.dir_name,options.host,options.hash_alg,options.mprocs,options.count))
 
 	# loop over all files below directory and putone() for each we find
-	count,goodlist,badlist=pubdirs(options.dir_name,options.hash_alg,options.host,options.mprocs)
+	count,goodlist,badlist=pubdirs(options.dir_name,options.hash_alg,options.host,options.mprocs,options.count)
 
 	# print goodlist
 	# print badlist
