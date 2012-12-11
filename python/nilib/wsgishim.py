@@ -158,7 +158,7 @@ from netinf_ver import NETINF_VER, NISERVER_VER
 # Load either filesystem or Redis cache module depending on
 # whether redis_store or file_store was imported.  Must have
 # Redis module if using Redis cache.
-if "redis_store" in sys.modules:
+if "redis_store" in sys.modules or "nilib.redis_store" in sys.modules:
     if not redis_loaded:
         raise ImportError("Redis module not available")
     from cache_redis import RedisNetInfCache as NetInfCache
@@ -166,6 +166,7 @@ if "redis_store" in sys.modules:
 else:
     from cache_multi import MultiNetInfCache as NetInfCache
     using_redis_cache = False
+print >>sys.stderr, "using_redis_cache: %s" % using_redis_cache
 
 #==============================================================================#
 # List of classes/global functions in file

@@ -1016,7 +1016,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             # Assemble body for message and calculate length
             # Put together the part before the content file in a StringIO
             mb = self.mime_boundary()
-            final_mb = "--" + mb + "--"
+            final_mb = "\n--" + mb + "--"
             f = StringIO()
             # Initial MIME boundary
             f.write("--" + mb + "\n")
