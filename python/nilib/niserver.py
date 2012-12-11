@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.7       10/12/2012 Elwyn Davies   Select Redis or filesystem cache.
 1.6       04/12/2012 Elwyn Davies   Use check_cache_dirs from cache module.
 1.5       30/11/2012 Elwyn Davies   Update testing code
 1.4       17/11/2012 Elwyn Davies   Prepare for alternative use of WSGI framework:
@@ -211,9 +212,6 @@ import magic
 import DNS
 import qrcode
 
-##@var redis_loaded
-# Flag indicating if it was possible to load the Redis module.
-# The program can do without Redis if not providing NRS services.
 try:
     import redis
     redis_loaded = True
@@ -225,13 +223,33 @@ except ImportError:
 import netinf_ver
 import ni
 from nihandler import NIHTTPRequestHandler
-from cache_single import SingleNetInfCache as NetInfCache
+
+# Load either filesystem or Redis cache module depending on
+# whether redis_store or file_store was imported.  Must have
+# Redis module if using Redis cache.
+if "redis_store" in sys.modules:
+    if not redis_loaded:
+        raise ImportError("Need Redis module if using Redis-based cache")
+    from cache_redis import RedisNetInfCache as NetInfCache
+    use_redis_cache = True
+else:
+    from cache_single import SingleNetInfCache as NetInfCache
+    use_redis_cache = False
 
 #==============================================================================#
 # List of classes/global functions in file
 __all__ = ['NetInfMetaData', 'NIHTTPServer', 'ni_http_server'] 
 #==============================================================================#
 # GLOBAL VARIABLES
+
+##@var redis_loaded
+# Flag indicating if it was possible to load the Redis module.
+# The program can do without Redis if not providing NRS services
+# and using filesystem cache.
+
+##@var use_redis_cache
+# Flag indicating if the cache is using the Redis database mmechanism.
+# This is is true if the redis_store module had been loaded.
 
 #==============================================================================#
 
@@ -378,13 +396,9 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         # Initialize cache
         self.cache = NetInfCache(self.storage_root, self.logger)
 
-        # Check cache is prepared
-        if not self.cache.check_cache_dirs():
-            sys.exit(-1)
-        
         # If an NRS server is wanted, create a Redis client instance
         # Assume it is the default local_host, port 6379 for the time being
-        if provide_nrs:
+        if provide_nrs or use_redis_cache:
             try:
                 self.nrs_redis = redis.StrictRedis()
             except Exception, e:
@@ -393,6 +407,14 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         else:
             self.nrs_redis = None
 
+        # If cache is using Redis, tell cache what the Redis connection is
+        if hasattr(self.cache, "set_redis_conn"):
+            self.cache.set_redis_conn(self.nrs_redis)
+
+        # Check cache is prepared
+        if not self.cache.check_cache_dirs():
+            sys.exit(-1)
+        
         self.running_threads = set()
         self.next_handler_num = 1
         # Lock for serializing access to running_threads and next_handler_num

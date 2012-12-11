@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
 @package nilib
-@file cache_multi.py
+@file cache_redis.py
 @brief Cache module for Apache mod_wsgi NI NetInf HTTP convergence layer (CL)
-@brief server and NRS server.
+@brief server and NRS server using Redis NoSQL server for metadata.
 @version $Revision: 1.01 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -32,19 +32,17 @@ limitations under the License.
 Cache manager for NetInf node infrastructure.
 
 This version of the cache is intended for use with multi-threaded multi-process
-servers.  The cache is maintained in filesystem files. Integrity is maintained
-by a threading Lock object and advisory locks on the metadata files. Unlike
-the version in cache_single it does not maintain an in-memory sub-cache as
-mantaining the integrity of this cache would be difficult across multiple
-instances in multiple processes.  Accordingly, the cache manager is essentially
+servers.  The cache is maintained in a combination of Redis database records
+for the metedata and filesystem files for the content. Integrity is maintained
+primarily bythe transaction mechanisms of the Redis database and the use of
+atomic renane operations for the content files. The cache manager is essentially
 stateless apart from its knowledge of the logger and the storage_root which
 are set up when the instance is initialized.  It is recommended that only
 instance of this object is created per process.
 
 The NetInf server manages a local cache of published information, NetInf NDOs.
-In the storage_root directory there are two parallel sub-directories: an ni_ndo
-and an ni_meta sub-directory where the content and affiliated data of the
-content, respectively, are stored. In this package, the file storing the
+The content of the NDOs is atored under the storage_root directory in the
+ni_ndo sub-directoryand an ni_meta. The correspondingIn this package, the file storing the
 affiliated data is called the 'metadata file'. See the
 draft-kutscher-icnrg-netinf_proto specification for the relationship between
 the terms 'affiliated data' and 'metadata': broadly, the affiliated data
@@ -68,17 +66,8 @@ note that these are not currently implemented but may be in future).
 Revision History
 ================
 Version   Date       Author         Notes
-1.2       10/12/2012 Elwyn Davies   Removed set_logger and comments about
-                                    changing the logger after moving to
-                                    using syslog with Apache2.
-1.1       06/12/2012 Elwyn Davies   Created from cache_single.
-1.0       04/12/2012 Elwyn Davies   Provide separate dictionary and shared
-                                    memory versions for cache_list.
-                                    Sorted out cache_put so that it is thread
-                                    safe and deals with both new and update
-                                    operations wwith one interface.
-0.0       29/10/2012 Elwyn Davies   Factored out of nilib.
-                                    Intended for use with Twisted
+1.0       06/12/2012 Elwyn Davies   Created from cache_multi for Redis.
+
 @endcode
 """
 
@@ -98,18 +87,18 @@ import threading
 from ni import NIname, UnvalidatedNIname, EmptyParams
 from metadata import NetInfMetaData
 
-__all__ = ['MultiNetInfCache']
+__all__ = ['RedisNetInfCache']
 
 #==============================================================================#
 #=== Exceptions ===
 #------------------------------------------------------------------------------#
 from ni_exception import InconsistentParams, InvalidMetaData, \
-                         CacheEntryExists, NoCacheEntry
+                         CacheEntryExists, NoCacheEntry, InconsistentDatabase
 
 #==============================================================================#
-class MultiNetInfCache:
+class RedisNetInfCache:
     """
-    @brief Manage the filing system cache of NetInf NDOs.
+    @brief Manage the combined Redis and filing system cache of NetInf NDOs.
 
     @detail
     The cache only stores items using ni names (nih names will be converted
@@ -117,13 +106,13 @@ class MultiNetInfCache:
     
     The operations on the cache ae designed so that the actual cache updates
     can take place very quickly:
-    - Metadata files are not expected to be large and the contents are written
+    - Metadata records are not expected to be large and the contents are written
       in one go.
     - Content files are created by renaming an existing file.  A place for
       creating temporary files in the storage root is provided so that
       renaming is guaranteed not to involve file copying.
 
-    Metadata files contain a string encoded JSON object.  When this is loaded
+    Metadata records contain a string encoded JSON object.  When this is loaded
     into memory, it is managed as a Python dictionary (to which it bears an
     uncanny resemblance!).  This is encapsulated in an instance of the
     NetInfMetaData class.
@@ -140,11 +129,6 @@ class MultiNetInfCache:
     # Pathname component identifying sub-directory under storage base for
     # content files
     NDO_DIR        = "/ndo_dir/"
-
-    ##@var META_DIR
-    # Pathname component identifying sub-directory under storage base for
-    # metadata files
-    META_DIR       = "/meta_dir/"
 
     ##@var TEMP_DIR
     # Pathname component identifying sub-directory under storage base for
@@ -184,7 +168,7 @@ class MultiNetInfCache:
         """
 
         self.storage_root = storage_root
-
+        
         # Setup logging functions
         self.logger   = logger
         self.loginfo  = logger.info
@@ -200,6 +184,10 @@ class MultiNetInfCache:
 
         # Lock for cache access
         self.cache_lock = threading.Lock()
+
+        # Redis connection to be used with the cache
+        # Set by set_redis_conn later.
+        self.redis_conn = None
 
         # Set temporary directory to be used for creating temporary dirs
         tempfile.tempdir = self.temp_path
@@ -219,18 +207,32 @@ class MultiNetInfCache:
         return "%s%s%s/%s" % (self.storage_root, self.NDO_DIR, hash_alg, digest)
 
     #--------------------------------------------------------------------------#
-    def _metadata_pathname(self, hash_alg, digest):
+    def _metadata_key_name(self, hash_alg, digest):
         """
-        @brief Construct pathname for metadata file for given hash_alg and digest
+        @brief Construct key name for metadata record for given hash_alg and
+               digest.
         @param hash_alg string hash algorithm name used for entry
         @param digest string urlencoded base64 ni scheme digest for entry
-        @return metadat file path name
+        @return metadata file path name
         """
-        return "%s%s%s/%s" % (self.storage_root, self.META_DIR, hash_alg, digest)
+        return "%s;%s" % (hash_alg, digest)
     
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
+    def set_redis_conn(self, redis_conn):
+        """
+        @brief Record redis connection object to be used by the cache
+        @param redis_conn object instance of StrictRedis object.
+        @return (none)
+
+        """
+        # Setup logging functions
+        self.redis_conn = redis_conn
+        self.logdebug("Redis connection passed to cache instance")
+        return
+    
+    #--------------------------------------------------------------------------#
     def check_cache_dirs(self):
         """
         @brief Check existence of object cache directories and create if necessary
@@ -256,7 +258,8 @@ class MultiNetInfCache:
             self.logerror("Storage root directory %s does not exist." %
                           self.storage_root)
             return False
-        for tree_name in (self.NDO_DIR, self.META_DIR):
+        # There is only one tree for the content files - metadata is in Redis
+        for tree_name in (self.NDO_DIR,):
             tree_root = "%s%s" % (self.storage_root, tree_name)
             if not os.path.isdir(tree_root):
                 self.loginfo("Creating object cache tree directory: %s" %
@@ -349,12 +352,13 @@ class MultiNetInfCache:
         lock on the metadata file to be accessed so that access is serialized
         between processes as well.
 
-        Check if files exist:
+        Check if metadata record and (if expected) content file exist:
         - Can't have content without metadata
         - If neither exists - record we are making new entry; otherwise update
         - For new entry:
           - If content (temporary) file supplied, rename as permanent content
-          - Write metadata to file as JSON encoded string
+          - Write metadata to record as JSON encoded string
+          - Write indicator of content present to metadata record
         - For update entry:
           - If there is existing content file:
             - if content file supplied record that it was ignored
@@ -362,7 +366,7 @@ class MultiNetInfCache:
           - If there is no existing content file and content (temp) file supplied
             - rename the supplied file as the current content file
           - Read the metadata file into a NetInfMetaData instance
-          - Merge the supplied metadata with the existing metadata
+          - Merge the supplied metadata with the existing metadata and
         - If content file now in place record that content exists
 
         Raise IOError exception if any IO error occurs
@@ -403,117 +407,153 @@ class MultiNetInfCache:
             self.logerror(err_str)
             raise InconsistentParams(err_str)
 
-        mfn = self._metadata_pathname(ni_hash_alg, ni_digest)
+        mfk = self._metadata_key_name(ni_hash_alg, ni_digest)
         cfn = self._content_pathname(ni_hash_alg, ni_digest)
 
         # Need to hold lock as this can be called from several threads
         with self.cache_lock:
-            # This function will create the metadata file if it doesn't
-            # exist already which is what we need here...
-            # This will work fine even if some other process is trying
-            # to do the same
-            try:
-                mfd = os.open(mfn, os.O_CREAT|os.O_RDWR)
-            except IOError, e:
-                err_str = "cache_put: Unable to open metafile %s: %s" % \
-                          (mfn, str(e)) 
-                self.logerror(err_str) 
-                raise sys.exc_info()[0](err_str)
-                
-            # Try to acquire an exclusive lock
-            # This lock should be acquired (eventually) but it is not
-            # guaranteed that the file will still be empty even if
-            # this process did the creation.  However, unless something
-            # has gone badly wrong the file will either be empty because
-            # this process just created it or contain a valid JSON string
-            # because some other process created it and/or wrote to it before
-            # we got the lock even if this process did the creation.
-            # Assume that we have to update the metadata until it appears
-            # that the metafile is empty (below)
-            fcntl.flock(mfd, fcntl.LOCK_EX)
-
-            # At this point this process and thread have exclusive control
-            # of the cache.
-                
-            cf_exists = os.path.isfile(cfn)
 
             content_added = False
-
-            # We are ready to put new or updated cache entry
             ignore_duplicate = False
-            if cf_exists:
-                content_exists = True
-                if content_file is not None:
-                    ignore_duplicate = True
-                    self.loginfo("put_cache: Duplicate content file ignored: %s" %
-                                 ni_url)
+            while True:
+                # I think this should be OK.. even with nested try blocks
+                # The outer try block is to catch WatchError from the
+                # redis_pipe.watch() but this doesn't arrive asynchronously
+                # (or at least I hope it doesn't).  Rather it is generated
+                # as a result of a subsequent Redis request.  As long as these
+                # are not buried in inner try blocks all should be well
+                # except that the outer except needs to reraise anything except
+                # WatchError.
+                with self.redis_conn.pipeline() as redis_pipe:
                     try:
-                        os.remove(content_file)
-                    except Exception, e:
-                        err_str = "put_cache: removal of temporary file %s failed: " % \
-                                  content_file
-                        self.logerror(err_str + str(e))
-                        raise sys.exc_info()[0](err_str + str(e))
-            elif content_file is not None:
-                err_str = "put_cache: problem renaming content file from %s to %s: " % \
-                          (content_file, cfn)
-                try:
-                    os.rename(content_file, cfn)
-                except Exception, e:
-                    self.logerror(err_str + str(e))
-                    raise sys.exc_info()[0](err_str + str(e))
-                content_exists = True
-                content_added = True
-            else:
-                content_exists = False
+                        # Setup to monitor the metadata key in case it changes
+                        redis_pipe.watch(mfk)
 
-            
-            err_str = "put_cache: problem reading metadata file %s: " % \
-                      mfn
-            try:
-                f = os.fdopen(mfd, "r+b")
-                buf = f.read()
-                if (len(buf) == 0):
-                    empty_mf = True
-                else:
-                    empty_mf = False
-                    js = json.loads(buf)
-            except Exception, e:
-                self.logerror(err_str + str(e))
-                f.close()
-                if content_added:
-                    os.remove(cfn)
-                raise sys.exc_info()[0](err_str + str(e))
-            if empty_mf:
-                new_entry = True
-                old_metadata = metadata
-            else:
-                new_entry = False
-                old_metadata = NetInfMetaData()
-                old_metadata.set_json_val(js)
-                if not old_metadata.merge_latest_details(metadata):
-                    err_str = "put_cache: Mismatched information in metadata update: %s" % \
-                              ni_url
-                    self.logerror(err_str)
-                    if content_added:
-                        os.remove(cfn)
-                    raise ValueError(err_str)
-                
-            err_str = "put_cache: problem writing metadata file %s: " % mfn
-            try:
-                # Empty existing file (might be empty already but don't care)
-                f.seek(0, os.SEEK_SET)
-                f.truncate(0)
+                        # get keys for content_file and metatdata
+                        metadata_str, cfs = redis_pipe.hmget(mfk, "metadata",
+                                                             "content_file_exists")
 
-                json.dump(old_metadata.json_val(), f)
-                fcntl.flock(mfd, fcntl.LOCK_UN)
-                f.close()
-            except Exception, e:
-                self.logerror(err_str + str(e))
-                if content_added:
-                    os.remove(cfn)
-                raise sys.exc_info()[0](err_str + str(e))
+                        if (metadata_str is None) and (cfs is not None):
+                            # Error
+                            err_str = "put_cache: Redis inconsistent - has no metatdata but cfs for : %s" % \
+                                      ni_url
+                            self.logerror(err_str)
+                            raise InconsistentDatabase(err_str)
+                            
+                        # Check for consistency
+                        cfs_bool = (cfs == "yes")
+                        cf_exists = os.path.isfile(cfn)
+                        # If we have to loop then consistency may alter
+                        if (cf_exists != cfs_bool) and not content_added:
+                            # error - inconsistent
+                            err_str = "put_cache: Redis inconsistent with file for %s" % \
+                                      ni_url
+                            self.logerror(err_str)
+                            raise InconsistentDatabase(err_str)
 
+                        # We are ready to put new or updated cache entry
+                        # On second and subsequent passes
+                        if cf_exists:
+                            content_exists = True
+                            if content_file is not None:
+                                ignore_duplicate = True
+                                self.loginfo("put_cache: Duplicate content file ignored: %s" %
+                                             ni_url)
+                                try:
+                                    os.remove(content_file)
+                                except Exception, e:
+                                    err_str = "put_cache: removal of temporary file %s failed: " % \
+                                              content_file
+                                    self.logerror(err_str + str(e))
+                                    raise sys.exc_info()[0](err_str + str(e))
+                        elif content_file is not None:
+                            err_str = "put_cache: problem renaming content file from %s to %s: " % \
+                                      (content_file, cfn)
+                            try:
+                                os.rename(content_file, cfn)
+                            except Exception, e:
+                                self.logerror(err_str + str(e))
+                                raise sys.exc_info()[0](err_str + str(e))
+                            content_exists = True
+                            content_added = True
+                        else:
+                            content_exists = False
+
+                        err_str = "put_cache: problem decoding metadata record %s: " % \
+                                  mfk
+                        try:
+                            if (metadata_str is None):
+                                new_entry = True
+                                # Don't need a real copy - reference will do
+                                old_metadata = metadata
+                            else:
+                                new_entry = False
+                                js = json.loads(metadata_str)
+                        except Exception, e:
+                            self.logerror(err_str + str(e))
+                            if content_added:
+                                os.remove(cfn)
+                            raise sys.exc_info()[0](err_str + str(e))
+
+                        if not new_entry:
+                            old_metadata = NetInfMetaData()
+                            old_metadata.set_json_val(js)
+                            if not old_metadata.merge_latest_details(metadata):
+                                err_str = "put_cache: Mismatched information in metadata update: %s" % \
+                                          ni_url
+                                self.logerror(err_str)
+                                if content_added:
+                                    os.remove(cfn)
+                                raise ValueError(err_str)
+                            
+                        err_str = "put_cache: problem storing metadata record %s: " % mfk
+                        try:
+                            new_metadata_str = json.dumps(old_metadata.json_val())
+                        except Exception, e:
+                            self.logerror(err_str + str(e))
+                            if content_added:
+                                os.remove(cfn)
+                            raise sys.exc_info()[0](err_str + str(e))
+
+                        cfs = "yes" if content_exists else "no"
+
+                        # Write back into Redis
+                        val_dict = {}
+                        val_dict["metadata"] = new_metadata_str
+                        val_dict["content_file_exists"] = cfs
+                        # Start a transaction
+                        redis_pipe.multi()
+                        # Push the data update
+                        redis_pipe.hmset(mfk, val_dict)
+                        # Add this name to the set of keys for hash alg
+                        # Doesn't matter if it is there already
+                        # The set only has one entry for this value.
+                        redis_pipe.sadd(ni_hash_alg, mfk)
+                        # Run the update - if the data has changed
+                        # since the watch was started, this will trigger
+                        # a WatchError exception.
+                        redis_pipe.execute()
+
+                        # Sucess - break out of loop
+                        # End of with clause resets the watch automatically
+                        break
+                    
+                    except redis.WatchError:
+                        # Go round again as somebody else updated
+                        # We have done what is needed with the content_file
+                        # and shouldn't try again.  The content is now
+                        # in its cache home.
+                        content_file = None
+
+                        continue
+                    
+                    except Exception:
+                        # This has caught one of the reraised exceptions
+                        # buried in the loop - just reraise again to
+                        # propagate to caller
+                        raise
+                    # End of with redis.pipeline()
+                # End of WatchError catching loop
             # End of with self.cache_write_lock
         return (old_metadata, cfn if content_exists else None,
                 new_entry, ignore_duplicate)
@@ -558,40 +598,40 @@ class MultiNetInfCache:
         
         # Need to hold lock as this can be called from several threads
         with self.cache_lock:
-            # Check if metadata file exists
-            mfn = self._metadata_pathname(ni_hash_alg, ni_digest)
-
+            # Check if metadata record exists
+            mfk = self._metadata_key_name(ni_hash_alg, ni_digest)
+            metadata_str, cfe = self.redis_conn.hmget(mfk, "metadata",
+                                                      "content_file_exists")
+            if (metadata_str is None) and (cfe is None):
+                raise NoCacheEntry("cache_get: no metadata file for %s" % ni_url)
+            if (metadata_str is None) and (cfe is not None):
+                err_str = "cache_get: Inconsistent database entry for %s" % ni_url
+                self.logerror(err_str)
+                raise InconsistentDatabase(err_str)
             try:
-                mfd = os.open(mfn, os.O_RDONLY)
-                fcntl.flock(mfd, fcntl.LOCK_SH)
-            except IOError, e:
-                if e.errno == errno.ENOENT:
-                    raise NoCacheEntry("cache_get: no metadata file for %s" % ni_url)
-                else:
-                    raise
-            try:
-                f = os.fdopen(mfd, "rb")
-                buf = f.read()
-                if (len(buf) == 0):
-                    raise NoCacheEntry("cache_get: empty metadata file for %s" % ni_url)
-                js = json.loads(buf)
-                fcntl.flock(mfd, fcntl.LOCK_UN)
-                f.close()
+               js = json.loads(metadata_str)
             except Exception, e:
-                err_str = "cache_get: Failed to read JSON string for metadata file %s: %s" % \
-                          (mfn, str(e))
+                err_str = "cache_get: Failed to decode JSON string for metadata record %s: %s" % \
+                          (mfk, str(e))
                 self.logerror(err_str)
                 raise Exception(err_str)
 
             metadata = NetInfMetaData()
             if not metadata.set_json_val(js):
-                err_str = "cache_get: Invalid metadata read from %s" % mfn
+                err_str = "cache_get: Invalid metadata read from %s record" % mfk
                 self.logerror(err_str)
                 raise InvalidMetaData(err_str)
 
             # Check if content file exists
+            cfe_bool = True if cfe == "yes" else False
             cfn = self._content_pathname(ni_hash_alg, ni_digest)
+            
             content_exists = os.path.isfile(cfn)
+            if cfe_bool != content_exists:
+                err_str = "cache_get: Inconsistent data entry for content existence: %s" % \
+                          ni_url
+                self.logerror(err_str)
+                raise InconsistentDatabase(err_str)
 
         return (metadata, cfn if content_exists else None)
         
@@ -630,20 +670,15 @@ class MultiNetInfCache:
                     return None
         rslt = {}
         for alg in alg_list:
-            mfd = "%s%s%s" % (self.storage_root, self.META_DIR, alg)
             cfd = "%s%s%s" % (self.storage_root, self.NDO_DIR, alg)
             entries = []
-
-            # All cache entries are required to have metadata file,
-            # and may have content file
-            try:
-                for dgst in os.listdir(mfd):
-                    ce = os.path.isfile("%s/%s" % (cfd, dgst))
-                    entries.append( { "dgst": dgst, "ce": ce })
-            except Exception, e:
-                self.logerror("cache_list: error while listing for alg %s: %s" %
-                              (alg, str(e)))
-                return None
+            pl = len(alg) + 1
+            for i in self.redis_conn.smembers(alg):
+                # All cache entries are required to have metadata record,
+                # and may have content file
+                dgst = i[pl:]
+                ce = os.path.isfile("%s/%s" % (cfd, dgst))
+                entries.append( { "dgst": dgst, "ce": ce })
             rslt[alg] = entries
 
         return rslt
@@ -739,12 +774,15 @@ if __name__ == "__main__":
         logger.error("Cannot create test storage root %s dir: %s" %
                      (storage_root, str(e)))
         sys.exit(1)
-        
-    cache_inst = MultiNetInfCache(storage_root, logger)
+    import redis
+    redis_conn = redis.StrictRedis()
+    cache_inst = RedisNetInfCache(storage_root, logger)
+    cache_inst.set_redis_conn(redis_conn)
     f = open(cache_inst.temp_path+"temp", "w")
     f.write("some_text")
     f.close()
-    cache_inst2 = MultiNetInfCache(storage_root, logger)
+    cache_inst2 = RedisNetInfCache(storage_root, logger)
+    cache_inst2.set_redis_conn(redis_conn)
     if os.path.isfile(cache_inst2.temp_path+"temp"):
         print"Temporaries not cleared"
         

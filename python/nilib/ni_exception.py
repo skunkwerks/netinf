@@ -36,6 +36,7 @@ Definitions of exceptions used in Python NI library.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       10/12/2012 Elwyn Davies   Added InconsistentDatabase
 1.0       05/12/2012 Elwyn Davies   Created from definitions in various other
                                     modules.
 @endcode
@@ -44,7 +45,7 @@ Version   Date       Author         Notes
 #==============================================================================#
 __all__ = ['UnvalidatedNIname', 'EmptyParams', 'NonEmptyNetlocOrQuery',
            'InconsistentParams', 'InvalidMetaData', 'CacheEntryExists',
-           'NoCacheEntry', ]
+           'NoCacheEntry', 'InconsistentDatabase' ]
 
 #==============================================================================#
 #=== Exceptions ===
@@ -99,6 +100,14 @@ class CacheEntryExists(Exception):
 class NoCacheEntry(Exception):
     """
     @brief Raised when update or get is tried for non-existent entry 
+    """
+    pass
+
+class InconsistentDatabase(Exception):
+    """
+    @brief Raised when it appears the Redis database has got out of sync
+    @brief with filessystem
+    
     """
     pass
 

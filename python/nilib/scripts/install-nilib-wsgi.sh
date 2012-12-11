@@ -31,6 +31,8 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
+# 1.3	  10/12/2012 Elwyn Davies   Added mechanisms for selecting Redis or 
+#                                   filesystem only cache storage.
 # 1.2	  06/12/2012 Elwyn Davies   Add knock-on change to log file location.
 # 1.1	  06/12/2012 Elwyn Davies   Added rsyslog configuration.
 # 1.0	  25/11/2012 Elwyn Davies   Created.
@@ -49,6 +51,7 @@ NILIB_PYTHON_CONF=/var/niserver
 NETINF_LOG_FACILITY=local0
 SYSLOG_CONFIG_DIR=/etc/rsyslog.d
 NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
+NETINF_CACHE=file
 
 variables() {
 cat <<EOF
@@ -64,6 +67,7 @@ Python installed config in $NILIB_PYTHON_CONF
 Syslog facility name       $NETINF_LOG_FACILITY
 Syslog config directory    $SYSLOG_CONFIG_DIR
 Output file for NetInf log $NETINF_SYSLOG
+NetInf Cache mechanism     $NETINF_CACHE
 
 EOF
 }
@@ -93,6 +97,7 @@ OPTIONS:
     -f <facility>   Name of syslog facility to be used ('local0' ... 'local9')
     -d <path>       Directory where rsyslog configuration files are stored
     -l <filepath>   File name for syslog output file (absolute path)
+    -m <cachemode>  Mechanism to use for NDO cache (file or redis)
 
 Assumes installation is using rsyslog - if not the syslog will have to be
 configured manually.
@@ -105,7 +110,7 @@ variables
 
 email_set=0
 log_set=0
-while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
+while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
     case $OPTION in
         h)
             usage
@@ -153,6 +158,13 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:" OPTION; do
             ;;
         l)
             NETINF_SYSLOG=$OPTARG
+            ;;
+        m)
+            NETINF_CACHE=$OPTARG
+            if [[ $NETINF_CACHE != "file" && $NETINF_CACHE != "redis" ]]; then
+		echo "Unrecognized cache mode (use 'file' or 'redis')"
+                exit 1
+            fi
             ;;
         ?)
             usage
@@ -275,9 +287,16 @@ if [[ $cache_archived -eq 1 ]]; then
     echo "Restore of cache failed"
   fi
 fi
+
+echo "Selecting mod_wsgi application file..."
+WSGI_APP="netinf_${NETINF_CACHE}.wsgi"
+echo "Using $WSGI_APP"
+
 echo "Creating Apache virtual host file..."
 cat <<EOF >${SITES_PATH}/${VIRTHOST}
 <VirtualHost *:80>
+        # Virtual host for NetInf server
+        # Using $NETINF_CACHE cache mechanism
 	ServerName $SERVER
 
 	ServerAdmin $EMAIL
@@ -304,11 +323,11 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 
 	WSGIScriptAlias /testapp ${NILIB_PATH}/wsgi-apps/test.wsgi
 	WSGIScriptAlias /envapp ${NILIB_PATH}/wsgi-apps/showenv.wsgi
-	WSGIScriptAlias /netinfproto ${NILIB_PATH}/wsgi-apps/netinf.wsgi
-	WSGIScriptAlias /.well-known/ni ${NILIB_PATH}/wsgi-apps/netinf.wsgi
-	WSGIScriptAlias /ni_cache ${NILIB_PATH}/wsgi-apps/netinf.wsgi
-	WSGIScriptAlias /ni_meta ${NILIB_PATH}/wsgi-apps/netinf.wsgi
-	WSGIScriptAlias /ni_qrcode ${NILIB_PATH}/wsgi-apps/netinf.wsgi
+	WSGIScriptAlias /netinfproto ${NILIB_PATH}/wsgi-apps/$WSGI_APP
+	WSGIScriptAlias /.well-known/ni ${NILIB_PATH}/wsgi-apps/$WSGI_APP
+	WSGIScriptAlias /ni_cache ${NILIB_PATH}/wsgi-apps/$WSGI_APP
+	WSGIScriptAlias /ni_meta ${NILIB_PATH}/wsgi-apps/$WSGI_APP
+	WSGIScriptAlias /ni_qrcode ${NILIB_PATH}/wsgi-apps/$WSGI_APP
 
 	SetEnv NETINF_STORAGE_ROOT ${NILIB_PATH}/cache
 	SetEnv NETINF_GETPUTFORM ${NILIB_PATH}/www/getputform.html

@@ -121,6 +121,7 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       10/12/2012 Elwyn Davies   Adapted for Redis cache.
 1.0       24/11/2012 Elwyn Davies   Renamed HTTPRequestShim to
                                     wsgiHTTPRequestShim to satisfy Doxygen.
 0.0       19/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
@@ -144,9 +145,6 @@ import types
 import time
 import random
 
-##@var redis_loaded
-# Flag indicating if it was possible to load the Redis module.
-# The program can do without Redis if not providing NRS services.
 try:
     import redis
     redis_loaded = True
@@ -156,7 +154,18 @@ except ImportError:
 #=== Local package modules ===
 
 from netinf_ver import NETINF_VER, NISERVER_VER
-from cache_multi import MultiNetInfCache as NetInfCache
+
+# Load either filesystem or Redis cache module depending on
+# whether redis_store or file_store was imported.  Must have
+# Redis module if using Redis cache.
+if "redis_store" in sys.modules:
+    if not redis_loaded:
+        raise ImportError("Redis module not available")
+    from cache_redis import RedisNetInfCache as NetInfCache
+    using_redis_cache = True
+else:
+    from cache_multi import MultiNetInfCache as NetInfCache
+    using_redis_cache = False
 
 #==============================================================================#
 # List of classes/global functions in file
@@ -256,7 +265,21 @@ netinf_handler = None
 # parallel.
 netinf_cache = None
 
-#==============================================================================#
+##@var redis_loaded
+# Flag indicating if it was possible to load the Redis module.
+# The program can do without Redis if not providing NRS services
+# and using filesystem cache.
+
+##@var use_redis_cache
+# Flag indicating if the cache is using the Redis database mmechanism.
+# This is is true if the redis_store module had been loaded.
+
+##@var netinf_redis
+# StrictRedis objwect instance for connections to Redis database.
+# Only one needed per process - deals with multiple threads effectively
+netinf_redis = None
+
+#===========================================================================#
 class HeaderDict:
     """
     @brief Pseudo-dictionary used to map the WSGI environ into an HTTP
@@ -1138,17 +1161,19 @@ class wsgiHTTPRequestShim:
             self.send_error(500, "Value of NETINF_PROVIDE_NRS must be one of yes/true/1/no/false/0.")
             return self.trigger_response(start_response)            
 
-        # If an NRS server is wanted, create a Redis client instance
-        # Assume it is the default local_host, port 6379 for the time being
-        if self.provide_nrs:
+        # On first instantiation - create Redis client if necessary
+        global netinf_redis, use_redis_cache
+        if (netinf_redis is None) and (self.provide_nrs or use_redis_cache):        
+            # If an NRS server is wanted, create a Redis client instance
+            # Assume it is the default local_host, port 6379 for the time being
             try:
-                self.nrs_redis = redis.StrictRedis()
+                netinf_redis = redis.StrictRedis()
             except Exception, e:
                 self.logerror("Unable to connect to Redis server: %s" % str(e))
                 self.send_error(500, "Unable to connect to Redis server")
                 return self.trigger_response(start_response)
-        else:
-            self.nrs_redis = None
+            
+        self.nrs_redis = netinf_redis
 
         # Setup the cache manager instance on first instantiation.
         global netinf_cache
@@ -1157,7 +1182,12 @@ class wsgiHTTPRequestShim:
                 netinf_cache = NetInfCache(self.storage_root, self.logger)
             except IOError, e:
                 self.send_error(500, "Unable to initialize NDO cache")
-                return self.trigger_response(start_response)            
+                return self.trigger_response(start_response)
+
+            # If cache needs the Redis connection pass it over
+            if hasattr(netinf_cache, "set_redis_conn"):
+                netinf_cache.set_redis_conn(netinf_redis)
+                
         self.cache = netinf_cache
 
         # For logging

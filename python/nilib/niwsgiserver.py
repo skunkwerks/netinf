@@ -53,7 +53,7 @@ can be stopped and started very readily.
 Remember that the storage root directory has to exist and be writeable
 before starting the server.
 
-The log can be sendt to a file by setting NETINF_LOG_FACILITY to a
+The log can be sendt to a file by setting NETINF_SYSLOG_FACILITY to a
 file name.  The file path needs to be such that the file can be created
 if not there and can be written.  The file name "local0" ... "local9" are
 treated specially - they are used for syslog streams and the log is sent
@@ -63,6 +63,7 @@ via the syslogger.
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       10/12/2012 Elwyn Davies   Set up for alternative cache mechanisms.
 1.2       07/12/2012 Elwyn Davies   Alter logging setup.
 1.1       22/11/2012 Elwyn Davies   Updated name of shim class.
 1.0       22/11/2012 Elwyn Davies   Created..
@@ -90,7 +91,8 @@ NETINF_DEFAULTS = {
     "NETINF_NRSFORM": "/var/niserver/nrsconfig.html",
     "NETINF_FAVICON": "/var/niserver/favicon.ico",
     "NETINF_PROVIDE_NRS": "yes",
-    "NETINF_LOG_FACILITY": "", # Use stderr by default
+    "NETINF_SYSLOG_FACILITY": "", # Use stderr by default
+    "NETINF_CACHE": "file"
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"
@@ -122,7 +124,7 @@ def application(environ, start_response):
         else:
             environ[k] = v
 
-    h = NIHTTPRequestHandler(log_facility=environ["NETINF_LOG_FACILITY"])
+    h = NIHTTPRequestHandler(log_facility=environ["NETINF_SYSLOG_FACILITY"])
     return h.handle_request(environ, start_response)
     
 #------------------------------------------------------------------------------#    
@@ -168,7 +170,21 @@ def py_niwsgiserver():
     else:
         wsgi_port_num = WSGI_PORT_DEFAULT
 
+    if NETINF_CACHE in os.environ:
+        cache_mode = os.environ["NETINF_CACHE"]
+    else:
+        cache_mode = NETINf_DEFAULTS["NETINF_CACHE"]
+
+    if cache_mode == "file":
+        import file_store
+    elif cache_mode == "redis":
+        import redis_store
+    else:
+        print "Unrecognized cache mode (use 'file' or 'redis')"
+        os._exit(1)
+        
     print("Serving for localhost on port %d" % wsgi_port_num)
+    print("Using cache mechanism: %s" % cache_mode)
     print("Use Ctrl/C to terminate server.")
     
     httpd = make_server('localhost', 8055, application)

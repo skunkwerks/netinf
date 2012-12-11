@@ -177,6 +177,10 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.5       10/12/2012 Elwyn Davies   Allow for Redis cache implementation.
+1.4       09/12/2012 Elwyn Davies   Changed format of loginfo output to ease
+                                    postprocessing.  Added plain output for
+                                    showcache.
 1.3       06/12/2012 Elwyn Davies   Corrected interface to check_cache_dirs.
 1.2       04/12/2012 Elwyn Davies   Major surgery to manage the NDO cache through
                                     a separate class (which of course should have
@@ -244,12 +248,13 @@ except:
 
 if main_mod_file.find("niserver.py") >= 0:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
+    # Needed for the test code only
     from cache_single import SingleNetInfCache as NetInfCache
 elif "niserver" in sys.modules:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
-    from cache_multi import MultiNetInfCache as NetInfCache
 else:
     # Assume we are running under mod_wsgi - use the shim in wsgishim.py
+    # This module loads the right cache stuff
     from wsgishim import wsgiHTTPRequestShim as HTTPRequestShim
     
 from  metadata import NetInfMetaData

@@ -35,6 +35,7 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       10/12/2012 Elwyn Davies   Add options for Redis cache storage.
 1.0       04/12/2012 Elwyn Davies   Move check_cache_dirs into cache module.
                                     Now called in niserver.py.
 0.4       11/10/2012 Elwyn Davies   Minor commenting improvements.
@@ -59,7 +60,7 @@ import logging.config
 import ConfigParser
 from optparse import OptionParser
 
-from niserver import ni_http_server
+# Will also import niserver when we have decided which cache to use.
 
 #==============================================================================#
 # GLOBAL VARIABLES
@@ -116,7 +117,8 @@ def py_niserver_start(default_config_file):
     usage = "%prog [-f <config file>] [-p <server port>] [-l <log config file>]\n" + \
             "                [-n <logger name>] [-s <storage root>] [-a <authority>]\n" + \
             "                [-b <logging base directory>] [-c <control port>] [-i <favicon file>]\n" + \
-            "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]"
+            "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]\n" + \
+            "                [-c [file|redis]]"
 
     parser = OptionParser(usage=usage, prog="niserver")
     
@@ -158,6 +160,9 @@ def py_niserver_start(default_config_file):
     parser.add_option("-i", "--icon", dest="favicon",
                       type="string",
                       help="File containing favicon for browser display.")
+    parser.add_option("-m", "--cache-mode", dest="cache",
+                      type="string",
+                      help="Select cache mechanism ('file' - default - or 'redis').")
 
     (options, args) = parser.parse_args()
 
@@ -178,6 +183,7 @@ def py_niserver_start(default_config_file):
     nrsform = options.nrsform
     provide_nrs = None if (options.provide_nrs == 0) else True
     favicon = options.favicon
+    cache_mode = options.cache
 
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
@@ -287,6 +293,11 @@ def py_niserver_start(default_config_file):
                 if config.has_option(conf_section, conf_option):
                     favicon = config.get(conf_section, conf_option)
 
+            if (cache_mode is None):
+                conf_option = "cache"
+                if config.has_option(conf_section, conf_option):
+                    cache_mode = config.get(conf_section, conf_option)
+
         conf_section = "ports"
         if ((ctrl_port is None) or (server_port is None)) and (not config.has_section(conf_section)):
             parser.error("No section named %s in configuration file %s" %
@@ -364,7 +375,20 @@ def py_niserver_start(default_config_file):
     # Default to not providing NRS service
     if (provide_nrs is None):
         provide_nrs = False
-                
+
+    # Determine cache mechanism to use and load module as appropriate
+    if (cache_mode is None) or (cache_mode == "file"):
+        import file_store
+        print "Using filesystem only cache"
+    elif cache_mode == "redis":
+        import redis_store
+        print "Using Redis and filesystem cache"
+    else:
+        parser.error("Unrecognised cache mode - possibilities are 'file' and 'redis'")
+
+    # Now load the main server module so that it gets the right cache module loaded            
+    from niserver import ni_http_server
+
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Setup logging...
     # Check log configuration file exists and is readable (the error messages

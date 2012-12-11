@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+1.0       10/12/2012 Elwyn Davies   Cater for Redis cache storage.
 0.6       06/12/2012 Elwyn Davies   Add requirement for Python posix_ipc module.
 0.5       06/12/2012 Elwyn Davies   Add location for syslog log file.
 0.4       25/11/2012 Elwyn Davies   Add requirement for PIL (Python Imaging Library).
@@ -88,7 +89,8 @@ setup(name='nilib',
                        'nilib/data/favicon.ico'
                        ]),
                   (datadir+"/wsgi/wsgi-apps",
-                      ['nilib/scripts/netinf.wsgi',
+                      ['nilib/scripts/netinf_file.wsgi',
+                       'nilib/scripts/netinf_redis.wsgi',
                        'nilib/scripts/test.wsgi',
                        'nilib/scripts/showenv.wsgi'
                        ]),

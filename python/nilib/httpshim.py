@@ -110,6 +110,7 @@ The handler expects the following standard methods in BaseHTTPRequestHandler to 
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       10/12/2012 Elwyn Davies   Removed cache import - not needed here
 1.0       04/12/2012 Elwyn Davies   Added cache module: Instance copied from
                                     server.  Removed duplicate unique_id setup.  
 0.0       17/11/2012 Elwyn Davies   Split out from niserver.py and adapted to
@@ -128,7 +129,6 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 #=== Local package modules ===
 
 from netinf_ver import NETINF_VER, NISERVER_VER
-from cache import NetInfCache
 
 #==============================================================================#
 # List of classes/global functions in file
