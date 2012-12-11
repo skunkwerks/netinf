@@ -22,27 +22,32 @@ filter (http://code.foosel.org/doxypy) to create Doygen output.
 
 Requires the Python 'stdnum' library to supply the Luhn-mod-N checkdigit 
 algorithm.  Can be downloaded from http://pypi.python.org/pypi/python-stdnum. 
+'sudo apt-get install python-stdnum' might work
 
 Requires the Python 'PyDNS' module to allow the server to determine a routable
 address for the node it is running in from DNS (otherwise it usually gets
 the loopback address).  Can be downloaded from 
 http://pydns.sourceforge.net/downloads.html.  Install the appropriate version
 for the major release of Python you are using.
+'sudo apt-get install python-dns' might work
 
 Requires the Python 'python-magic' module (version 0.4.3 or later) to determine 
 the content type of files that are to be published. Note that the version of
 the magic module that is distributed with Ubuntu is out of date and does not
 provide the function used.  The latest version can be downloaded from
 http://pypi.python.org/pypi/python-magic/.
+'sudo apt-get install python-magic' might work
 
 Requires the Python 'redis-py' module (version 2.7.1 or later) to provide an
 interface to the Redis database package if the NRS server capabilities are
 configured in the niserver.  This module can be downloaded from
 https://github.com/andymccurdy/redis-py/.
+'sudo apt-get install python-redis' might work
 
 Requires the Python 'qrcode' module (version 2.4.2 or later) to provide the
 capability to output QRcode images.  This module can be downloaded from
 https://github.com/lincolnloop/python-qrcode/
+'sudo apt-get install python-qrtools' might work
 
 Requires the Python Imaging Library ('pil') module (version 1.1.7 or later)
 to provide support for the QR code images.  This module can be downloaded
