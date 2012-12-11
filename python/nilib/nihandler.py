@@ -1564,7 +1564,6 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         # by a Python dictionary, checking that it is a dictionary (object) in case
         # the user has supplied a garbled piece of JSON.
         extrameta = {}
-        extrameta["publish"] = self.PUBLISH_REF
         if "ext" in form.keys():
             ext_str = form["ext"].value
             if ext_str != "":
@@ -1584,6 +1583,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                                  ext_str)
                     self.send_error(412, "Form field 'ext' does not contain a valid JSON string")
                     return
+
+        extrameta["publish"] = self.PUBLISH_REF
 
         # Check that the response type is one we expect - default is JSON if not explicitly requested
         if "rform" in form.keys():
