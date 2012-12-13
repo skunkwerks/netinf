@@ -47,10 +47,24 @@ of things named with hashes on this site can be seen
 <table border="1">
 <tbody>
 <tr>
-<td>The list of known things: </td>
+<td>The list of known names or authorities: </td>
 <td>
 <form name="fetchni" action="/netinfproto/rr" method="post">
 <input type="hidden" name="stage" value="two"/>
+<input type="hidden" name="inclvals" value="false"/>
+<input type="submit" value="Submit"/> 
+</form>
+</td></tr></tbody></table>
+
+<h1>NetInf NRS Full Routing Hint List</h1>
+<table border="1">
+<tbody>
+<tr>
+<td>The list of everything: </td>
+<td>
+<form name="fetchni" action="/netinfproto/rr" method="post">
+<input type="hidden" name="stage" value="two"/>
+<input type="hidden" name="inclvals" value="true"/>
 <input type="submit" value="Submit"/> 
 </form>
 </td></tr></tbody></table>
