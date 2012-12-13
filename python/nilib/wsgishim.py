@@ -121,6 +121,7 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       13/12/2012 Elwyn Davies   Allow for check of storageRoot name in Redis.
 1.2       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.1       10/12/2012 Elwyn Davies   Adapted for Redis cache.
 1.0       24/11/2012 Elwyn Davies   Renamed HTTPRequestShim to
@@ -1195,7 +1196,9 @@ class wsgiHTTPRequestShim:
 
             # If cache needs the Redis connection pass it over
             if hasattr(netinf_cache, "set_redis_conn"):
-                netinf_cache.set_redis_conn(netinf_redis)
+                if not netinf_cache.set_redis_conn(netinf_redis):
+                    self.send_error(500, "Path for storage area mismatch with database.")
+                    return self.trigger_response(start_response)
                 
         self.cache = netinf_cache
 

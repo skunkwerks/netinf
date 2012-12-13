@@ -136,6 +136,10 @@ class RedisNetInfCache:
     # temporary files
     TEMP_DIR       = "/.cache_temp/"
 
+    ##@var STORAGE_ROOT_KEY
+    # string key used to store storage root for this server
+    STORAGE_ROOT_KEY = "NISERVER_STORAGE_ROOT"
+
     #==========================================================================#
     # INSTANCE VARIABLES
     ##@var temp_path
@@ -225,13 +229,36 @@ class RedisNetInfCache:
         """
         @brief Record redis connection object to be used by the cache
         @param redis_conn object instance of StrictRedis object.
-        @return (none)
+        @return boolean indicating if connection works and storage root
+                is OK
 
         """
-        # Setup logging functions
+        # Record Redis connection
         self.redis_conn = redis_conn
         self.logdebug("Redis connection passed to cache instance")
-        return
+
+        # Check that connection works and the storage root is recorded
+        try:
+            storage_root = redis_conn.get(self.STORAGE_ROOT_KEY)
+            if storage_root is None:
+                rslt = redis_conn.set(self.STORAGE_ROOT_KEY, self.storage_root)
+                if rslt:
+                    return True
+                else:
+                    self.logerror("Unable to set storage root key in Redis")
+                    return False
+            else:
+                if storage_root == self.storage_root:
+                    # OK - database and program agree on storgae_root
+                    return True
+                else:
+                    self.logerror("Storage_root in environment does not match value in database: %s" %
+                                  storage_root)
+                    return False
+        except Exception, e:
+            self.logerror("Failed to access Redis database on setting up cache: %s" %
+                          str(e))
+            return False
     
     #--------------------------------------------------------------------------#
     def check_cache_dirs(self):

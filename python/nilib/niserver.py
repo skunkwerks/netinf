@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.9       13/12/2012 Elwyn Davies   Allow for Redis storage_root check.
 1.8       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.7       10/12/2012 Elwyn Davies   Select Redis or filesystem cache.
 1.6       04/12/2012 Elwyn Davies   Use check_cache_dirs from cache module.
@@ -408,7 +409,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
             # Check there is actually a server there - the connection object
             # is instantiated without complaint whether or not
             try:
-                redis_info =netinf_redis.info()
+                redis_info = self.nrs_redis.info()
             except Exception, e:
                 logger.error("Unable to connect to Redis server - probably not running: %s" % str(e))
                 sys.exit(-1)
@@ -417,7 +418,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
         # If cache is using Redis, tell cache what the Redis connection is
         if hasattr(self.cache, "set_redis_conn"):
-            self.cache.set_redis_conn(self.nrs_redis)
+            if not self.cache.set_redis_conn(self.nrs_redis):
+                sys.exit(-1)
 
         # Check cache is prepared
         if not self.cache.check_cache_dirs():
