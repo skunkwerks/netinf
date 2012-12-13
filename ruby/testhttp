@@ -42,8 +42,8 @@ locs=["netinf.org"]
 directory=Dir::pwd
 
 def printUsage
-  print "Usage: getni -[-l <FQDN>] [-a <authority>] [-d <directory>"
-  print "       getni -h -- print usage info\n"
+  print "Usage: testhttp -[-l <FQDN>] [-a <authority>] [-d <directory>"
+  print "       testhttp -h -- print usage info\n"
 end
 
 
