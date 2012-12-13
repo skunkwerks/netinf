@@ -42,15 +42,6 @@ Predis\Autoloader::register();
 // $meta = "test content";
 // $stage = "zero";
 
-// read it from HTTP POST form data
-$urival = filter_input(INPUT_POST, 'URI');
-$hint1 = filter_input(INPUT_POST, 'hint1');
-$hint2 = filter_input(INPUT_POST, 'hint2');
-$loc1 = filter_input(INPUT_POST, 'loc1');
-$loc2 = filter_input(INPUT_POST, 'loc2');
-$meta = filter_input(INPUT_POST, 'meta');
-$stage = filter_input(INPUT_POST, 'stage');
-
 // print "Got it: URI = $urival\n";
 
 /*
@@ -61,6 +52,10 @@ if ($stage=="one") {
     print "you want me to look that up\n";
 }
 */
+
+// what does he want?
+$stage = filter_input(INPUT_POST, 'stage');
+
 if ($stage!="zero" && $stage!="one" && $stage!="two") {
     header('HTTP/1.0 404 stupid input');
     print "feck off\n";
@@ -85,19 +80,42 @@ catch (Exception $e) {
 
 if ($stage=="two") {
     $listofkeys=$redis->keys('*');
-    
-    header('MIME-Version: 1.0');
-    header("Content-Type: application/json");
-    $tmp=json_encode($listofkeys);
-    $jout=str_replace('\/','/',$tmp);
-    print $jout;
+
+    $inclvals = filter_input(INPUT_POST, 'inclvals');
+
+    if ($inclvals=="false") {
+        header('MIME-Version: 1.0');
+        header("Content-Type: application/json");
+        $tmp=json_encode($listofkeys);
+        $jout=str_replace('\/','/',$tmp);
+        print $jout;
+    } else {
+        for ($i=0;$i!=count($listofkeys);$i++) {
+            $listofvals[$i]->key=$listofkeys[$i];
+            $listofvals[$i]->vals=$redis->hgetall($listofkeys[$i]);
+            // print "<p>$i</p>";
+        }
+        $tmp=json_encode($listofvals);
+        $jout=str_replace('\/','/',$tmp);
+        print $jout;
+    }
 
     exit(0);
 
 }
 
+// stage zero or one, both have this
+$urival = filter_input(INPUT_POST, 'URI');
+
 // update/add a record
 if ($stage=="zero") {
+
+    // read other stuff from HTTP POST form data
+    $hint1 = filter_input(INPUT_POST, 'hint1');
+    $hint2 = filter_input(INPUT_POST, 'hint2');
+    $loc1 = filter_input(INPUT_POST, 'loc1');
+    $loc2 = filter_input(INPUT_POST, 'loc2');
+    $meta = filter_input(INPUT_POST, 'meta');
 	// replace any values provided that aren't empty
 	if (strlen($loc1)>0) { $redis->hmset($urival,"loc1",$loc1); }
 	if (strlen($loc2)>0) { $redis->hmset($urival,"loc2",$loc2); }
