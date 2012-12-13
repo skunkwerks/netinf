@@ -31,7 +31,7 @@ splash:
 	@echo "run 'make doc' to create documention, or 'make test' to run the tests"
 
 doc:
-	-rdoc $(RUBYSRC) README
+	-rdoc -d $(RUBYSRC) README
 
 
 test:

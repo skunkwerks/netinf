@@ -111,6 +111,9 @@ You can create the source code documentation by saying: 'make doc'
 
 == CHANGES
 
+[2012-12-13]
+* added testhttp tool for HTTP CL testing
+
 [2012-10-15]
 * removed delmiter handling  from nih to_s - previously tests failed.
  
