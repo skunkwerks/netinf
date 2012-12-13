@@ -312,7 +312,7 @@ class RedisNetInfCache:
                 elif not os.access(dir_name, os.R_OK | os.W_OK | os.X_OK):
                     self.logerror("Existing cache directory %s does not have rwx"
                                   "access permissions." % dir_name)
-                    raise
+                    raise OSError("Cannot access cache directory")
                 else:
                     self.logdebug("Existing cache directory %s has rwx permissions" %
                                   dir_name)
@@ -330,7 +330,7 @@ class RedisNetInfCache:
             elif not os.access(temp_path, os.R_OK | os.W_OK | os.X_OK):
                 self.logerror("Existing temporaries directory %s does not have rwx"
                               "access permissions." % temp_path)
-                raise
+                raise OSError("Cannot access cache directory")
             else:
                 self.logdebug("Existing temporaries directory %s has rwx permissions" %
                               temp_path)
