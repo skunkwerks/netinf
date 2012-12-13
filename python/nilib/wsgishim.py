@@ -1183,6 +1183,8 @@ class wsgiHTTPRequestShim:
                 self.logerror("Unable to connect to Redis server - probably not running: %s" % str(e))
                 self.send_error(500, "Unable to connect to Redis server")
                 return self.trigger_response(start_response)
+            self.loginfo("Using Redis: NRS: %s; Cache: %s" % (str(self.provide_nrs),
+                                                              str(using_redis_cache)))
         self.nrs_redis = netinf_redis
 
         # Setup the cache manager instance on first instantiation.
@@ -1524,14 +1526,5 @@ class wsgiHTTPRequestShim:
     #--------------------------------------------------------------------------#
     def log_date_time_string(self):
         """
-        @brief Return the current time formatted for logging.
-        @return string with curent time formatted suitable for logging.
-        """
-        now = time.time()
-        year, month, day, hh, mm, ss, x, y, z = time.localtime(now)
-        s = "%02d/%3s/%04d %02d:%02d:%02d" % (
-                day, self.MONTHNAME[month], year, hh, mm, ss)
-        return s
-
 #==============================================================================#
 
