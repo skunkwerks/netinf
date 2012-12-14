@@ -177,6 +177,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.6       14/12/2012 Elwyn Davies   Cope with module selection in installed case.
 1.5       10/12/2012 Elwyn Davies   Allow for Redis cache implementation.
 1.4       09/12/2012 Elwyn Davies   Changed format of loginfo output to ease
                                     postprocessing.  Added plain output for
@@ -241,12 +242,17 @@ from ni import NIname, NIdigester, NIproc, NI_SCHEME, NIH_SCHEME, ni_errs, ni_er
 
 # See if this run is either testing niserver.py or running standalone server
 # If either is true then use the HTTPRequestShim in httpshim.py
+
 try:
     main_mod_file = sys.modules["__main__"].__file__
 except:
     main_mod_file = ""
 
-if main_mod_file.find("niserver.py") >= 0:
+# The test for niserver in main_mod covers the installed case as well as testing
+# because the setuputils installation code automatically makes a shim module
+# that is named pyniserver and calls the main server module (niserver_main.py)
+# rather than the niserver_main.py module being invoked from the shell directly.
+if main_mod_file.find("niserver") >= 0:
     from httpshim import directHTTPRequestShim as HTTPRequestShim
     # Needed for the test code only
     from cache_single import SingleNetInfCache as NetInfCache
