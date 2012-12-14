@@ -66,6 +66,8 @@ note that these are not currently implemented but may be in future).
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
+                                    Ensured that STORAGE_ROOT_KEY is recreated.
 1.0       06/12/2012 Elwyn Davies   Created from cache_multi for Redis.
 
 @endcode
@@ -181,6 +183,10 @@ class RedisNetInfCache:
         self.logwarn  = logger.warn
         self.logerror = logger.error
 
+        # Redis connection to be used with the cache
+        # Set by set_redis_conn later.
+        self.redis_conn = None
+
         try:
             self.temp_path = self.check_cache_dirs()
         except IOError, e:
@@ -189,10 +195,6 @@ class RedisNetInfCache:
 
         # Lock for cache access
         self.cache_lock = threading.Lock()
-
-        # Redis connection to be used with the cache
-        # Set by set_redis_conn later.
-        self.redis_conn = None
 
         # Set temporary directory to be used for creating temporary dirs
         tempfile.tempdir = self.temp_path
@@ -225,23 +227,15 @@ class RedisNetInfCache:
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
-    def set_redis_conn(self, redis_conn):
-        """
-        @brief Record redis connection object to be used by the cache
-        @param redis_conn object instance of StrictRedis object.
-        @return boolean indicating if connection works and storage root
-                is OK
-
-        """
-        # Record Redis connection
-        self.redis_conn = redis_conn
-        self.logdebug("Redis connection passed to cache instance")
+    def set_storage_root_key(self):
+    
+        assert(self.redis_conn is not None)
 
         # Check that connection works and the storage root is recorded
         try:
-            storage_root = redis_conn.get(self.STORAGE_ROOT_KEY)
+            storage_root = self.redis_conn.get(self.STORAGE_ROOT_KEY)
             if storage_root is None:
-                rslt = redis_conn.set(self.STORAGE_ROOT_KEY, self.storage_root)
+                rslt = self.redis_conn.set(self.STORAGE_ROOT_KEY, self.storage_root)
                 if rslt:
                     return True
                 else:
@@ -259,7 +253,22 @@ class RedisNetInfCache:
             self.logerror("Failed to access Redis database on setting up cache: %s" %
                           str(e))
             return False
-    
+
+    #--------------------------------------------------------------------------#
+    def set_redis_conn(self, redis_conn):
+        """
+        @brief Record redis connection object to be used by the cache
+        @param redis_conn object instance of StrictRedis object.
+        @return boolean indicating if connection works and storage root
+                is OK
+
+        """
+        # Record Redis connection
+        self.redis_conn = redis_conn
+        self.logdebug("Redis connection passed to cache instance")
+
+        return self.set_storage_root_key()
+
     #--------------------------------------------------------------------------#
     def check_cache_dirs(self):
         """
@@ -285,7 +294,8 @@ class RedisNetInfCache:
         if not os.path.isdir(self.storage_root):
             self.logerror("Storage root directory %s does not exist." %
                           self.storage_root)
-            return False
+            raise IOError("Storage root directory does not exist")
+
         # There is only one tree for the content files - metadata is in Redis
         for tree_name in (self.NDO_DIR,):
             tree_root = "%s%s" % (self.storage_root, tree_name)
@@ -344,6 +354,12 @@ class RedisNetInfCache:
                     self.logerror("Unable to empty temporaries directory: %s" %
                                   str(e))
                     raise
+        if self.redis_conn is not None:
+            if self.set_storage_root_key():
+               return temp_path
+            else:
+               raise IOError("Unable to set storage root key in Redsi database")
+
         return temp_path
 
     #--------------------------------------------------------------------------#

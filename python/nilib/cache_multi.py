@@ -68,6 +68,7 @@ note that these are not currently implemented but may be in future).
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
 1.2       10/12/2012 Elwyn Davies   Removed set_logger and comments about
                                     changing the logger after moving to
                                     using syslog with Apache2.
@@ -255,7 +256,8 @@ class MultiNetInfCache:
         if not os.path.isdir(self.storage_root):
             self.logerror("Storage root directory %s does not exist." %
                           self.storage_root)
-            return False
+            raise IOError("Storage root directory does not exist")
+
         for tree_name in (self.NDO_DIR, self.META_DIR):
             tree_root = "%s%s" % (self.storage_root, tree_name)
             if not os.path.isdir(tree_root):

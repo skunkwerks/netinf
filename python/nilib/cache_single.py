@@ -65,6 +65,7 @@ items.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
 1.1       05/12/2012 Elwyn Davies   Improved comments. Factored out exception
                                     definitions. Renamed to SingleNetInfCache.
 1.0       04/12/2012 Elwyn Davies   Provide separate dictionary and shared
@@ -319,7 +320,8 @@ class SingleNetInfCache:
         if not os.path.isdir(self.storage_root):
             self.logerror("Storage root directory %s does not exist." %
                           self.storage_root)
-            return False
+            raise IOError("Storage root directory does not exist")
+
         for tree_name in (self.NDO_DIR, self.META_DIR):
             tree_root = "%s%s" % (self.storage_root, tree_name)
             if not os.path.isdir(tree_root):
