@@ -51,7 +51,8 @@ import time
 import platform
 import multiprocessing
 import tempfile
-from ni import ni_errs, ni_errs_txt, NIname, NIproc, make_b64_urldigest
+import logging
+from ni import ni_errs, ni_errs_txt, NIname, NIproc
 from nifeedparser import DigestFile, FeedParser
 
 #============================================================================#
@@ -67,7 +68,7 @@ def debug(string):
     return
 
 #===============================================================================#
-logger=logging.getLogger('nilog')
+logger=multiprocessing.get_logger()
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
@@ -124,15 +125,15 @@ def getone(alg_digest, host, dest):
     # Create NIname instance for supplied URL and validate it
     url_str = "ni://%s/%s" % (host,alg_digest)
     ni_url = NIname(url_str)
-    ni_url_str = ni_url.get_canonical_ni_url()
 
     # Must be a complete ni: URL with non-empty params field
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
-        nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url_str, ni_errs_txt[rv]))
-        return
+        nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
+        return (False, alg_digest)
 
     # Generate NetInf form access URL
+    ni_url_str = ni_url.get_canonical_ni_url()
     http_url = "http://%s/netinfproto/get" % ni_url.get_netloc()
     
     # Set up HTTP form data for get request
@@ -145,20 +146,19 @@ def getone(alg_digest, host, dest):
         http_object = urllib2.urlopen(http_url, form_data)
     except Exception, e:
         nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
-        return
+        return (False, alg_digest)
 
     # Get HTTP result code
     http_result = http_object.getcode()
 
     # Get message headers - an instance of email.Message
     http_info = http_object.info()
-    if options.dump:
-        debug("Response type: %s" % http_info.gettype())
-        debug("Response info:\n%s" % http_info)
+    debug("Response type: %s" % http_info.gettype())
+    debug("Response info:\n%s" % http_info)
 
     if (http_result != 200):
         nilog("Get request returned HTTP code %d" % http_result)
-        return
+        return (False, alg_digest)
 
     obj_length_str = http_info.getheader("Content-Length")
     if (obj_length_str != None):
@@ -174,13 +174,18 @@ def getone(alg_digest, host, dest):
     primer = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
     global digested_file, digested_fileobj, hash_fn
     if dest is None:
-        digested_fileobj, digested_file = tempfile.mkstemp()
+        fd, digested_file = tempfile.mkstemp()
+        digested_fileobj = os.fdopen(fd, "w")
+        print digested_fileobj, digested_file
     else:
         digested_file = dest
+        digested_fileobj = None
+
+    hash_fn = ni_url.get_hash_function()
 
     msg_parser = FeedParser(_filer=file_dest_setter)
     msg_parser.feed(primer)
-    payload_lengh = 0
+    payload_len = 0
     blk_size = 4096
     while True:
         buf = http_object.read(blk_size)
@@ -194,11 +199,11 @@ def getone(alg_digest, host, dest):
 
     if len(msg.defects) > 0:
         nilog("Response was not a correctly formed MIME object")
-        return
+        return (False, alg_digest)
     # Verify length 
     if ((obj_length != None) and (payload_len != obj_length)):
         nilog("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
-        return
+        return (False, alg_digest)
         
     debug( msg.__dict__)
     # If the msg is multipart this is a list of the sub messages
@@ -208,7 +213,7 @@ def getone(alg_digest, host, dest):
         debug("Number of parts: %d" % len(parts))
         if len(parts) != 2:
             nilog("Error: Response from server does not have two parts.")
-            return
+            return (False, alg_digest)
         json_msg = parts[0]
         ct_msg = parts[1]
     else:
@@ -221,7 +226,7 @@ def getone(alg_digest, host, dest):
     debug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
         nilog("First or only component (metadata) of result is not of type application/json")
-        return
+        return (False, alg_digest)
 
     # Extract the JSON structure
     try:
@@ -229,72 +234,74 @@ def getone(alg_digest, host, dest):
     except Exception, e:
         nilog("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
                                                                     str(e)))
-        return
+        return (False, alg_digest)
     
-    debug("Returned metadata for %s:" % args[0])
+    debug("Returned metadata for %s:" % ni_url_str)
     debug(json.dumps(json_report, indent = 4))
 
     # If the content was also returned..
     if ct_msg != None:
         debug(ct_msg.__dict__)
         digest= digester_instance.get_digest()[:ni_url.get_truncated_length()]
-        digest = make_b64_urldigest(digest)
+        digest = NIproc.make_b64_urldigest(digest)
                                           
         # Check the digest
-        if (digest != ni_url.get _digest()):
-            nilog("Digest of %s did not verify" % ni_url.get_ni_url())
-            return
+        print digest, ni_url.get_digest()
+        if (digest != ni_url.get_digest()):
+            nilog("Digest of %s did not verify" % ni_url.get_url())
+            return (False, alg_digest)
         etime = time.time()
         duration = etime - stime
         nilog("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
               (msgid, ni_url_str, obj_length, duration*1000))
 
-        return ni_url_str
+        return(True, alg_digest)
         
 #===============================================================================#
-resuri=None
-def getres(uri)
-    resuri = uri
+goodlist = []
+badlist = []
+
+def getres(tuple):
+    if tuple[0]:
+        goodlist.append(tuple[1])
+    else:
+        badlist.append(tuple[1])
+    return
+
 #===============================================================================#
 def getlist(ndo_list, dest_dir, host, mprocs, limit):
-	from os.path import join
-	count = 0
-	goodlist = []
-	badlist = []
-	# start mprocs client processes, comment out the next 2 lines for single-thread
-	multi=False
-	if mprocs >1:
-		pool = multiprocessing.Pool(mprocs)
-		multi=True
+    from os.path import join
+    count = 0
+    # start mprocs client processes, comment out the next 2 lines for single-thread
+    multi=False
+    if mprocs >1:
+            pool = multiprocessing.Pool(mprocs)
+            multi=True
 
-	for ndo in ndo_list:
-            if dest_dir is not None:
-                dest = "%s/%s" % (dest_dir, ndo)
-            else:
-                dest = None
-            if multi:
-                    pool.apply_async(getone,args=(ndo, host, dest),callback=getres)
-                    niuri=resuri
-            else:
-                    niuri=getone(ndo, host, dest)
-            if niuri is None:
-                    badlist.append(ndo)
-            else:
-                    goodlist.append(niuri)
-            # count how many we do
-            count = count + 1
-            # if limit > 0 then we'll stop there
-            if count==limit:
-                    if multi:
-                            pool.close()
-                            pool.join()
-                    return (count,goodlist,badlist)
+    for ndo in ndo_list.readlines():
+        ndo = ndo.strip()
+        if dest_dir is not None:
+            dest = "%s/%s" % (dest_dir, ndo)
+        else:
+            dest = None
+        if multi:
+            pool.apply_async(getone,args=(ndo, host, dest),callback=getres)
+        else:
+            getres(getone(ndo, host, dest))
+        # count how many we do
+        count = count + 1
+        # if limit > 0 then we'll stop there
+        if count==limit:
+                if multi:
+                        pool.close()
+                        pool.join()
+                return (count,goodlist,badlist)
 
-	# Close down the multiprocessing if used
-	if multi:
-		pool.close()
-		pool.join()
-	return (count,goodlist,badlist)
+    # Close down the multiprocessing if used
+    if multi:
+            pool.close()
+            pool.join()
+    return (count,goodlist,badlist)
 
 #===============================================================================#
 def py_nigetlist():
@@ -315,21 +322,22 @@ def py_nigetlist():
     """
     
     # Options parsing and verification stuff
-    usage = "%prog [-q] [-l] [-d] [-m|-v] [-f <pathname of content file>] <ni name>\n" + \
+    usage = "%prog -l <list file name or - (for stdin)> [-v] [-m <# processes>]\n" + \
+            "            [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
             "<ni name> must include location (netloc) from which to retrieve object."
     parser = OptionParser(usage)
     
-    parser.add_option("-l", "--list", default=False,
-                      action="store_true", dest="list",
-                      help="Name of file with list of name to get or - for stdin.")
-    parser.add_option("-v", "--verbose", default=False,
+    parser.add_option("-l", "--list",
+                      type="string", dest="list", default="-",
+                      help="Name of file with list of name to get or - for stdin (default).")
+    parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose",
-                      default="False"
+                      default="False",
                       help="Verbose output selected.")
     parser.add_option("-n", "--node", dest="host",
 		      type="string",
 		      help="The FQDN where I'll send GET messages.")
-    parser.add_option("-d", "--dir", default=False,
+    parser.add_option("-d", "--dir", default=None,
                       type="string", dest="dest_dir",
                       help="Destination directory for objects gotten.")
     parser.add_option("-m", "--multiprocess", dest="mprocs", default=1,
@@ -343,13 +351,44 @@ def py_nigetlist():
 
     # Check command line options - -q, -f, -l, -m, -v and -d are optional, <ni name> is mandatory
     if len(args) != 0:
-        parser.error("Unrecognixed arguments supplied: %s." str(args))
+        parser.error("Unrecognixed arguments supplied: %s." % str(args))
         sys.exit(-1)
-    verbose = not options.quiet
+    if options.host == None: 
+        parser.error("You must supply a host name with -n")
+        sys.exit(-1)
+    verbose = options.verbose
 
+    if options.list == "-":
+        list_chan = sys.stderr
+        input_file = "stdin"
+    elif os.path.isfile(options.list):
+        try:
+            list_chan = open(options.list, "r")
+            input_file = options.list
+        except Exception, e:
+            nilog("Unable to open list of NDOs to get: $s" % options.list)
+            os._exit(1)
 
-    sys.exit(rv)
-                                                                                                    
+    # Where temprary files will be created
+    tempfile.tempdir = "/tmp"
+    
+    nilog("Starting nigetlist,list,%s,to,%s,dest_dir,%s,processes,%d,count,%d" 
+          % (input_file, options.host, str(options.dest_dir),
+             options.mprocs,options.count))
+    
+    # loop over all files below directory and putone() for each we find
+    count,goodlist,badlist = getlist(list_chan, options.dest_dir, options.host,
+                                     options.mprocs,options.count)
+    
+    # print goodlist
+    # print badlist
+
+    nilog("Finished nigetlist,list,%s,to,%s,dest_dir,%s,processes,%d,count,%d" 
+          % (input_file, options.host, str(options.dest_dir),
+             options.mprocs,options.count))
+
+    os._exit(0)
+                                                                                            
 #===============================================================================#
 if __name__ == "__main__":
     py_nigetlist()
