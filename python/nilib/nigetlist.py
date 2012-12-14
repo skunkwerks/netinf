@@ -34,7 +34,8 @@ To send 'get' requests to a server to retrieve a whole list of files.
 Revision History
 ================
 Version   Date       Author         Notes
-1.0	  13/01/2012 Elwyn Davies   Created using niget.py as template.
+1.0	  14/01/2012 Elwyn Davies   Created using niget.py as template.
+                                    Incorporate use of feedparser to
 @endcode
 """
 import sys
@@ -50,7 +51,7 @@ import time
 import platform
 import multiprocessing
 import tempfile
-from ni import ni_errs, ni_errs_txt, NIname, NIproc
+from ni import ni_errs, ni_errs_txt, NIname, NIproc, make_b64_urldigest
 from nifeedparser import DigestFile, FeedParser
 
 #============================================================================#
@@ -116,15 +117,19 @@ def getone(alg_digest, host, dest):
 
     Assume that dest provides a directory path into which file can be written
     """
+
+    # Record start time
+    stime= time.time()
     
     # Create NIname instance for supplied URL and validate it
     url_str = "ni://%s/%s" % (host,alg_digest)
     ni_url = NIname(url_str)
+    ni_url_str = ni_url.get_canonical_ni_url()
 
     # Must be a complete ni: URL with non-empty params field
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
-        nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
+        nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url_str, ni_errs_txt[rv]))
         return
 
     # Generate NetInf form access URL
@@ -196,6 +201,7 @@ def getone(alg_digest, host, dest):
         return
         
     debug( msg.__dict__)
+    # If the msg is multipart this is a list of the sub messages
     parts = msg.get_payload()
     debug("Multipart: %s" % str(msg.is_multipart()))
     if msg.is_multipart():
@@ -214,85 +220,82 @@ def getone(alg_digest, host, dest):
     # Check the message is a application/json
     debug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
-        print("First or only component (metadata) of result is not of type application/json")
-        sys.exit(-7)
+        nilog("First or only component (metadata) of result is not of type application/json")
+        return
 
     # Extract the JSON structure
     try:
         json_report = json.loads(json_msg.get_payload())
     except Exception, e:
-        if verbose:
-            print("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
+        nilog("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
                                                                     str(e)))
-        sys.exit(-8)
+        return
     
-    if options.view:
-        print("Returned metadata for %s:" % args[0])
-        print json.dumps(json_report, indent = 4)
-
-    if options.metadata:
-        print json.dumps(json_report, separators=(",", ":"))
+    debug("Returned metadata for %s:" % args[0])
+    debug(json.dumps(json_report, indent = 4))
 
     # If the content was also returned..
     if ct_msg != None:
-        debug( ct_msg.__dict__)
+        debug(ct_msg.__dict__)
+        digest= digester_instance.get_digest()[:ni_url.get_truncated_length()]
+        digest = make_b64_urldigest(digest)
+                                          
         # Check the digest
-        rv = NIproc.checknib(ni_url, ct_msg.get_payload())
-        if (rv != ni_errs.niSUCCESS):
-            verified = False
-            if verbose:
-                print("Error: digest of received data does not match digest in URL %s: %s" %
-                      (ni_url.get_url(), ni_errs_txt[rv]))
-            if not options.lax:
-                sys.exit(-9)
-        else:
-            verified = True
+        if (digest != ni_url.get _digest()):
+            nilog("Digest of %s did not verify" % ni_url.get_ni_url())
+            return
+        etime = time.time()
+        duration = etime - stime
+        nilog("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
+              (msgid, ni_url_str, obj_length, duration*1000))
 
-        # Write to file
-        try:
-            f = open(options.file_name, "wb")
-        except Exception, e:
-            if verbose:
-                print("Error: Unable to open destination file %s: %s" %
-                      (os.path.abspath(options.file_name), str(e)))
-            sys.exit(-11)
-
-        try:
-            f.write(ct_msg.get_payload())
-        except:
-            if verbose:
-                print("Error: Unable to write data to destination file %s: %s" %
-                      (os.path.abspath(options.file_name), str(e)))
-            sys.exit(-12)
-
-        f.close()
+        return ni_url_str
         
-        if (http_result == 200):
-            if verified:
-                if verbose:
-                    print("Success: file %s written with verified contents "
-                          "(length %d) resulting from 'get' from URL %s" %
-                          (os.path.abspath(options.file_name),
-                           len(ct_msg.get_payload()),
-                           ni_url.get_url()))
-                rv = 0
+#===============================================================================#
+resuri=None
+def getres(uri)
+    resuri = uri
+#===============================================================================#
+def getlist(ndo_list, dest_dir, host, mprocs, limit):
+	from os.path import join
+	count = 0
+	goodlist = []
+	badlist = []
+	# start mprocs client processes, comment out the next 2 lines for single-thread
+	multi=False
+	if mprocs >1:
+		pool = multiprocessing.Pool(mprocs)
+		multi=True
+
+	for ndo in ndo_list:
+            if dest_dir is not None:
+                dest = "%s/%s" % (dest_dir, ndo)
             else:
-                if verbose:
-                    print("File %s written length %d) resulting from 'get' "
-                          "from URL %s but content does not match digest" %
-                          (os.path.abspath(options.file_name),
-                           len(ct_msg.get_payload()),
-                           ni_url.get_url()))
-                # Return same value as if hadn't allowed storage with lax option
-                rv = -9
-        else:
-            print("Why did we get here?")
-            rv = -13
-    else:
-        # Succeesful metadata only get
-        if verbose:
-            print("Success: Metadata only returned for URL %s" % ni_url.get_url())
-        rv = 0
+                dest = None
+            if multi:
+                    pool.apply_async(getone,args=(ndo, host, dest),callback=getres)
+                    niuri=resuri
+            else:
+                    niuri=getone(ndo, host, dest)
+            if niuri is None:
+                    badlist.append(ndo)
+            else:
+                    goodlist.append(niuri)
+            # count how many we do
+            count = count + 1
+            # if limit > 0 then we'll stop there
+            if count==limit:
+                    if multi:
+                            pool.close()
+                            pool.join()
+                    return (count,goodlist,badlist)
+
+	# Close down the multiprocessing if used
+	if multi:
+		pool.close()
+		pool.join()
+	return (count,goodlist,badlist)
+
 #===============================================================================#
 def py_nigetlist():
     """
@@ -316,30 +319,31 @@ def py_nigetlist():
             "<ni name> must include location (netloc) from which to retrieve object."
     parser = OptionParser(usage)
     
-    parser.add_option("-f", "--file", dest="file_name",
-                      type="string",
-                      help="File to hold retrieved content. Defaults to hash code in current directory if not present")
-    parser.add_option("-q", "--quiet", default=False,
-                      action="store_true", dest="quiet",
-                      help="Suppress textual output")
-    parser.add_option("-l", "--lax", default=False,
-                      action="store_true", dest="lax",
-                      help="Store returned content even if digest doesn't validate")
-    parser.add_option("-m", "--metadata", default=False,
-                      action="store_true", dest="metadata",
-                      help="Output returned metadata as JSON string")
-    parser.add_option("-v", "--view", default=False,
-                      action="store_true", dest="view",
-                      help="Pretty print returned metadata.")
-    parser.add_option("-d", "--dump", default=False,
-                      action="store_true", dest="dump",
-                      help="Dump raw HTTP response to stdout.")
+    parser.add_option("-l", "--list", default=False,
+                      action="store_true", dest="list",
+                      help="Name of file with list of name to get or - for stdin.")
+    parser.add_option("-v", "--verbose", default=False,
+                      action="store_true", dest="verbose",
+                      default="False"
+                      help="Verbose output selected.")
+    parser.add_option("-n", "--node", dest="host",
+		      type="string",
+		      help="The FQDN where I'll send GET messages.")
+    parser.add_option("-d", "--dir", default=False,
+                      type="string", dest="dest_dir",
+                      help="Destination directory for objects gotten.")
+    parser.add_option("-m", "--multiprocess", dest="mprocs", default=1,
+                      type="int",
+                      help="The number of client processes to use in a pool (default 1)")
+    parser.add_option("-c", "--count", dest="count", default=0,
+                      type="int",
+                      help="The number of files to get (default: all)")
 
     (options, args) = parser.parse_args()
 
     # Check command line options - -q, -f, -l, -m, -v and -d are optional, <ni name> is mandatory
-    if len(args) != 1:
-        parser.error("URL <ni name> not specified.")
+    if len(args) != 0:
+        parser.error("Unrecognixed arguments supplied: %s." str(args))
         sys.exit(-1)
     verbose = not options.quiet
 
