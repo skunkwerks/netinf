@@ -170,6 +170,9 @@ else:
     using_redis_cache = False
 print >>sys.stderr, "using_redis_cache: %s" % using_redis_cache
 
+# NetInf fowarding
+from nifwd import forwarder
+
 #==============================================================================#
 # List of classes/global functions in file
 __all__ = ['wsgiHTTPRequestShim', 'HeaderDict']
@@ -603,6 +606,7 @@ class wsgiHTTPRequestShim:
     @code
 
     # Trivial handler
+
     class TrivialHandler(wsgiHTTPRequestShim):
         def do_GET(self):
             self.send_response(200, "OK")
@@ -944,7 +948,7 @@ class wsgiHTTPRequestShim:
         Defaults to INFO level logging and sends logging to syslog
         The 'facility' that is used by syslog to determine where to
         store or send logging messages is set according to the
-        'log_facility parameter - defaults to 'local0'.  The (r)syslog
+        'log_facility' parameter - defaults to 'local0'.  The (r)syslog
         has to be configured to direct the log messages to an appropriate
         file or stream.  See nilib/scripts/install-nilib-wsgi.sh.
 
@@ -1005,6 +1009,9 @@ class wsgiHTTPRequestShim:
         if thread:
             if threading.current_thread().name != "MainThreads":
                 threading.current_thread().name = "R%d" % self.unique_id
+
+        # setup forwarding
+        self.fwd = forwarder(self.logger)
 
         self.loginfo("new_handler")
 

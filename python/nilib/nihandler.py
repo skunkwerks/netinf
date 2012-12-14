@@ -239,6 +239,7 @@ import qrcode
 
 from netinf_ver import NETINF_VER, NISERVER_VER
 from ni import NIname, NIdigester, NIproc, NI_SCHEME, NIH_SCHEME, ni_errs, ni_errs_txt
+import nifwd 
 
 # See if this run is either testing niserver.py or running standalone server
 # If either is true then use the HTTPRequestShim in httpshim.py
@@ -1442,9 +1443,26 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         try:
             metadata, content_file = self.cache.cache_get(ni_name)
         except NoCacheEntry:
-            self.loginfo("Named Data Object not in cache: %s" % self.path)
-            self.send_error(404, "Named Data Object not in cache")
-            return None
+            # SF check forwarding things for GETs here
+            self.loginfo("Named Data Object not in cache: checking forwarding" % ni_name)
+            try_fwd,nexthop=self.fwd.check_fwd(ni_name)
+            if try_fwd is False:
+                self.loginfo("Named Data Object not in cache: %s" % self.path)
+                self.send_error(404, "Named Data Object not in cache")
+                return None
+            else:
+                fwdres, metadata, content_file = self.fwd.do_fwd(self,nexthop)
+                if fwdres == nifwd.FWDSUCCESS:
+                    self.loginfo("NetInf Fowarding success!: %d" % fwdres)
+                elif fwdres == nifwd.FWDTIMEOUT:
+                    self.loginfo("NetInf Fowarding timeout: %d" % fwdres)
+                    self.send_error(404, "Named Data Object forwarding timeout")
+                    return None
+                else:
+                    self.loginfo("NetInf Fowarding failure: %d" % fwdres)
+                    self.send_error(404, "Named Data Object forwarding failed")
+                    return None
+                
         except Exception, e:
             self.logerror(str(e))
             self.send_error(500, str(e))

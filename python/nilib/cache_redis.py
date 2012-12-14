@@ -189,7 +189,7 @@ class RedisNetInfCache:
 
         try:
             self.temp_path = self.check_cache_dirs()
-        except IOError, e:
+        except Exception, e:
             self.logerror("Cache directory tree not accessible: %s" % str(e))
             raise IOError("Cache directory tree not accessible")
 

@@ -566,7 +566,7 @@ class MultiNetInfCache:
             try:
                 mfd = os.open(mfn, os.O_RDONLY)
                 fcntl.flock(mfd, fcntl.LOCK_SH)
-            except IOError, e:
+            except Exception, e:
                 if e.errno == errno.ENOENT:
                     raise NoCacheEntry("cache_get: no metadata file for %s" % ni_url)
                 else:

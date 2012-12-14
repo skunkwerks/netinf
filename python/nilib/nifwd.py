@@ -46,6 +46,13 @@ import email.message
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
 #===============================================================================#
+# moral equivalent of #define
+
+FWDSUCCESS = 0
+FWDERROR = 1
+FWDTIMEOUT = 2
+
+#===============================================================================#
 
 """
     Overall forwarding scheme
@@ -90,19 +97,29 @@ from ni import ni_errs, ni_errs_txt, NIname, NIproc
 
 """
 
-#===============================================================================#
-"""
-    check if I know where to forward a request (GET, PUBLISH or SEARCH)
-    - might use an NRS
-"""
-def ni_fwd():
-    return
+class forwarder: 
 
-#===============================================================================#
-"""
-    fwd a request and wait for a response (with timeout)
-"""
-def ni_dofwd():
-    return
+    def __init__(self,logger):
+        self.logger = logger
+        self.loginfo = self.logger.info
+        return
+
+    #===============================================================================#
+    """
+        check if I know where to forward a request (GET, PUBLISH or SEARCH)
+        - might use an NRS
+    """
+    def check_fwd(self,niname):
+        self.loginfo("Inside check_fwd");
+        nexthop=None
+        return False,nexthop
+    
+    #===============================================================================#
+    """
+        fwd a request and wait for a response (with timeout)
+    """
+    def do_fwd(self,handler,nexthop):
+        self.loginfo("Inside do_fwd");
+        return FWDERROR
 
 
