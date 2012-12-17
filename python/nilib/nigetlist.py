@@ -71,7 +71,7 @@ def debug(string):
 
 #===============================================================================#
 logger=logging.getLogger("nigetlist")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
@@ -92,7 +92,7 @@ def nilog(string):
 	return
 
 #===============================================================================#
-def getone(alg_digest, host, dest):
+def getone(ni_url, dest):
     """
     @brief Perform a NetInf 'get' from the host for the ni name made with alg and
     @brief digest provided by alg_digest.  If dest is not None leave the output
@@ -107,15 +107,11 @@ def getone(alg_digest, host, dest):
     # Record start time
     stime= time.time()
     
-    # Create NIname instance for supplied URL and validate it
-    url_str = "ni://%s/%s" % (host,alg_digest)
-    ni_url = NIname(url_str)
-
     # Must be a complete ni: URL with non-empty params field
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
         nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
-        return (False, alg_digest)
+        return (False, ni_url.get_url())
 
     # Generate NetInf form access URL
     ni_url_str = ni_url.get_canonical_ni_url()
@@ -131,7 +127,7 @@ def getone(alg_digest, host, dest):
         http_object = urllib2.urlopen(http_url, form_data)
     except Exception, e:
         nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
-        return (False, alg_digest)
+        return (False, ni_url_str)
 
     # Get HTTP result code
     http_result = http_object.getcode()
@@ -146,7 +142,7 @@ def getone(alg_digest, host, dest):
         buf = http_object.read()
         debug("HTTP Response: %s" % buf)
         http_object.close()
-        return (False, alg_digest)
+        return (False, ni_url_str)
 
     obj_length_str = http_info.getheader("Content-Length")
     if (obj_length_str != None):
@@ -195,11 +191,11 @@ def getone(alg_digest, host, dest):
 
     if len(msg.defects) > 0:
         nilog("Response was not a correctly formed MIME object")
-        return (False, alg_digest)
+        return (False, ni_url_str)
     # Verify length 
     if ((obj_length != None) and (payload_len != obj_length)):
         nilog("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
-        return (False, alg_digest)
+        return (False, ni_url_str)
         
     debug( msg.__dict__)
     # If the msg is multipart this is a list of the sub messages
@@ -209,7 +205,7 @@ def getone(alg_digest, host, dest):
         debug("Number of parts: %d" % len(parts))
         if len(parts) != 2:
             nilog("Error: Response from server does not have two parts.")
-            return (False, alg_digest)
+            return (False, ni_url_str)
         json_msg = parts[0]
         ct_msg = parts[1]
     else:
@@ -222,7 +218,7 @@ def getone(alg_digest, host, dest):
     debug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
         nilog("First or only component (metadata) of result is not of type application/json")
-        return (False, alg_digest)
+        return (False, ni_url_str)
 
     # Extract the JSON structure
     try:
@@ -230,7 +226,7 @@ def getone(alg_digest, host, dest):
     except Exception, e:
         nilog("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
                                                                     str(e)))
-        return (False, alg_digest)
+        return (False, ni_url_str)
     
     debug("Returned metadata for %s:" % ni_url_str)
     debug(json.dumps(json_report, indent = 4))
@@ -247,13 +243,13 @@ def getone(alg_digest, host, dest):
         #print digest, ni_url.get_digest()
         if (digest != ni_url.get_digest()):
             nilog("Digest of %s did not verify" % ni_url.get_url())
-            return (False, alg_digest)
+            return (False, ni_url_str)
         etime = time.time()
         duration = etime - stime
         nilog("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
               (msgid, ni_url_str, obj_length, duration*1000))
 
-        return(True, alg_digest)
+        return(True, ni_url_str)
         
 #===============================================================================#
 goodlist = []
@@ -281,14 +277,33 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
 
     for ndo in ndo_list.readlines():
         ndo = ndo.strip()
+        
+        # Create NIname instance for supplied URL 
+        if not ndo.startswith("ni:"):
+            if host == None:
+                nilog("Must provide authority with -n if not included in name: %s" %
+                      ndo)
+                break
+            url_str = "ni://%s/%s" % (host, ndo)
+        else:
+            url_str = ndo
+        ni_url = NIname(url_str)
+        if ni_url.get_netloc() == "":
+            if host == None:
+                nilog("Must provide authority with -n if not included in name: %s" %
+                      ndo)
+                break
+            ni_url.set_netloc(host)
+
         if dest_dir is not None:
             dest = "%s/%s" % (dest_dir, ndo)
         else:
             dest = None
+            
         if multi:
-            pool.apply_async(getone,args=(ndo, host, dest),callback=getres)
+            pool.apply_async(getone,args=(ni_url, dest),callback=getres)
         else:
-            getres(getone(ndo, host, dest))
+            getres(getone(ni_url, dest))
         # count how many we do
         count = count + 1
         # if limit > 0 then we'll stop there
@@ -326,8 +341,12 @@ def py_nigetlist():
     global verbose
     verbose = False
     usage = "%prog -l <list file name or - (for stdin)> [-v] [-m <# processes>]\n" + \
-            "   -n <host> [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
-            "the input file should just contain alg;val, e.g. sha-256;abc..."
+            "   [-n <host>] [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
+            "The input file should contain lines with any of:\n" + \
+            " 1. Complete ni: URI with authority (netloc) component,\n" + \
+            " 2. ni: URI with empty authority (netloc) component, or\n" + \
+            " 3. just algorithm and digest as alg;val, e.g. sha-256;abc...\n" + \
+            "If any of the lines are of types 2 or 3, the -n option MUST be supplied.\n" 
     parser = OptionParser(usage)
     
     parser.add_option("-l", "--list",
@@ -355,9 +374,7 @@ def py_nigetlist():
     if len(args) != 0:
         parser.error("Unrecognixed arguments supplied: %s." % str(args))
         sys.exit(-1)
-    if options.host == None: 
-        parser.error("You must supply a host name with -n")
-        sys.exit(-1)
+        
     if options.verbose:
         verbose = True
 
