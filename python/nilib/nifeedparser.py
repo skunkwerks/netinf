@@ -81,7 +81,7 @@ class DigestFile:
         return
 
     def write(self, data):
-        #print "Digesting %d" % len(data)
+        #print "Digesting |%s||%d" % (data, len(data))
         self._digester.update(data)
         self._file.write(data)
         return
@@ -117,15 +117,8 @@ class FiledMessage(message.Message):
         return
 
     def get_payload_value(self):
-        print "File TOTAL: %d" % self.total
         if self._payload_name is None:
             rslt = self._payload_dest.getvalue()
-            print rslt
-            try:
-                js = json.loads(rslt)
-                print "Good json"
-            except Exception, e:
-                print "bad json %s" % str(e)
         else:
             rslt = self._payload_name
             
@@ -133,12 +126,15 @@ class FiledMessage(message.Message):
         return rslt
 
     def write_payload(self, data):
-        #print"zzz"
-        assert(self._payload_dest is not None)
+        if self._payload_dest is None:
+            self._payload_dest = StringIO()
         self._payload_dest.write(data)
         self.total += len(data)
         return
-
+
+    def get_payload_len(self):
+        return self.total
+
 class BufferedSubFile(object):
     """A file-ish object that can have new data loaded into it.
 
@@ -232,20 +228,24 @@ class BufferedSubFile(object):
         return line
 
 
-
+
 class FeedParser:
     """A feed-style parser of email."""
 
-    def __init__(self, _factory=FiledMessage, _filer=None):
+    def __init__(self, factory=FiledMessage, dest_list=None):
         """_factory is called with no arguments to create a new message obj"""
-        self._factory = _factory
+        self._factory = factory
         self._input = BufferedSubFile()
         self._msgstack = []
         self._parse = self._parsegen().next
         self._cur = None
         self._last = None
         self._headersonly = False
-        self._filer = _filer
+        if hasattr(factory, "set_payload_dest"):
+            self._dest_list = dest_list
+        else:
+            self._dest_list = None
+        self._dest_index = 0
 
     # Non-public interface for supporting Parser's headersonly flag
     def _set_headersonly(self):
@@ -253,7 +253,6 @@ class FeedParser:
 
     def feed(self, data):
         """Push more data into the parser."""
-        #print "Feed: %d\n%s\n" % (len(data), data)
         self._input.push(data)
         self._call_parse()
 
@@ -284,7 +283,13 @@ class FeedParser:
         self._msgstack.append(msg)
         self._cur = msg
         self._last = msg
-
+        if self._dest_list is not None:
+            if self._dest_index < len(self._dest_list):
+                msg.set_payload_dest(self._dest_list[self._dest_index])
+            else:
+                msg.set_payload_dest(None)
+        self._dest_index += 1
+        
     def _pop_message(self):
         retval = self._msgstack.pop()
         if self._msgstack:
@@ -414,6 +419,7 @@ class FeedParser:
                     break
                 mo = boundaryre.match(line)
                 if mo:
+                    
                     # If we're looking at the end boundary, we're done with
                     # this multipart.  If there was a newline at the end of
                     # the closing boundary, then we need to initialize the
@@ -521,18 +527,20 @@ class FeedParser:
             return
         # Otherwise, it's some non-multipart type, so the entire rest of the
         # file contents becomes the payload.
-        if self._filer is not None:
-            print self._cur
-            ct = self._cur.get("content-type")
-            self._cur.set_payload_dest(self._filer(ct))
+        if self._dest_list is not None:
+            previous_line = None
             for line in self._input:
                 if line is NeedMoreData:
                     yield NeedMoreData
                     continue
-                #print line
-                self._cur.write_payload(line)
-                #print "yyy"
-            #print"xxx"
+                if previous_line is not None:
+                    self._cur.write_payload(previous_line)
+                previous_line = line
+            if previous_line is not None:
+                mo = NLCRE_eol.search(previous_line)
+                if mo:
+                    previous_line = previous_line[:-len(mo.group(0))]
+                self._cur.write_payload(previous_line)
             self._cur.set_payload(self._cur.get_payload_value())
         else:
             lines = []
@@ -593,8 +601,8 @@ class FeedParser:
                 continue
             lastheader = line[:i]
             lastvalue = [line[i+1:].lstrip()]
-            print lastheader
-            print lastvalue
+            #print lastheader
+            #print lastvalue
         # Done with all the lines, so handle the last header.
         if lastheader:
             # XXX reconsider the joining of folded lines

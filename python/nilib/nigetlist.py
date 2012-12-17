@@ -50,6 +50,7 @@ import email.message
 import time
 import platform
 import multiprocessing
+from os.path import join
 import tempfile
 import logging
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
@@ -63,15 +64,15 @@ def debug(string):
     @brief Print out debugging information string
     @param string to be printed (in)
     """
+    global verbose
     if verbose:
         print string
     return
 
 #===============================================================================#
-logger=multiprocessing.get_logger()
-logger.setLevel(logging.DEBUG)
+logger=logging.getLogger("nigetlist")
+logger.setLevel(logging.INFO)
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
@@ -89,22 +90,6 @@ def nilog(string):
 	logger.info('NILOG: ' + node + ',' + nano + ',' + utct + ',' + string)
 	
 	return
-
-#===============================================================================#
-digested_file = None
-digested_fileobj = None
-hash_fn = None
-digester_instance = None
-
-def file_dest_setter(content_type):
-    global digester_instance
-    print "ct: %s" % content_type
-    if ((content_type is None) or
-        (content_type.lower().startswith("application/json"))):
-        return None
-    else:
-        digester_instance = DigestFile(digested_file, digested_fileobj, hash_fn)
-        return digester_instance
 
 #===============================================================================#
 def getone(alg_digest, host, dest):
@@ -158,6 +143,9 @@ def getone(alg_digest, host, dest):
 
     if (http_result != 200):
         nilog("Get request returned HTTP code %d" % http_result)
+        buf = http_object.read()
+        debug("HTTP Response: %s" % buf)
+        http_object.close()
         return (False, alg_digest)
 
     obj_length_str = http_info.getheader("Content-Length")
@@ -172,18 +160,26 @@ def getone(alg_digest, host, dest):
     # Parse the MIME object
 
     primer = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
-    global digested_file, digested_fileobj, hash_fn
     if dest is None:
         fd, digested_file = tempfile.mkstemp()
-        digested_fileobj = os.fdopen(fd, "w")
-        print digested_fileobj, digested_file
+        fo = os.fdopen(fd, "w")
     else:
         digested_file = dest
-        digested_fileobj = None
+        fo = None
+    debug("Writng content to %s" % digested_file)
 
-    hash_fn = ni_url.get_hash_function()
+    digester = DigestFile(digested_file, fo, ni_url.get_hash_function())
 
-    msg_parser = FeedParser(_filer=file_dest_setter)
+    # Expecting up to three MIME message objects
+    # - Top level multipart/mixed,
+    # - application/json with metadata, and
+    # - any type for content file
+    # In dest_list, None results in output being written to a StringIO buffer
+    # Other not None items should be filelike objects that can be written to. 
+    # If there is only metadata than first ones will cover it
+    msg_parser = FeedParser(dest_list=[None, None, digester])
+
+    # Grab and digest the HTTP response body in chunks
     msg_parser.feed(primer)
     payload_len = 0
     blk_size = 4096
@@ -239,14 +235,16 @@ def getone(alg_digest, host, dest):
     debug("Returned metadata for %s:" % ni_url_str)
     debug(json.dumps(json_report, indent = 4))
 
+    msgid = json_report["msgid"]
+
     # If the content was also returned..
     if ct_msg != None:
         debug(ct_msg.__dict__)
-        digest= digester_instance.get_digest()[:ni_url.get_truncated_length()]
+        digest= digester.get_digest()[:ni_url.get_truncated_length()]
         digest = NIproc.make_b64_urldigest(digest)
                                           
         # Check the digest
-        print digest, ni_url.get_digest()
+        #print digest, ni_url.get_digest()
         if (digest != ni_url.get_digest()):
             nilog("Digest of %s did not verify" % ni_url.get_url())
             return (False, alg_digest)
@@ -260,8 +258,11 @@ def getone(alg_digest, host, dest):
 #===============================================================================#
 goodlist = []
 badlist = []
+complete_count = 0
 
 def getres(tuple):
+    global goodlist, badlist, complete_count
+    complete_count += 1
     if tuple[0]:
         goodlist.append(tuple[1])
     else:
@@ -270,7 +271,7 @@ def getres(tuple):
 
 #===============================================================================#
 def getlist(ndo_list, dest_dir, host, mprocs, limit):
-    from os.path import join
+    global complete_count, goodlist, badlist
     count = 0
     # start mprocs client processes, comment out the next 2 lines for single-thread
     multi=False
@@ -295,13 +296,13 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
                 if multi:
                         pool.close()
                         pool.join()
-                return (count,goodlist,badlist)
+                return (count, complete_count, goodlist, badlist)
 
     # Close down the multiprocessing if used
     if multi:
             pool.close()
             pool.join()
-    return (count,goodlist,badlist)
+    return (count,complete_count, goodlist,badlist)
 
 #===============================================================================#
 def py_nigetlist():
@@ -322,6 +323,8 @@ def py_nigetlist():
     """
     
     # Options parsing and verification stuff
+    global verbose
+    verbose = False
     usage = "%prog -l <list file name or - (for stdin)> [-v] [-m <# processes>]\n" + \
             "            [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
             "<ni name> must include location (netloc) from which to retrieve object."
@@ -332,7 +335,6 @@ def py_nigetlist():
                       help="Name of file with list of name to get or - for stdin (default).")
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose",
-                      default="False",
                       help="Verbose output selected.")
     parser.add_option("-n", "--node", dest="host",
 		      type="string",
@@ -356,7 +358,8 @@ def py_nigetlist():
     if options.host == None: 
         parser.error("You must supply a host name with -n")
         sys.exit(-1)
-    verbose = options.verbose
+    if options.verbose:
+        verbose = True
 
     if options.list == "-":
         list_chan = sys.stderr
@@ -377,15 +380,16 @@ def py_nigetlist():
              options.mprocs,options.count))
     
     # loop over all files below directory and putone() for each we find
-    count,goodlist,badlist = getlist(list_chan, options.dest_dir, options.host,
-                                     options.mprocs,options.count)
-    
-    # print goodlist
-    # print badlist
+    cnt, cc, goodlist, badlist = getlist(list_chan, options.dest_dir, options.host,
+                                         options.mprocs,options.count)
 
-    nilog("Finished nigetlist,list,%s,to,%s,dest_dir,%s,processes,%d,count,%d" 
+    debug("good: %s" % str(goodlist))
+    debug("bad: %s"% str(badlist))
+    debug("completed: %d" % cc)
+
+    nilog("Finished nigetlist,list,%s,to,%s,dest_dir,%s,processes,%d,count_completed,%d" 
           % (input_file, options.host, str(options.dest_dir),
-             options.mprocs,options.count))
+             options.mprocs,cc))
 
     os._exit(0)
                                                                                             
