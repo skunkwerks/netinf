@@ -326,8 +326,8 @@ def py_nigetlist():
     global verbose
     verbose = False
     usage = "%prog -l <list file name or - (for stdin)> [-v] [-m <# processes>]\n" + \
-            "            [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
-            "<ni name> must include location (netloc) from which to retrieve object."
+            "   -n <host> [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
+            "the input file should just contain alg;val, e.g. sha-256;abc..."
     parser = OptionParser(usage)
     
     parser.add_option("-l", "--list",
