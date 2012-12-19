@@ -152,6 +152,10 @@ class BufferedSubFile(object):
         self._eofstack = []
         # A flag indicating whether the file has been closed or not.
         self._closed = False
+        # Count of octets that should be skipped without doing matching
+        self._skip_count = 0
+        # Raw data returned while skipping
+        self._raw_data = None
 
     def push_eof_matcher(self, pred):
         self._eofstack.append(pred)
@@ -162,14 +166,23 @@ class BufferedSubFile(object):
     def close(self):
         # Don't forget any trailing partial line.
         self._lines.append(self._partial)
+        if self._raw_data is not None:
+            self._lines.append(self._raw_data)
         self._partial = ''
+        self._raw_data = None
         self._closed = True
 
     def readline(self):
+        if self._raw_data is not None:
+            data = self._raw_data
+            self._raw_data = None
+            return data
+        
         if not self._lines:
             if self._closed:
                 return ''
             return NeedMoreData
+
         # Pop the line off the stack and see if it matches the current
         # false-EOF predicate.
         line = self._lines.pop()
@@ -188,10 +201,42 @@ class BufferedSubFile(object):
         assert line is not NeedMoreData
         self._lines.append(line)
 
+    def set_skip_count(self, skip_count):
+        if skip_count <= 0:
+            return
+        self._skip_match = True
+        self._raw_data = ""
+        while (skip_count > 0) and (len(self._lines) > 0):
+            data = self._lines.pop()
+            ld = len(data)
+            if ld <= skip_count:
+                self._raw_data += data
+                skip_count -= ld
+            else:
+                self._raw_data += data[:ld]
+                self._lines.append(data[ld:])
+                skip_count = 0
+                
+        self._skip_count = skip_count
+        return
+
     def push(self, data):
         """Push some new data into this object."""
         # Handle any previous leftovers
         data, self._partial = self._partial + data, ''
+
+        # If currently skipping matching see if this finishes the skip
+        if self._skip_count > 0:
+            ld = len(data)
+            if ld <= self._skip_count:
+                self._raw_data = data
+                self._skip_count -= ld
+                self._lines = []
+                return
+            else:
+                self._raw_data = data[:self._skip_count]
+                data = data[self._skip_count:]
+                self.skip_count = 0
         # Crack into lines, but preserve the newlines on the end of each
         parts = NLCRE_crack.split(data)
         # The *ahem* interesting behaviour of re.split when supplied grouping
@@ -226,7 +271,6 @@ class BufferedSubFile(object):
         if line == '':
             raise StopIteration
         return line
-
 
 
 class FeedParser:
@@ -528,11 +572,28 @@ class FeedParser:
         # Otherwise, it's some non-multipart type, so the entire rest of the
         # file contents becomes the payload.
         if self._dest_list is not None:
+            item_size = self._cur.get("content-length")
+            if item_size is not None:
+                ld = int(item_size)
+                #print "content length: %d" % ld
+                self._input.set_skip_count(ld)
+                for line in self._input:
+                    if line is NeedMoreData:
+                        yield NeedMoreData
+                        continue
+                    ld2 = len(line)
+                    #print "ld2: %d" % ld2
+                    self._cur.write_payload(line)
+                    ld -= ld2
+                    if ld <= 0:
+                        break
+                    
             previous_line = None
             for line in self._input:
                 if line is NeedMoreData:
                     yield NeedMoreData
                     continue
+                #print "line: %s" % line
                 if previous_line is not None:
                     self._cur.write_payload(previous_line)
                 previous_line = line
