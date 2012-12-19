@@ -275,43 +275,56 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
             pool = multiprocessing.Pool(mprocs)
             multi=True
 
-    for ndo in ndo_list.readlines():
-        ndo = ndo.strip()
+    try:
+        for ndo in ndo_list.readlines():
+            ndo = ndo.strip()
         
-        # Create NIname instance for supplied URL 
-        if not ndo.startswith("ni:"):
-            if host == None:
-                nilog("Must provide authority with -n if not included in name: %s" %
-                      ndo)
-                break
-            url_str = "ni://%s/%s" % (host, ndo)
-        else:
-            url_str = ndo
-        ni_url = NIname(url_str)
-        if ni_url.get_netloc() == "":
-            if host == None:
-                nilog("Must provide authority with -n if not included in name: %s" %
-                      ndo)
-                break
-            ni_url.set_netloc(host)
-
-        if dest_dir is not None:
-            dest = "%s/%s" % (dest_dir, ndo)
-        else:
-            dest = None
-            
+            # Create NIname instance for supplied URL 
+            if not ndo.startswith("ni:"):
+                if host == None:
+                    nilog("Must provide authority with -n if not included in name: %s" %
+                        ndo)
+                    break
+                url_str = "ni://%s/%s" % (host, ndo)
+            else:
+                url_str = ndo
+            ni_url = NIname(url_str)
+            if ni_url.get_netloc() == "":
+                if host == None:
+                    nilog("Must provide authority with -n if not included in name: %s" %
+                        ndo)
+                    break
+                ni_url.set_netloc(host)
+    
+            if dest_dir is not None:
+                dest = "%s/%s" % (dest_dir, ndo)
+            else:
+                dest = None
+             
+            if multi:
+                pool.apply_async(getone,args=(ni_url, dest),callback=getres)
+            else:
+                getres(getone(ni_url, dest))
+            # count how many we do
+            count = count + 1
+            # if limit > 0 then we'll stop there
+            if count==limit:
+                    if multi:
+                            pool.close()
+                            pool.join()
+                    return (count, complete_count, goodlist, badlist)
+    except KeyboardInterrupt:
+        nilog("Keyboard interrupt")
         if multi:
-            pool.apply_async(getone,args=(ni_url, dest),callback=getres)
-        else:
-            getres(getone(ni_url, dest))
-        # count how many we do
-        count = count + 1
-        # if limit > 0 then we'll stop there
-        if count==limit:
-                if multi:
-                        pool.close()
-                        pool.join()
-                return (count, complete_count, goodlist, badlist)
+                pool.close()
+                pool.join()
+        return (count, complete_count, goodlist, badlist)
+    except Exception, e:
+        nilog("Exception: %s" %  str(e))
+        if multi:
+                pool.close()
+                pool.join()
+        return (count, complete_count, goodlist, badlist)
 
     # Close down the multiprocessing if used
     if multi:
@@ -340,7 +353,7 @@ def py_nigetlist():
     # Options parsing and verification stuff
     global verbose
     verbose = False
-    usage = "%prog -l <list file name or - (for stdin)> [-v] [-m <# processes>]\n" + \
+    usage = "%prog [-l <list file name or - (for stdin)>] [-v] [-m <# processes>]\n" + \
             "   [-n <host>] [-c <# max NDOs to get>] [-d <destination dir for files gotten>]\n" + \
             "The input file should contain lines with any of:\n" + \
             " 1. Complete ni: URI with authority (netloc) component,\n" + \
@@ -379,7 +392,7 @@ def py_nigetlist():
         verbose = True
 
     if options.list == "-":
-        list_chan = sys.stderr
+        list_chan = sys.stdin
         input_file = "stdin"
     elif os.path.isfile(options.list):
         try:
@@ -395,6 +408,9 @@ def py_nigetlist():
     nilog("Starting nigetlist,list,%s,to,%s,dest_dir,%s,processes,%d,count,%d" 
           % (input_file, options.host, str(options.dest_dir),
              options.mprocs,options.count))
+
+    if list_chan == sys.stdin:
+        nilog("Waiting for input from stdin")
     
     # loop over all files below directory and putone() for each we find
     cnt, cc, goodlist, badlist = getlist(list_chan, options.dest_dir, options.host,
