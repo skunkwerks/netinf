@@ -9,9 +9,9 @@ TAG="nigetl.sh:$NOW"
 
 # get parameters
 # list of ni URIs to get
-LIST=./list
+LIST=$TOPDIR/list
 # SITE will be used for ni URIs that have no authority
-SITE=filesys.netinf.eu
+SITE=php.netinf.eu
 # set COUNT=0 for all
 COUNT=100
 # set procs >1 to use that many client processes
@@ -75,8 +75,8 @@ cat >$GPLFILE <<EOF
 set datafile separator ","
 set terminal png nocrop enhanced size 1024,768
 set output '$PICTURE'
-set xrange [0:$XMAX]
-set yrange [0:$YMAX]
+# set xrange [0:$XMAX]
+# set yrange [0:$YMAX]
 plot '$CSVFILE'
 EOF
 

@@ -87,7 +87,9 @@ if (!$algfound) {
 				// print $location;
     			$hs = headers_sent();
 				// bits here inspired by http://edoceo.com/creo/php-redirect
-				if ($hs) {
+                // SF:  send a proper 307 regardless - 2012-12-19
+				// if ($hs) {
+                if (true) {
 					header( "HTTP/1.1 307 Temporary Redirect HTTP/1.1",true,307);
 					header("Location: " . $location);
         			header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0');
