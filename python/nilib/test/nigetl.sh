@@ -11,9 +11,9 @@ TAG="nigetl.sh:$NOW"
 # list of ni URIs to get
 LIST=$TOPDIR/list
 # SITE will be used for ni URIs that have no authority
-SITE=php.netinf.eu
+SITE=filesys.netinf.eu
 # set COUNT=0 for all
-COUNT=100
+COUNT=0
 # set procs >1 to use that many client processes
 PROCS=1
 # if you don't want to keep things
