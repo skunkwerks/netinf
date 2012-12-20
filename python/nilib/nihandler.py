@@ -1445,13 +1445,13 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         except NoCacheEntry:
             # SF check forwarding things for GETs here
             self.loginfo("Named Data Object not in cache: checking forwarding" % ni_name)
-            try_fwd,nexthop=self.fwd.check_fwd(ni_name)
+            try_fwd,nexthops=self.fwd.check_fwd(ni_name)
             if try_fwd is False:
                 self.loginfo("Named Data Object not in cache: %s" % self.path)
                 self.send_error(404, "Named Data Object not in cache")
                 return None
             else:
-                fwdres, metadata, content_file = self.fwd.do_fwd(self,nexthop)
+                fwdres, metadata, content_file = self.fwd.do_fwd(self,nexthops)
                 if fwdres == nifwd.FWDSUCCESS:
                     self.loginfo("NetInf Fowarding success!: %d" % fwdres)
                 elif fwdres == nifwd.FWDTIMEOUT:
