@@ -11,9 +11,9 @@ TAG="wkugetl:$NOW"
 # list of ni URIs to get
 LIST=$TOPDIR/list
 # SITE will be used for ni URIs that have no authority
-SITE=php.netinf.eu
+SITE=filesys.netinf.eu
 # set COUNT=0 for all
-COUNT=100
+COUNT=0
 # set procs >1 to use that many client processes
 PROCS=1
 # if you don't want to keep things
@@ -98,9 +98,17 @@ do
     esac 
 
     # get it and time it
-    sztm=`curl -L -s -w "%{size_download},%{time_total}\n" -o /dev/null --url $wku`
     
-    echo "$wku,$sztm" >>$CLILOG
+    stime=`date +%s%N`
+    curl_sztm=`curl -L -s -w "%{size_download},%{time_total}\n" -o /tmp/wkufile --url $wku`
+    # hash but don't bother comparing, only care about timing for now
+    openssl sha256 /tmp/wkufile >/dev/null 2>&1
+    rm -rf /tmp/wkufile
+    etime=`date +%s%N`
+    
+    dur=$(((etime-stime)/1000000))
+
+    echo "$wku,$curl_sztm,$dur" >>$CLILOG
     
     
 done <$LIST
@@ -111,7 +119,7 @@ echo "$TAG,$LOGLAST"
 
 echo "$TAG,Generatiing CSV for gnuplot with size,duration"
 
-cat $CLILOG | awk -F, '{print $2","$3}' >$CSVFILE
+cat $CLILOG | awk -F, '{print $2","$4}' >$CSVFILE
 
 echo "$TAG,Generating Client Picture"
 

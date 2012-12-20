@@ -111,14 +111,14 @@ class forwarder:
     """
     def check_fwd(self,niname):
         self.loginfo("Inside check_fwd");
-        nexthop=None
-        return False,nexthop
+        nexthops=None
+        return False,nexthops
     
     #===============================================================================#
     """
         fwd a request and wait for a response (with timeout)
     """
-    def do_fwd(self,handler,nexthop):
+    def do_fwd(self,handler,nexthops):
         self.loginfo("Inside do_fwd");
         return FWDERROR
 
