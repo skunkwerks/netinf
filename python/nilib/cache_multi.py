@@ -381,6 +381,7 @@ class MultiNetInfCache:
             err_str = "put_cache: Must supply metadata for cache entry: %s" % \
                       ni_name.get_url()
             self.logerror(err_str)
+            self.loginfo("2")
             raise NoMetaDataSupplied(err_str)
         assert isinstance(metadata, NetInfMetaData)
 
@@ -388,6 +389,7 @@ class MultiNetInfCache:
             err_str = "put_cache: Content file %s is not present: %s" % \
                       (content_file, ni_name.get_url())
             self.logerror(err_str)
+            self.loginfo("3")
             raise ValueError(err_str)
             
         try:
@@ -395,6 +397,7 @@ class MultiNetInfCache:
             ni_hash_alg = ni_name.get_alg_name()
             ni_digest = ni_name.trans_nih_to_ni()
         except (UnvalidatedNIname, EmptyParams), e:
+            self.loginfo("1")
             err_str = "put_cache: bad ni_name supplied: %s" % str(e)
             self.logerror(err_str)
             raise sys.exc_info()[0](err_str)

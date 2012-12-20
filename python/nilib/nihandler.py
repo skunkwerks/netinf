@@ -1426,6 +1426,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             return
 
         self.msgid = fov["msgid"]
+        self.ext=fov["ext"]
+        self.uri=fov["URI"]
 
         self.logdebug("/netinfproto/get: URI: '%s', msgid: '%s', 'ext': '%s'" %
                       (fov["URI"], fov["msgid"], fov["ext"]))
@@ -1444,16 +1446,31 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             metadata, content_file = self.cache.cache_get(ni_name)
         except NoCacheEntry:
             # SF check forwarding things for GETs here
-            self.loginfo("Named Data Object not in cache: checking forwarding" % ni_name)
+            self.loginfo("Named Data Object not in cache: checking forwarding for %s" % ni_name)
             try_fwd,nexthops=self.fwd.check_fwd(ni_name)
             if try_fwd is False:
                 self.loginfo("Named Data Object not in cache: %s" % self.path)
                 self.send_error(404, "Named Data Object not in cache")
                 return None
             else:
-                fwdres, metadata, content_file = self.fwd.do_fwd(self,nexthops)
+                fwdres, metadata, content_bytes = self.fwd.do_fwd(
+                        nexthops,self.uri,self.ext,self.msgid)
                 if fwdres == nifwd.FWDSUCCESS:
                     self.loginfo("NetInf Fowarding success!: %d" % fwdres)
+                    try:
+                        # SF: TODO: Note no hash checking here and there should be
+                        temp_fd,temp_name=self.cache.cache_mktemp();
+                        f = os.fdopen(temp_fd, "w")
+                        f.write(content_bytes.get_payload())
+                        f.close()
+                        content_file=temp_name
+                        md_out, cfn, new_entry, ignore_upload = \
+                                        self.cache.cache_put(ni_name, metadata, temp_name)
+                        self.loginfo("NetInf put_cache after fwd success1")
+                    except Exception, e:
+                        self.loginfo("NetInf crap put_cache after fwd success1")
+                        self.send_error(500, str(e))
+                        return None
                 elif fwdres == nifwd.FWDTIMEOUT:
                     self.loginfo("NetInf Fowarding timeout: %d" % fwdres)
                     self.send_error(404, "Named Data Object forwarding timeout")
