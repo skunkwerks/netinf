@@ -92,13 +92,14 @@ def nilog(string):
 	return
 
 #===============================================================================#
-def getone(ni_url, dest):
+def getone(ni_url, http_host, dest):
     """
     @brief Perform a NetInf 'get' from the host for the ni name made with alg and
     @brief digest provided by alg_digest.  If dest is not None leave the output
     @brief in specified path.
-    @param alg_digest string combination of digest alogorithm and digest separated by ;
-    @param host string FQDN or IP address of host to send get message to
+    @param ni_url NIname instance with combination of auth, digest algorithm and
+                         digest separated
+    @param http_host string FQDN or IP address and port of host to send get message to
     @param dest None or string where to put destination contents if received
 
     Assume that dest provides a directory path into which file can be written
@@ -115,7 +116,7 @@ def getone(ni_url, dest):
 
     # Generate NetInf form access URL
     ni_url_str = ni_url.get_canonical_ni_url()
-    http_url = "http://%s/netinfproto/get" % ni_url.get_netloc()
+    http_url = "http://%s/netinfproto/get" % http_host
     
     # Set up HTTP form data for get request
     form_data = urllib.urlencode({ "URI":   ni_url.get_url(),
@@ -281,7 +282,7 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
         
             # Create NIname instance for supplied URL 
             if not ndo.startswith("ni:"):
-                if host == None:
+                if host is None:
                     nilog("Must provide authority with -n if not included in name: %s" %
                         ndo)
                     break
@@ -289,12 +290,15 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
             else:
                 url_str = ndo
             ni_url = NIname(url_str)
-            if ni_url.get_netloc() == "":
-                if host == None:
+            http_host = ni_url.get_netloc()
+            if http_host == "":
+                if host is None:
                     nilog("Must provide authority with -n if not included in name: %s" %
                         ndo)
                     break
                 ni_url.set_netloc(host)
+            elif host is not None:
+                http_host = host
     
             if dest_dir is not None:
                 dest = "%s/%s" % (dest_dir, ndo)
@@ -302,9 +306,9 @@ def getlist(ndo_list, dest_dir, host, mprocs, limit):
                 dest = None
              
             if multi:
-                pool.apply_async(getone,args=(ni_url, dest),callback=getres)
+                pool.apply_async(getone,args=(ni_url, http_host, dest),callback=getres)
             else:
-                getres(getone(ni_url, dest))
+                getres(getone(ni_url, http_host, dest))
             # count how many we do
             count = count + 1
             # if limit > 0 then we'll stop there
