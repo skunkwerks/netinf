@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       29/12/2012 Elwyn Davies   Add nistruct module for BPQ and SDNV.
 1.0       10/12/2012 Elwyn Davies   Cater for Redis cache storage.
 0.6       06/12/2012 Elwyn Davies   Add requirement for Python posix_ipc module.
 0.5       06/12/2012 Elwyn Davies   Add location for syslog log file.
@@ -49,7 +50,7 @@ Version   Date       Author         Notes
 @endcode
 """
 
-from setuptools import setup
+from setuptools import setup, Extension
 import os
 datadir_envvar = "NILIB_DATA_DIR"
 if datadir_envvar in os.environ:
@@ -66,6 +67,7 @@ setup(name='nilib',
       author_email='davieseb@scss.tcd.ie',
       url='https://sourceforge.net/p/netinf/',
       packages=['nilib'],
+      ext_modules=[Extension('nilib._nistruct', ['nilib/_nistruct.c'])],
       install_requires=['redis', 'python-stdnum', 'PyDNS', 'posix_ipc',
                         'python-magic', 'qrcode', 'pil', 'doxypy'],
       scripts=['nilib/scripts/pynilib_test.sh'],
