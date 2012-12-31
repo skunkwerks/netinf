@@ -1132,17 +1132,21 @@ bu_sdnv(const char *p, const formatdef *f)
      * high-order bit.
      */
     octet_count = sizeof(unsigned PY_LONG_LONG);
-    check = 0xFE << (octet_count - 1);
+    printf("octet count: %d\n", octet_count);
+    check = 0xFE << (octet_count - 1) * 8;
     val_len = 0;
     val = 0;
     do {
-        if (val_len == SDNV_MAX_LENGTH)
+        if (val_len == SDNV_MAX_LENGTH) {
+            printf("Buffer too short\n");
             return NULL; // buffer too short
+        }
         /* Check if any non-zero bits would get shifted out with next shift */
         if ((val & check) != 0) {
+            printf("Overflow\n");
             return NULL; /* there would be overflow */
         }
-        
+        printf("loop\n");
         val = (val << 7) | (*p & 0x7f);
         ++val_len;
         
@@ -1653,6 +1657,7 @@ s_unpack_internal(PyStructObject *soself, char *startfrom, Py_ssize_t buf_len) {
     for (code = soself->s_codes; code->fmtdef != NULL; code++) {
         PyObject *v;
         const formatdef *e = code->fmtdef;
+        printf("code: %c, last: %d\n", e->format, last);
         if ((last >= buf_len) && (code->size > 0)) {
             /* Not enough buffer to unpack rest of format from */
             /* Caters for special case of trailing empty string */
@@ -2323,13 +2328,13 @@ init_nistruct(void)
 
     /* Add some symbolic constants to the module */
     if (StructError == NULL) {
-        StructError = PyErr_NewException("struct.error", NULL, NULL);
+        StructError = PyErr_NewException("nistruct.struct_error", NULL, NULL);
         if (StructError == NULL)
             return;
     }
 
     Py_INCREF(StructError);
-    PyModule_AddObject(m, "error", StructError);
+    PyModule_AddObject(m, "struct_error", StructError);
 
     Py_INCREF((PyObject*)&PyStructType);
     PyModule_AddObject(m, "Struct", (PyObject*)&PyStructType);
