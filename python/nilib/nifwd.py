@@ -44,6 +44,9 @@ import json
 import email.parser
 import email.message
 
+import threading
+import redis
+
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 from  metadata import NetInfMetaData
 
@@ -53,6 +56,18 @@ from  metadata import NetInfMetaData
 FWDSUCCESS = 0
 FWDERROR = 1
 FWDTIMEOUT = 2
+
+#===============================================================================#
+# database field names etc
+NIROUTER = "nirouter"
+GET_FWD = "GET_FWD"
+GET_RES = "GET_RES"
+PUB_FWD = "PUB_FWD"
+PUB_DST = "PUB_DST"
+SCH_FWD = "SCH_FWD"
+SCH_DST = "SCH_DST"
+
+
 
 #===============================================================================#
 
@@ -65,10 +80,26 @@ FWDTIMEOUT = 2
 	forward, but "know the answer" is different for 
 	different messages.
 
-	For all messages:
-		- for GET/SEARCH if I have an entry locally, then answer
-		- for PUBLISH if I decide I'm a DEST then I make entry and answer
-		- for SEARCH if I decide I'm a DEST then I run search as now and answer
+	The following "roles" exist, these are allo locally configured for
+	all relevant requests, i.e. if I'm set to GET_RES then that's true
+	for all GETs
+	NIROUTER - if set then some of the things below are meaningful
+	GET_FWD  - if set then I will forward some GETs
+	GET_RES  - if set then I will try to RESolve get responses with locators but no NDO
+	PUB_FWD  - if set then I will try to forward PUBLISHes
+	PUB_DST  - if set then I consider myself the destination for PUBLISHes
+	SCH_FWD  - if set then I will try to forward SEARCHes
+	SCH_DST  - if set then I consider myself the destination for SEARCHes
+
+	Rules:
+		SCH_FWD = ~SCH_DST one has to be true, the other false
+		Both PUB_DST and PUB_FWD can be true, in that case, I handle 
+			locally, and then separately ("longer" msg-id) re-PUBLISH
+			upstream
+
+	For GET/SEARCH if I have a matching entry locally, then that's the final answer
+
+	Stuff below here is earlier, needs to reflect coding as that happens
 
 		- if not, check if I know where to forward
 			- if I don't know where to forward, 404
@@ -104,26 +135,115 @@ class forwarder:
 	def __init__(self,logger):
 		self.logger = logger
 		self.loginfo = self.logger.info
+
+		# setup redis stuff
+		# note: we're using our own tables in redis for this so locks
+		# etc are just local to the forwarder class
+		# another note: even if the main NetInf server is using only
+		# file based storage, this class only uses redis, always
+		self.db = redis.Redis()
+		self.cache_lock = threading.Lock()
+
+		# im_a_router=self.check_role(NIROUTER)
+
 		return
+
+	#===============================================================================#
+	"""
+		set defaults for rolename values if they don't exist
+	"""
+	def set_def_roles(self):
+		self.loginfo("Inside set_def_roles");
+
+		with self.cache_lock:
+			try:
+				self.db.set(NIROUTER + "/" +  NIROUTER,True)
+				self.db.set(NIROUTER + "/" + GET_FWD,True)
+				self.db.set(NIROUTER + "/" + GET_RES,False)
+				self.db.set(NIROUTER + "/" + PUB_FWD,False)
+				self.db.set(NIROUTER + "/" + PUB_DST,False)
+				self.db.set(NIROUTER + "/" + SCH_FWD,False)
+				self.db.set(NIROUTER + "/" + SCH_DST,False)
+
+				nhs={}
+				nhs[0]='village.n4c.eu'
+				nhs[1]='bollox.example.com'
+				self.db.hmset(NIROUTER+"/"+GET_FWD+"/nh",nhs)
+			except Exception, e:
+				# we're screwed!
+				self.loginfo("Exception in set_def_roles, %s" % str(e));
+				return False
+
+		return True
+	
+
+	#===============================================================================#
+	"""
+		return setting for that rolename
+	"""
+	def check_role(self,rolename):
+		# self.loginfo("Inside check_role");
+		roleset=False
+
+		try:
+			roleset=self.db.get(NIROUTER + "/" + rolename)
+		except Exception, e:
+			# oops, maybe never set? try that and then once more for luck
+			self.loginfo("Exception in check_role, %s" % str(e));
+			try:
+				self.set_def_roles()
+				roleset=self.db.get(NIROUTER + "/" + rolename)
+			except Exception, e:
+				self.loginfo("Exception 2 in check_role, %s" % str(e));
+				return FALSE
+
+		if roleset == None:
+			# self.loginfo("Bummer 1 in check_role")
+			try:
+				self.set_def_roles()
+				roleset=self.db.get(NIROUTER + "/" + rolename)
+			except Exception, e:
+				self.loginfo("Exception 2 in check_role, %s" % str(e));
+				return False
+
+		if roleset == None:
+			self.loginfo("Bummer in check_role")
+			return False
+			
+
+		return roleset
+
 
 	#===============================================================================#
 	"""
 		check if I know where to forward a request (GET, PUBLISH or SEARCH)
 		- might use an NRS
 	"""
-	def check_fwd(self,niname):
+	def check_fwd(self,role,niname,ext):
 		self.loginfo("Inside check_fwd");
-		nexthops=None
+		if self.check_role(role) != "True":
+			self.loginfo("check_fwd bad role %s, got: %s" % (role,self.check_role(role)));
+			return False,None
+
+		# check if we have a nexthop for that role
+		try:
+			nexthops={}
+			redis_key=NIROUTER + "/" + role + "/" + "nh"
+			all_vals = self.db.hgetall(redis_key)
+			nexthops=self.db.hmget(redis_key,all_vals)
+		except Exception, e:
+			self.loginfo("Exception in check_fwd, %s" % str(e));
+			return False,None
 		
 		# hardcode for now
-		nexthops=['village.n4c.eu','bollox.example.com'];
+		# nexthops=['village.n4c.eu','bollox.example.com'];
 		return True,nexthops
 
 	#===============================================================================#
 	"""
 		fwd a request and wait for a response (with timeout)
 	"""
-	def do_fwd(self,nexthops,uri,ext,msgid):
+	def do_get_fwd(self,nexthops,uri,ext,msgid):
 		self.loginfo("Inside do_fwd");
 
 		for nexthop in nexthops:
@@ -216,4 +336,16 @@ class forwarder:
 
 		return FWDSUCCESS,metadata,ct_msg
 
+if __name__ == "__main__":
+	import logging
+	logger = logging.getLogger("test")
+	logger.setLevel(logging.DEBUG)
+	ch = logging.StreamHandler()
+	fmt = logging.Formatter("%(levelname)s %(threadName)s %(message)s")
+	ch.setFormatter(fmt)
+	logger.addHandler(ch)
+	fwd = forwarder(logger)
+	fwd.loginfo("Starting")
+	roleset=fwd.check_role(NIROUTER)
+	fwd.loginfo("Done: %s" % roleset)
 

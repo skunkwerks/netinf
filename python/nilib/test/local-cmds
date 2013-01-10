@@ -1,0 +1,47 @@
+
+# Stephen Farrell, 2013-01-09, stephen.farrell@cs.tcd.ie
+
+# in case someone executes this, just exit :-)
+exit 
+
+# This file has commands that I'm using in testing locally
+# with forwarding, it'll go away later probably
+
+# first you want to be here
+cd ~/code/netinf_code/python/nilib
+
+# how to start a local server
+
+# this needs to exist to start with
+mkdir /tmp/cache
+
+# if using files (default) or redis that's all you need 
+# when you start clean
+
+# to clean up files
+rm -rf /tmp/cache/*
+
+# to clear up redis you also need to
+# careful! this'll totally kill your redis locally!
+redis-cli flushdb
+
+# if you clean stuff you need to re-start the local server
+
+# to start a local server on the default port (files)
+clear; ./niwsgiserver.py
+
+# to start a local server on the default port (redis)
+clear; NETINF_CACHE=redis ./niwsgiserver.py
+
+# A list of a couple of NI named things that can be found
+# put this in the file 'list'
+
+ni://village.n4c.eu/sha-256;vzqJ-Rf-85kYc-Sd_bINUWsOzXGAe4gUAvj2Dei0pRE
+ni://village.n4c.eu/sha-256;lGndmjBFVfxjVEl7XmpZYBEd9YOJRJ9oPbdmDlAvSSo
+
+# A command to get those
+ 
+clear; ./nigetlist.py -l list -n localhost:8055
+
+# 1st time that should be slower and go to village.n4c.eu
+# 2nd time that should be quicker as they're cached

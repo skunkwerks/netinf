@@ -1447,13 +1447,13 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         except NoCacheEntry:
             # SF check forwarding things for GETs here
             self.loginfo("Named Data Object not in cache: checking forwarding for %s" % ni_name)
-            try_fwd,nexthops=self.fwd.check_fwd(ni_name)
+            try_fwd,nexthops=self.fwd.check_fwd(nifwd.GET_FWD,ni_name,self.ext)
             if try_fwd is False:
                 self.loginfo("Named Data Object not in cache: %s" % self.path)
                 self.send_error(404, "Named Data Object not in cache")
                 return None
             else:
-                fwdres, metadata, content_bytes = self.fwd.do_fwd(
+                fwdres, metadata, content_bytes = self.fwd.do_get_fwd(
                         nexthops,self.uri,self.ext,self.msgid)
                 if fwdres == nifwd.FWDSUCCESS:
                     self.loginfo("NetInf Fowarding success!: %d" % fwdres)
@@ -1466,6 +1466,9 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                         content_file=temp_name
                         md_out, cfn, new_entry, ignore_upload = \
                                         self.cache.cache_put(ni_name, metadata, temp_name)
+                        # This is slooow I bet, but let's see if it works for now
+                        # and fix up content_file later more quickly
+                        metadata, content_file = self.cache.cache_get(ni_name)
                         self.loginfo("NetInf put_cache after fwd success1")
                     except Exception, e:
                         self.loginfo("NetInf crap put_cache after fwd success1")
