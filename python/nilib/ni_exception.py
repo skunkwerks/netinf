@@ -111,3 +111,18 @@ class InconsistentDatabase(Exception):
     """
     pass
 
+#------------------------------------------------------------------------------#
+#=== Raised by metatdata ===
+
+class InvalidNIname(Exception):
+    """
+    @brief Raised when an NI URL cannot be parsed 
+    """
+    pass
+
+class MetadataMismatch(Exception):
+    """
+    @brief Raised when the metadata in a GET-RESP does not match with
+           metadata already in place in this cache.
+    """
+    pass

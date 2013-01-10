@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       10/01/2013 Elwyn Davies   Minor changes to metadata layout.
 1.0       21/11/2012 Elwyn Davies   Contains just the version information for NetInf
 
 @endcode
@@ -44,12 +45,12 @@ __all__ = ['NETINF_VER', 'NISERVER_VER']
 ##@var NETINF_VER
 # Version of NetInf implemented - written into metadata instances and
 # HTTP responses. 
-NETINF_VER = "NetInf/v0.3_Elwyn"
+NETINF_VER = "NetInf/v0.4_Elwyn"
 
 #==============================================================================#
 ##@var NISERVER_VER
 # Version string for niserver
-NISERVER_VER = "NIserver_Python/1.4"
+NISERVER_VER = "NIserver_Python/1.5"
 
 
 

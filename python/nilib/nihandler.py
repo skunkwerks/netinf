@@ -342,10 +342,6 @@ class NIHTTPRequestHandler(HTTPRequestShim):
     # Path value for accessing favicon file
     FAVICON_FILE    = "/favicon.ico"
     
-    ##@var METADATA_TIMESTAMP_TEMPLATE
-    # Template as used by datetime strftime for timestanps in metadata files
-    METADATA_TIMESTAMP_TEMPLATE = "%y-%m-%dT%H:%M:%S+00:00"
-    
     # === Content Type related items ===
     ##@var DFLT_MIME_TYPE
     # Default mimetype to use when we don't know.
@@ -1557,7 +1553,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         self.msgid = fov["msgid"]
 
         # Record timestamp for this operation
-        timestamp = self.metadata_timestamp_for_now()
+        timestamp = NetInfMetaData.metadata_timestamp_for_now()
         
         self.logdebug("NetInf publish for "
                       "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
@@ -1851,7 +1847,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.logdebug("Using default rform - json")                
         
         # Record timestamp for this operation
-        op_timestamp = self.metadata_timestamp_for_now()
+        op_timestamp = NetInfMetaData.metadata_timestamp_for_now()
 
         self.logdebug("NetInf search for "
                       "tokens %s, msgid %s, rform %s, ext %s at %s" % (form["tokens"].value,
@@ -1987,7 +1983,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                 continue
 
             # Record timestamp for this get operation
-            timestamp = self.metadata_timestamp_for_now()
+            timestamp = NetInfMetaData.metadata_timestamp_for_now()
 
             # Access the item and get the data - this might be a bit slow.. live with it for now
             url = item["url"]
@@ -2862,15 +2858,6 @@ class NIHTTPRequestHandler(HTTPRequestShim):
         return { "hints" : hints, "locs": locs, "meta": meta }
 
     #--------------------------------------------------------------------------#
-    def metadata_timestamp_for_now(self):
-        """
-        @brief Format timestamp recording time 'now' as string for metadata files.
-        @return string with formatted timestamp for time at this instant
-                as expressed using UTC time.
-        """
-        return datetime.datetime.utcnow().strftime(self.METADATA_TIMESTAMP_TEMPLATE)
-
-    #--------------------------------------------------------------------------#
     def mime_boundary(self):
         """
         @brief Create a MIME boundary string by hashing today's date
@@ -2951,7 +2938,5 @@ alg_digest_get_dict = {
         AlgDigestOp(NIHTTPRequestHandler.NIH_HTTP, "get_wkn_nih", NIH_SCHEME, 
                     "/", "Content access URL cannot be parsed: %s",
                     NIHTTPRequestHandler.send_get_redirect)
-
+}
 #==============================================================================#
-
-        }
