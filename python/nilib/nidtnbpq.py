@@ -70,8 +70,8 @@ class BPQ:
     @brief Encapsulation for a RFC 5050 BPQ block
 
     @detail
-    Holds details for a sinle BPQ block, providing validation, decoding
-    form an on the wire string and generation of the on the wire string.
+    Holds details for a single BPQ block, providing validation, decoding
+    from an on-the-wire string and generation of the on-the-wire string.
 
     """
     #--------------------------------------------------------------------------#
@@ -216,7 +216,7 @@ class BPQ:
         except Exception, e:
             return False
 
-        return True
+        return self.validate()
                     
     #--------------------------------------------------------------------------#
     def validate(self):
@@ -254,23 +254,27 @@ class BPQ:
     #--------------------------------------------------------------------------#
     def build_for_net(self):
         """
-        @brief Pack instance variables into stringe ready for sending to net
+        @brief Pack instance variables into string ready for sending to net
         @return packed string or None if failure
         """
         if not self.validate():
             return None
 
-        result = pack("!BBvvv", self.bpq_kind, self.matching_rule,
-                      self.creation_ts, self.creation_seq, self.src_eid_len) + \
-                 self.src_eid + \
-                 pack("!v", self.bpq_id_len) + \
-                 self.bpq_id + \
-                 pack("!v", self.bpq_val_len) + \
-                 self.bpq_val + \
-                 pack("!v", self.frag_cnt) + \
-                 "".join(map(lambda d : pack("!vv",
-                                             d["frag_offset"],
-                                             d["frag_len"]), self.frag_desc))
+        try:
+            result = pack("!BBvvv", self.bpq_kind, self.matching_rule,
+                          self.creation_ts, self.creation_seq, self.src_eid_len) + \
+                     self.src_eid + \
+                     pack("!v", self.bpq_id_len) + \
+                     self.bpq_id + \
+                     pack("!v", self.bpq_val_len) + \
+                     self.bpq_val + \
+                     pack("!v", self.frag_cnt) + \
+                     "".join(map(lambda d : pack("!vv",
+                                                 d["frag_offset"],
+                                                 d["frag_len"]), self.frag_desc))
+        except Exception, e:
+            return None
+        
         return result
                  
     #--------------------------------------------------------------------------#
