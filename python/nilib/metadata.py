@@ -35,6 +35,8 @@ Class for building and holding the metadata of a Named Data Object in memory.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       10/01/2013 Elwyn Davies   Add routine to internal JSON from incoming
+                                    GET-RESP JSON object.
 1.1       04/12/2012 Elwyn Davies   Add merge_latest_details. Change so that
                                     local host URL is added to summary rather
                                     than in initial metadata to avoid creating
@@ -47,12 +49,14 @@ Version   Date       Author         Notes
 """
 
 import json
+from types import *
+import datetime
 
 #=== Local package modules ===
 
 from netinf_ver import NETINF_VER
-import ni
-
+from ni import NIname, ni_errs, ni_errs_txt
+from ni_exception import InvalidNIname, MetadataMismatch
 
 #==============================================================================#
 # List of classes/global functions in file
@@ -95,6 +99,13 @@ class NetInfMetaData:
     """
 
     #--------------------------------------------------------------------------#
+    # CONSTANT VALUES USED BY CLASS
+    
+    ##@var METADATA_TIMESTAMP_TEMPLATE
+    # Template as used by datetime strftime for timestanps in metadata files
+    METADATA_TIMESTAMP_TEMPLATE = "%y-%m-%dT%H:%M:%S+00:00"
+    
+    #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
 
     ##@var json_obj
@@ -102,6 +113,16 @@ class NetInfMetaData:
 
     ##@var curr_detail
     # The most recent (last) JSON object in the array of "details" objects
+
+    #--------------------------------------------------------------------------#
+    @classmethod
+    def metadata_timestamp_for_now(cls):
+        """
+        @brief Format timestamp recording time 'now' as string for metadata files.
+        @return string with formatted timestamp for time at this instant
+                as expressed using UTC time.
+        """
+        return datetime.datetime.utcnow().strftime(NetInfMetaData.METADATA_TIMESTAMP_TEMPLATE)
 
     #--------------------------------------------------------------------------#
     def __init__(self, ni_uri="", timestamp=None, ctype=None, file_len=-1,
@@ -182,7 +203,7 @@ class NetInfMetaData:
         """
         @brief Copy curr_detail entry from parameter to this instance
         @param metadata_with_extra NetInfMetdata instance with details to copy
-        @return boolean True if two instances have matching ni field .ith size
+        @return boolean True if two instances have matching ni field with size
                              and content type consistent
 
         Check for consistency.
@@ -357,7 +378,8 @@ class NetInfMetaData:
         """
         @brief Scan all the details entry and get the set of all
         @brief distinct entries in metadata entries
-        @retval dictionary JSON object with summary of metadata
+        @retval 2-tuple: dictionary JSON object with summary of metadata,
+                         array of searches
 
         Scan the 'metadata' entries from the objects in the
         'details' array to create a summary object from all the entries.
@@ -384,29 +406,32 @@ class NetInfMetaData:
             n += 1
             for k in curr_meta.keys():
                 if k == "search":
+                    se = curr_meta[k]
+                    if type(se) == DictType:
+                        se = [ se ]
                     # In case somebody put in a non-standard search entry
-                    try:
-                        se = curr_meta[k]
-                        eng = se["engine"]
-                        tok = se["tokens"]
-                        dup = False
-                        for s in srchlist:
-                            if ((s["engine"] == eng) and (s["tokens"] == tok)):
-                                dup = True
-                                break
-                        if not dup:
-                            srchlist.append(se)
-                    except:
-                        # Non-standard search entry - leave it in place
-                        metadict[k] = curr_meta[k]
+                    for sem in se:
+                        try:
+                            eng = sem["engine"]
+                            tok = sem["tokens"]
+                            dup = False
+                            for s in srchlist:
+                                if ((s["engine"] == eng) and (s["tokens"] == tok)):
+                                    dup = True
+                                    break
+                            if not dup:
+                                srchlist.append(sem)
+                        except:
+                            # Non-standard search entry - leave it in place
+                            metadict[k] = curr_meta[k]
                 else:
                     metadict[k] = curr_meta[k]
-        if len(srchlist) > 0:
-            metadict["searches"] = srchlist
+        if len(srchlist) == 0:
+            srchlist = None
             
         #print("Summarized metadata: %s" % str(metadict))
         
-        return metadict
+        return (metadict, srchlist)
 
     #--------------------------------------------------------------------------#
     def summary(self, myloc):
@@ -423,15 +448,112 @@ class NetInfMetaData:
         - the summarized 'metadata' object derived by get_metadata.
         """
         sd = {}
-        for k in ["NetInf", "ni", "ct", "size"]:
+        for k in ["NetInf", "ni"]:
             sd[k] = self.json_obj[k]
+        if self.json_obj["ct"] != "":
+            sd["ct"] = self.json_obj["ct"]
+        if self.json_obj["size"] != -1:
+            sd["size"] = self.json_obj["size"]
         sd["ts"] = self.get_timestamp()
         sd["loclist"] = self.get_loclist()
         if myloc is not None:
             sd["loclist"].append(myloc)
-        sd["metadata"] = self.get_metadata()
+        sd["metadata"], srchlist = self.get_metadata()
+        if srchlist != None:
+            sd["searches"] = srchlist
         return sd
 
+    #--------------------------------------------------------------------------#
+    def insert_resp_metadata(self, response):
+        """
+        @brief Insert metadata from GET-RESP message into internal form.
+        @param response Either JSON format dict or JSON format string
+                        in format of of GET-RESP metadata.
+        @retval None.
+
+        The response is converted to a JSON dictionary and/or checked
+        to verify that it is in good shape.
+
+        Can be used either with an 'empty' NetInfMetaData instance
+        identified by the 'ni' field being the empty string or with
+        a previously populated entry.
+
+        For an empty instance, the header fields ('ni', 'ct' and 'size')
+        are populated from the response where possible (may be no 'ct' or 'size'
+        in the response).
+
+        The remainder of the information is converted into a new 'details'
+        entry which is either used as the first entry or appended to the
+        list if there are existing entries.
+        
+        @raises Exceptions if cannot parse response
+        """
+
+        if type(response) == StringType:
+            resp_dict = json.loads(response)
+        elif type(response) == DictType:
+            resp_dict = response
+            # Check the response is really a JSON dictionary
+            js = json.dumps(response)
+        else:
+            raise TypeError("Parameter 'response' is not a string or dictionary")
+
+        curr_ni = self.get_ni()
+        if curr_ni == "" :
+            # Empty metadata case
+            # Validate the "ni" field
+            curr_ni = resp_dict["ni"]
+            ni_name = NIname(curr_ni)
+            ret = ni_name.validate_ni_url()
+            if ret != ni_errs.niSUCCESS:
+                raise InvalidNIname(ni_errs_txt[ret])
+            self.json_obj["ni"] = resp_dict["ni"]
+            if resp_dict.has_key("ct"):
+                self.json_obj["ct"] = resp_dict["ct"]
+            if resp_dict.has_key("size"):
+                self.json_obj["size"] = resp_dict["size"]
+            self.json_obj["details"] = []
+        elif curr_ni == resp_dict["ni"]:
+            # Update with data about same ni name
+            if resp_dict.has_key("ct") and (resp_dict["ct"] != ""):
+                if self.json_obj["ct"] == "":
+                    self.json_obj["ct"] = resp_dict["ct"]
+                elif self.json_obj["ct"] != resp_dict["ct"]:
+                    raise MetadataMismatch("Content Type fields are unmatched")
+            if resp_dict.has_key("size") and (resp_dict["size"] >= 0):
+                if self.json_obj["size"] == -1:
+                    self.json_obj["size"] = resp_dict["size"]
+                elif self.json_obj["size"] != resp_dict["size"]:
+                    raise MetadataMismatch("Size fields are unmatched")
+        else:
+            raise MetadataMismatch("NI name fields are unmatched")
+
+        new_detail = {}
+        for loc_key in ("loc", "loclist"):
+            if resp_dict.has_key(loc_key):
+                if type(resp_dict[loc_key]) == ListType:
+                    new_detail["loc"] = resp_dict[loc_key]
+                else:
+                    raise TypeError("Response '%s' value is not a list" % loc_key)
+                
+        if resp_dict.has_key("metadata"):
+            if type(resp_dict["metadata"]) == DictType:
+                new_detail["metadata"] = resp_dict["metadata"]
+            else:
+                raise TypeError("Response metadata is not an object dictionary")
+
+
+        if resp_dict.has_key("searches"):
+            if not new_detail.has_key("metadata"):
+                new_detail["metadata"] = {}
+            new_detail["metadata"]["search"] = resp_dict["searches"]
+
+        new_detail["ts"] = self.metadata_timestamp_for_now()
+        
+        self.json_obj["details"].append(new_detail)
+        self.curr_detail = new_detail
+        return 
+        
     #--------------------------------------------------------------------------#
     def __repr__(self):
         """
@@ -449,3 +571,76 @@ class NetInfMetaData:
         return json.dumps(self.json_obj, sort_keys = True, indent = 4)
 
 #==============================================================================#
+# === Test Code ===
+if __name__ == "__main__" :
+    # Test insert_resp_metadata
+    ni_name = "ni:///sha-256-32;abcd12"
+    resp = { "ni": ni_name, "ct": "text/plain", "size": 23,
+             "loclist": [ "abcde", "xyzdr", "dfgsh"],
+             "metadata": { "publish": "Python" },
+             "searches": [ {"engine": "wikipedia",
+                            "tokens": "cabbage",
+                            "searcher": "Python"}
+                         ]
+             }
+    md = NetInfMetaData()
+    md.insert_resp_metadata(resp)
+
+    print md
+    print md.summary("me.here")
+
+    resp["loclist"] = [ "rtfm", "bummer", "stuff", "nonsense"]
+    md.insert_resp_metadata(resp)
+
+    print md
+    print md.summary("me.here")
+
+    resp["ni"] = "ni:///sha-256-32;abcd23"
+    try:
+        md.insert_resp_metadata(resp)
+        print "Fault: Bad response not detected"
+    except Exception, e:
+        print "Bad response correctly detected: %s" % str(e)
+
+    resp["ni"] = ni_name
+    resp["size"] = 57
+    try:
+        md.insert_resp_metadata(resp)
+        print "Fault: Bad response not detected"
+    except Exception, e:
+        print "Bad response correctly detected: %s" % str(e)
+
+    resp["size"] = 23
+    resp["ct"] = "application/json"
+    try:
+        md.insert_resp_metadata(resp)
+        print "Fault: Bad response not detected"
+    except Exception, e:
+        print "Bad response correctly detected: %s" % str(e)
+
+    resp["ni"] = "zzzz"
+    me = NetInfMetaData()
+    try:
+        me.insert_resp_metadata(resp)
+        print "Fault: Bad ni not detected"
+    except Exception, e:
+        print "Bad ni correctly detected: %s" % str(e)
+
+    resp["ni"] = ni_name
+    resp["ct"] = ""
+    resp["size"] = -1
+    me = NetInfMetaData()
+    me.insert_resp_metadata(resp)
+    print me
+    print me.summary("somewhere.else")
+
+    resp["ct"] = "text/html"
+    resp["size"] = 34
+    me.insert_resp_metadata(resp)
+    print me
+    print me.summary("not.here")
+    
+    
+
+        
+    
