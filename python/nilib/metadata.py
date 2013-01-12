@@ -499,6 +499,10 @@ class NetInfMetaData:
             raise TypeError("Parameter 'response' is not a string or dictionary")
 
         curr_ni = self.get_ni()
+ 
+        # SF added name cmp
+        ncurr_ni=NIname(self.get_ni())
+
         if curr_ni == "" :
             # Empty metadata case
             # Validate the "ni" field
@@ -513,7 +517,8 @@ class NetInfMetaData:
             if resp_dict.has_key("size"):
                 self.json_obj["size"] = resp_dict["size"]
             self.json_obj["details"] = []
-        elif curr_ni == resp_dict["ni"]:
+        #elif curr_ni == resp_dict["ni"]:
+        elif ncurr_ni.cmp(resp_dict["ni"])==0:
             # Update with data about same ni name
             if resp_dict.has_key("ct") and (resp_dict["ct"] != ""):
                 if self.json_obj["ct"] == "":
@@ -526,7 +531,7 @@ class NetInfMetaData:
                 elif self.json_obj["size"] != resp_dict["size"]:
                     raise MetadataMismatch("Size fields are unmatched")
         else:
-            raise MetadataMismatch("NI name fields are unmatched")
+            raise MetadataMismatch("NI name fields are unmatched curr: %s, got: %s" % (ncurr_ni, resp_dict["ni"]))
 
         new_detail = {}
         for loc_key in ("loc", "loclist"):

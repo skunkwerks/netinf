@@ -45,3 +45,14 @@ clear; ./nigetlist.py -l list -n localhost:8055
 
 # 1st time that should be slower and go to village.n4c.eu
 # 2nd time that should be quicker as they're cached
+
+# metadata for an earlier version of this file was 
+# published to village.n4c.eu with name:
+
+ni://sha-256;KQBKJ057yP_5AohhbcYYSQVoL10afukKXWxz4LWmaEQ
+
+# The corresponding octets are available at this
+# locator
+
+
+http://village.n4c.eu/nondo

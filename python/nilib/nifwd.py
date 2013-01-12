@@ -43,6 +43,7 @@ import urllib2
 import json
 import email.parser
 import email.message
+import tempfile
 
 import threading
 import redis
@@ -157,7 +158,7 @@ class forwarder:
 
 		with self.cache_lock:
 			try:
-				self.db.set(NIROUTER + "/" +  NIROUTER,True)
+				self.db.set(NIROUTER + "/" + NIROUTER,True)
 				self.db.set(NIROUTER + "/" + GET_FWD,True)
 				self.db.set(NIROUTER + "/" + GET_RES,False)
 				self.db.set(NIROUTER + "/" + PUB_FWD,False)
@@ -165,6 +166,8 @@ class forwarder:
 				self.db.set(NIROUTER + "/" + SCH_FWD,False)
 				self.db.set(NIROUTER + "/" + SCH_DST,False)
 
+				# this is just temporary until we have a real RIB->FIB
+				# thing
 				nhs={}
 				nhs[0]='village.n4c.eu'
 				nhs[1]='bollox.example.com'
@@ -245,13 +248,15 @@ class forwarder:
 	"""
 	def do_get_fwd(self,nexthops,uri,ext,msgid):
 		self.loginfo("Inside do_fwd");
+		metadata=""
+		fname=""
 
 		for nexthop in nexthops:
 			# send form along
+			self.loginfo("checking via %s" % nexthop)
 
 			# Generate NetInf form access URL
 			http_url = "http://%s/netinfproto/get" % nexthop
-	
 			try:
 				# Set up HTTP form data for get request
 				form_data = urllib.urlencode({ "URI":   uri,
@@ -260,7 +265,6 @@ class forwarder:
 			except Exception, e:
 				self.loginfo("do_fwd: to %s form encoding exception: %s" % (nexthop,str(e)));
 				continue
-
 			# Send POST request to destination server
 			try:
 				# Set up HTTP form data for netinf fwd'd get request
@@ -268,25 +272,22 @@ class forwarder:
 			except Exception, e:
 				self.loginfo("do_fwd: to %s http POST exception: %s" % (nexthop,str(e)));
 				continue
-		
 			# Get HTTP result code
 			http_result = http_object.getcode()
 		
 			# Get message headers - an instance of email.Message
 			http_info = http_object.info()
-		
 			obj_length_str = http_info.getheader("Content-Length")
 			if (obj_length_str != None):
 				obj_length = int(obj_length_str)
 			else:
 				obj_length = None
-		
 			# Read results into buffer
 			# Would be good to try and do this better...
 			# if the object is large we will run into problems here
 			payload = http_object.read()
 			http_object.close()
-		
+
 			# The results may be either:
 			# - a single application/json MIME item carrying metadata of object
 			# - a two part multipart/mixed object with metadats and the content (of whatever type)
@@ -294,9 +295,11 @@ class forwarder:
 		
 			# Verify length and digest if HTTP result code was 200 - Success
 			if (http_result != 200):
+				self.loginfo("do_fwd: weird http status code %d" % http_result)
 				continue
 		
 			if ((obj_length != None) and (len(payload) != obj_length)):
+				self.loginfo("do_fwd: weird lengths payload=%d and obj=%d" % (len(payload),obj_length))
 				continue
 				
 			buf_ct = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
@@ -305,36 +308,94 @@ class forwarder:
 			parts = msg.get_payload()
 			if msg.is_multipart():
 				if len(parts) != 2:
+					self.loginfo("do_fwd: funny number of parts: %d" % len(parts))
 					continue
 				json_msg = parts[0]
 				ct_msg = parts[1]
+				try:
+					temp_fd,fname=tempfile.mkstemp();
+					f = os.fdopen(temp_fd, "w")
+					f.write(ct_msg.get_payload())
+					f.close()
+				except Exception,e:
+					self.loginfo("do_fwd: file crap: %s" % str(e))
+					return FWDERROR,metadata,fname
 			else:
 				json_msg = msg
 				ct_msg = None
-		
+
 			# Extract JSON values from message
 			# Check the message is a application/json
 			if json_msg.get("Content-type") != "application/json":
+				self.loginfo("do_fwd: weird content type: %s" % json_msg.get("Content-type"))
 				continue
 		
 			# Extract the JSON structure
 			try:
 				json_report = json.loads(json_msg.get_payload())
 			except Exception, e:
+				self.loginfo("do_fwd: can't decode json: %s" % str(e));
 				continue
 
 			curi=NIname(uri)
 			curi.validate_ni_url()
 			metadata = NetInfMetaData(curi.get_canonical_ni_url())
-			metadata.set_json_val(json_report)
+			self.loginfo("Metadata I got: %s" % str(json_report))
+			metadata.insert_resp_metadata(json_report)
 
+			# if I've the role GET_RES and there's locators then 
+			# follow those now
+			if ct_msg == None and self.check_role(GET_RES):
+				self.loginfo("I'm a GET_RES type of node - going to try follow")
+				self.loginfo("meta: %s" % str(json_report))
+				# check for locators
+				locators = metadata.get_loclist()
+				self.loginfo("locs: %s" % str(locators))
+				# try follow locators
+				for loc in locators:
+					self.loginfo("GET_RES following: %s" % loc)
+
+					# Send GET request to destination server
+					try:
+						# Set up HTTP form data for netinf fwd'd get request
+						http_object = urllib2.urlopen(loc, "", 1)
+					except Exception, e:
+						self.loginfo("do_fwd: to %s http exception: %s" % (loc,str(e)));
+						continue
+					# Get HTTP result code
+					http_result = http_object.getcode()
+					if http_result != 200:
+						continue
+					# Get message headers - an instance of email.Message
+					http_info = http_object.info()
+					obj_length_str = http_info.getheader("Content-Length")
+					if (obj_length_str != None):
+						obj_length = int(obj_length_str)
+					else:
+						obj_length = None
+					# Read results into buffer
+					# Would be good to try and do this better...
+					# if the object is large we will run into problems here
+					payload = http_object.read()
+					try:
+						temp_fd,fname=tempfile.mkstemp();
+						f = os.fdopen(temp_fd, "w")
+						f.write(payload)
+						f.close()
+					except Exception,e:
+						self.loginfo("do_fwd: file crap: %s" % str(e))
+						return FWDERROR,metadata,fname
+					http_object.close()
+					# break out from getting locs
+					break;
+		
 			# all good break out of loop
 			break
 
 		# make up stuff to return
 		# print "do_fwd: success" 
 
-		return FWDSUCCESS,metadata,ct_msg
+		return FWDSUCCESS,metadata,fname
 
 if __name__ == "__main__":
 	import logging

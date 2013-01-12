@@ -1449,23 +1449,17 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                 self.send_error(404, "Named Data Object not in cache")
                 return None
             else:
-                fwdres, metadata, content_bytes = self.fwd.do_get_fwd(
+                fwdres, metadata, content_file = self.fwd.do_get_fwd(
                         nexthops,self.uri,self.ext,self.msgid)
                 if fwdres == nifwd.FWDSUCCESS:
                     self.loginfo("NetInf Fowarding success!: %d" % fwdres)
                     try:
-                        # SF: TODO: Note no hash checking here and there should be
-                        temp_fd,temp_name=self.cache.cache_mktemp();
-                        f = os.fdopen(temp_fd, "w")
-                        f.write(content_bytes.get_payload())
-                        f.close()
-                        content_file=temp_name
                         md_out, cfn, new_entry, ignore_upload = \
-                                        self.cache.cache_put(ni_name, metadata, temp_name)
+                                        self.cache.cache_put(ni_name, metadata, content_file)
                         # This is slooow I bet, but let's see if it works for now
                         # and fix up content_file later more quickly
                         metadata, content_file = self.cache.cache_get(ni_name)
-                        self.loginfo("NetInf put_cache after fwd success1")
+                        # self.loginfo("NetInf put_cache after fwd success1")
                     except Exception, e:
                         self.loginfo("NetInf crap put_cache after fwd success1")
                         self.send_error(500, str(e))

@@ -66,7 +66,10 @@ the digests in the nih scheme. See http://en.wikipedia.org/Luhn_algorithm.
 @code
 Revision History
 ================
-Version   Date       Author         Notes
+Version   Date       Author          Notes
+1.2       11/01/2013 Stephen Farrell Added cmp function to compare ni URIs (only 
+                                     pay attention to hash-alg and value and 
+                                     nothing else 
 1.2       24/10/2012 Elwyn Davies   Added hash_alg_prefixes array: contains
                                     prefixes of any algorithms so that algorithm
                                     identifier can be located in paths - "/sha"
@@ -79,13 +82,13 @@ Version   Date       Author         Notes
                                     Corrected NIname validation.
                                     Added error counting to testing and fixed tests.
 0.6       11/10/2012 Elwyn Davies   Provide setter for netloc field.  Improve doxygen.
-0.5	  14/09/2012 Elwyn Davies   Specify ValueError as exception when init tuple
+0.5      14/09/2012 Elwyn Davies   Specify ValueError as exception when init tuple
                                     wrong length.
-0.4	  11/09/2012 Elwyn Davies   Add accessor for query string.
-0.3	  01/06/2012 Elwyn Davies   Added algorithm suite list access.
-0.2	  01/06/2012 Elwyn Davies   Added support for binary format.
-0.1	  31/05/2012 Elwyn Davies   Added suport for nih scheme.
-0.0	  12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+0.4      11/09/2012 Elwyn Davies   Add accessor for query string.
+0.3      01/06/2012 Elwyn Davies   Added algorithm suite list access.
+0.2      01/06/2012 Elwyn Davies   Added support for binary format.
+0.1      31/05/2012 Elwyn Davies   Added suport for nih scheme.
+0.0      12/02/2012 Elwyn Davies   Created for SAIL codesprint.
 @endcode
 """
  
@@ -406,6 +409,29 @@ class NIname:
             debug("NIname constructor: argument type %s not allowed" % str(type(url)))
             raise TypeError
         return
+
+    #--------------------------------------------------------------------------#
+    def cmp(self,other):
+        """
+        @brief compare this ni name against another, note that only alg;val is used
+        @return 0:same, 1:diff-hash, 2:same-hash but diff-val
+        """
+        
+        try:
+            if type(other)==NIname:
+                nother=other
+            else:
+                nother=NIname(str(other))
+        except Exception, e:
+            raise TypeError
+
+        if self.get_hash_alg_info()!=nother.get_hash_alg_info():
+            return 1
+
+        if self.params!=nother.params:
+            return 2
+
+        return 0;
 
     #--------------------------------------------------------------------------#
     def set_url(self, url):
