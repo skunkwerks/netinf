@@ -67,28 +67,29 @@ the digests in the nih scheme. See http://en.wikipedia.org/Luhn_algorithm.
 Revision History
 ================
 Version   Date       Author          Notes
-1.2       11/01/2013 Stephen Farrell Added cmp function to compare ni URIs (only 
-                                     pay attention to hash-alg and value and 
-                                     nothing else 
-1.2       24/10/2012 Elwyn Davies   Added hash_alg_prefixes array: contains
+1.4      13/01/2013 Elwyn Davies    Added additional checks to cmp function.
+1.3      11/01/2013 Stephen Farrell Added cmp function to compare ni URIs (only 
+                                    pay attention to hash-alg and value and 
+                                    nothing else 
+1.2      24/10/2012 Elwyn Davies    Added hash_alg_prefixes array: contains
                                     prefixes of any algorithms so that algorithm
                                     identifier can be located in paths - "/sha"
                                     initially.  Changed all 'raise' statements:
                                     string should be a parameter of the exception
                                     name rather than a separate item (i.e.,
                                     'raise excep, "string"' -> 'raise excep("string")' .
-1.1       24/10/2012 Elwyn Davies   Added get_canonical_ni_url.
-1.0       23/10/2012 Elwyn Davies   Added nih <-> ni translation and conversion.
+1.1      24/10/2012 Elwyn Davies    Added get_canonical_ni_url.
+1.0      23/10/2012 Elwyn Davies    Added nih <-> ni translation and conversion.
                                     Corrected NIname validation.
                                     Added error counting to testing and fixed tests.
-0.6       11/10/2012 Elwyn Davies   Provide setter for netloc field.  Improve doxygen.
-0.5      14/09/2012 Elwyn Davies   Specify ValueError as exception when init tuple
+0.6      11/10/2012 Elwyn Davies    Provide setter for netloc field.  Improve doxygen.
+0.5      14/09/2012 Elwyn Davies    Specify ValueError as exception when init tuple
                                     wrong length.
-0.4      11/09/2012 Elwyn Davies   Add accessor for query string.
-0.3      01/06/2012 Elwyn Davies   Added algorithm suite list access.
-0.2      01/06/2012 Elwyn Davies   Added support for binary format.
-0.1      31/05/2012 Elwyn Davies   Added suport for nih scheme.
-0.0      12/02/2012 Elwyn Davies   Created for SAIL codesprint.
+0.4      11/09/2012 Elwyn Davies    Add accessor for query string.
+0.3      01/06/2012 Elwyn Davies    Added algorithm suite list access.
+0.2      01/06/2012 Elwyn Davies    Added support for binary format.
+0.1      31/05/2012 Elwyn Davies    Added suport for nih scheme.
+0.0      12/02/2012 Elwyn Davies    Created for SAIL codesprint.
 @endcode
 """
  
@@ -418,17 +419,23 @@ class NIname:
         """
         
         try:
-            if type(other)==NIname:
+            if isinstance(other, NIname):
                 nother=other
             else:
                 nother=NIname(str(other))
         except Exception, e:
-            raise TypeError
+            raise TypeError("Comparand cannot be converted to NIname instance")
 
-        if self.get_hash_alg_info()!=nother.get_hash_alg_info():
+        if not nother.url_validated():
+            ret = nother.validate_ni_url()
+            if ret != ni_errs.niSUCCESS:
+                raise InvalidNIname("Comparand is not a valid NIname: %s" %
+                                    ni_errs_txt[ret])
+
+        if self.get_hash_alg_info() != nother.get_hash_alg_info():
             return 1
 
-        if self.params!=nother.params:
+        if self.params != nother.params:
             return 2
 
         return 0;

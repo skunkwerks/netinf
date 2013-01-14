@@ -35,6 +35,7 @@ Class for building and holding the metadata of a Named Data Object in memory.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       13/01/2013 Elwyn Davies   Improvements to insert_resp_metadata.
 1.2       10/01/2013 Elwyn Davies   Add routine to internal JSON from incoming
                                     GET-RESP JSON object.
 1.1       04/12/2012 Elwyn Davies   Add merge_latest_details. Change so that
@@ -499,47 +500,55 @@ class NetInfMetaData:
             raise TypeError("Parameter 'response' is not a string or dictionary")
 
         curr_ni = self.get_ni()
- 
-        # SF added name cmp
-        ncurr_ni=NIname(self.get_ni())
+        resp_ni_name = NIname(resp_dict["ni"])
+        ret = resp_ni_name.validate_ni_url()
+        if ret != ni_errs.niSUCCESS:
+            raise InvalidNIname("Response ni field '%s' is not a valid ni URI: %s" %
+                                (resp_dict["ni"], ni_errs_txt[ret]))
 
         if curr_ni == "" :
             # Empty metadata case
-            # Validate the "ni" field
-            curr_ni = resp_dict["ni"]
-            ni_name = NIname(curr_ni)
-            ret = ni_name.validate_ni_url()
-            if ret != ni_errs.niSUCCESS:
-                raise InvalidNIname(ni_errs_txt[ret])
-            self.json_obj["ni"] = resp_dict["ni"]
+            self.json_obj["ni"] = resp_ni_name.get_canonical_ni_url()
             if resp_dict.has_key("ct"):
                 self.json_obj["ct"] = resp_dict["ct"]
             if resp_dict.has_key("size"):
                 self.json_obj["size"] = resp_dict["size"]
             self.json_obj["details"] = []
-        #elif curr_ni == resp_dict["ni"]:
-        elif ncurr_ni.cmp(resp_dict["ni"])==0:
-            # Update with data about same ni name
-            if resp_dict.has_key("ct") and (resp_dict["ct"] != ""):
-                if self.json_obj["ct"] == "":
-                    self.json_obj["ct"] = resp_dict["ct"]
-                elif self.json_obj["ct"] != resp_dict["ct"]:
-                    raise MetadataMismatch("Content Type fields are unmatched")
-            if resp_dict.has_key("size") and (resp_dict["size"] >= 0):
-                if self.json_obj["size"] == -1:
-                    self.json_obj["size"] = resp_dict["size"]
-                elif self.json_obj["size"] != resp_dict["size"]:
-                    raise MetadataMismatch("Size fields are unmatched")
         else:
-            raise MetadataMismatch("NI name fields are unmatched curr: %s, got: %s" % (ncurr_ni, resp_dict["ni"]))
+            # The metadata is not empty
+            # Create validated NIname for the current metadata
+            ni_name = NIname(curr_ni)
+            # If this fails the metadata database is corrupt
+            assert(ni_name.validate_ni_url() == ni_errs.niSUCCESS)
+            if ni_name.cmp(resp_ni_name) == 0:
+                # Update with data about same ni name
+                if resp_dict.has_key("ct") and (resp_dict["ct"] != ""):
+                    if self.json_obj["ct"] == "":
+                        self.json_obj["ct"] = resp_dict["ct"]
+                    elif self.json_obj["ct"] != resp_dict["ct"]:
+                        raise MetadataMismatch("Content Type fields are unmatched")
+                if resp_dict.has_key("size") and (resp_dict["size"] >= 0):
+                    if self.json_obj["size"] == -1:
+                        self.json_obj["size"] = resp_dict["size"]
+                    elif self.json_obj["size"] != resp_dict["size"]:
+                        raise MetadataMismatch("Size fields are unmatched")
+            else:
+                raise MetadataMismatch("NI name fields are unmatched curr: %s, got: %s" %
+                                       (curr_ni, resp_dict["ni"]))
 
         new_detail = {}
+        new_detail["loc"] = []
         for loc_key in ("loc", "loclist"):
             if resp_dict.has_key(loc_key):
                 if type(resp_dict[loc_key]) == ListType:
                     new_detail["loc"] = resp_dict[loc_key]
                 else:
-                    raise TypeError("Response '%s' value is not a list" % loc_key)
+                    raise TypeError("Response '%s' value is not a list" %
+                                    loc_key)
+        auth = resp_ni_name.get_netloc()
+        if auth is not None and (auth != ""):
+            new_detail["loc"].append(auth)
+
                 
         if resp_dict.has_key("metadata"):
             if type(resp_dict["metadata"]) == DictType:
@@ -632,6 +641,14 @@ if __name__ == "__main__" :
         print "Bad ni correctly detected: %s" % str(e)
 
     resp["ni"] = ni_name
+    resp["ct"] = ""
+    resp["size"] = -1
+    me = NetInfMetaData()
+    me.insert_resp_metadata(resp)
+    print me
+    print me.summary("somewhere.else")
+
+    resp["ni"] = "ni://the.world.un/sha-256-32;abcd12"
     resp["ct"] = ""
     resp["size"] = -1
     me = NetInfMetaData()

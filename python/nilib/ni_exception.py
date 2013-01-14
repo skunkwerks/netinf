@@ -36,6 +36,7 @@ Definitions of exceptions used in Python NI library.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       13/01/2013 Elwyn Davies   Added InvalidNIname and MetadataMismatch.
 1.1       10/12/2012 Elwyn Davies   Added InconsistentDatabase
 1.0       05/12/2012 Elwyn Davies   Created from definitions in various other
                                     modules.
@@ -45,7 +46,8 @@ Version   Date       Author         Notes
 #==============================================================================#
 __all__ = ['UnvalidatedNIname', 'EmptyParams', 'NonEmptyNetlocOrQuery',
            'InconsistentParams', 'InvalidMetaData', 'CacheEntryExists',
-           'NoCacheEntry', 'InconsistentDatabase' ]
+           'NoCacheEntry', 'InconsistentDatabase', 'InvalidNIname',
+           'MetadataMismatch' ]
 
 #==============================================================================#
 #=== Exceptions ===
@@ -112,7 +114,7 @@ class InconsistentDatabase(Exception):
     pass
 
 #------------------------------------------------------------------------------#
-#=== Raised by metatdata ===
+#=== Raised by metadata ===
 
 class InvalidNIname(Exception):
     """
