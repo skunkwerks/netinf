@@ -95,10 +95,11 @@ SCH_DST = "SCH_DST"
 	Rules:
 		SCH_FWD = ~SCH_DST one has to be true, the other false
 		Both PUB_DST and PUB_FWD can be true, in that case, I handle 
-			locally, and then separately ("longer" msg-id) re-PUBLISH
-			upstream
+			locally, and then separately ("longer" msg-id)
+			re-PUBLISH upstream
 
-	For GET/SEARCH if I have a matching entry locally, then that's the final answer
+	For GET/SEARCH if I have a matching entry locally, then that's the
+	final answer
 
 	Stuff below here is earlier, needs to reflect coding as that happens
 
@@ -166,8 +167,8 @@ class forwarder:
 				self.db.set(NIROUTER + "/" + SCH_FWD,False)
 				self.db.set(NIROUTER + "/" + SCH_DST,False)
 
-				# this is just temporary until we have a real RIB->FIB
-				# thing
+				# this is just temporary until we have a real
+				# RIB->FIB thing
 				nhs={}
 				nhs[0]='village.n4c.eu'
 				nhs[1]='bollox.example.com'

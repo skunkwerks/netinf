@@ -98,7 +98,7 @@ class Metadata:
         """
         @brief Constructor - set default values
         """
-        # The bpq_kind and matching_rule are deliberately set illegal
+        # The ontology is deliberately set illegal
         self.ontology = 0
         self.ontology_data = None
         return

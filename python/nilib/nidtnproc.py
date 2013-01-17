@@ -44,6 +44,7 @@ import threading
 import logging
 import Queue
 import time
+import json
 import socket
 from select import select
 
@@ -55,7 +56,7 @@ from dtn_api_const import *
 # Nilib modules
 from nidtnbpq import BPQ
 from nidtnmetadata import Metadata
-from nidtnevtmsg import MsgDtnEvt
+from nidtnevtmsg import MsgDtnEvt, HTTPRequest
 
 
 # Exception resulting from DTN problems
@@ -245,11 +246,16 @@ class DtnReceive(threading.Thread):
 
                 print bpq_data
                 print json_data
-                            
+                od = json_data.ontology_data
+                if od[-1:] == '\x00':
+                    od = od[:-1]
+                json_dict = json.loads(od)
+                bpq_msg = HTTPRequest("http_search", bpq_bundle, bpq_data, json_dict)
+                                      
 
                 if self.recv_q != None:                             
                     # Put message on the queue to send it on to cache manager
-                    evt = MsgDtnEvt(MsgDtnEvt.MSG_FROM_DTN, bpq_bundle)
+                    evt = MsgDtnEvt(MsgDtnEvt.MSG_FROM_DTN, bpq_msg)
                     self.recv_q.put_nowait(evt)
                     
             elif dtnapi.dtn_errno(dtn_handle) != dtnapi.DTN_ETIMEOUT:
@@ -373,8 +379,9 @@ if (__name__ == "__main__"):
     
     logger.info("Waiting for incoming bundles")
     evt = dtn_recv_q.get()
-    logger.info("Bundle received: %s" % evt.bundle())
-    b = evt.bundle()
+    logger.info("Bundle received: %s" % evt.msg_data())
+    print evt.msg_data().json_in
+    b = evt.msg_data().bundle
     print b.metadata_cnt
     if b.metadata_cnt > 0:
         print b.metadata_blks[0].type
