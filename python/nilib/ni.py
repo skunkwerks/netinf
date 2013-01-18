@@ -394,6 +394,9 @@ class NIname:
         self.alg_name = None
         if (type(url) == str):
             self.set_url(url)
+        elif (type(url) == unicode):
+            # SF: somehow we end up here when we start from insert_resp_metadata()
+            self.set_url(str(url))
         elif (type(url) == tuple):
             l = len(url)
             if ((l < 3) or (l > 5)):
