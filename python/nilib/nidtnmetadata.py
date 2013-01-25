@@ -188,6 +188,7 @@ class Metadata:
 
         @raises ValueError if not a valid value
         """
+        # Worry about unicode
         if not (ontology_data and (type(ontology_data) == StringType)):
             raise ValueError
         

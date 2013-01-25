@@ -43,6 +43,7 @@ Version   Date	     Author	    Notes
 
 import dtnapi
 from types import *
+import sys
 
 # Nilib modules
 from nidtnbpq import BPQ
@@ -68,12 +69,21 @@ class HTTPRequest:
     ##@var HTTP_SEARCH
     # string indicating that HTTP should send a NetInf SEARCH message
     HTTP_SEARCH = "http_search"
+    ##@var HTTP_RESPONSE
+    # string indicating thet HTTP should send a response message according
+    #        proeviously received request message
+    HTTP_RESPONSE = "http_response"
+
+    #--------------------------------------------------------------------------#
+    # CLASS VARIABLES
+    ##@var _curr_seqno
+    # integer unique sequence number for all messages generated
 
     #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
 
     ##@var req_type
-    # string one of HTTP_GET, HTTP_PUBLISH or HTTP_SEARCH
+    # string one of HTTP_GET, HTTP_PUBLISH, HTTP_SEARCH or HTTP_RESPONSE
     ##@var bundle
     # dtnapi.dtn_bundle object instance as delivered over DTN
     ##@var msg_seqno
@@ -107,7 +117,29 @@ class HTTPRequest:
     # NetInfMetaData object instance representing metadata received so far
     ##@var content
     # string filename of content or response file received from HTTP
+    ##@var timeout
+    # Timer object instance used to timeout slow HTTP requests
 
+    #--------------------------------------------------------------------------#
+    @classmethod
+    def next_seqno(cls):
+        """
+        @brief Get next sequential request number
+        @return integer next sequence number
+        """
+        try:
+            next_seqno = cls._curr_seqno
+        except AttributeError:
+            cls._curr_seqno = 0
+            next_seqno = 0
+        # Cope with overflow but assume that wrap around won't be a problem
+        # with 2^30 numbers to play with.
+        if (cls._curr_seqno < sys.maxint):
+            cls._curr_seqno += 1
+        else:
+            cls._curr_seqno = 0
+        return next_seqno
+    
     #--------------------------------------------------------------------------#
     def __init__(self, req_type, bundle, bpq_data, json_in,
                  has_payload=False, ni_name = None):
@@ -139,7 +171,7 @@ class HTTPRequest:
             raise ValueError("Inappropriate value for ni_name")
 
         self.req_type = req_type
-        self.msg_seqno = None
+        self.req_seqno = self.next_seqno()
         self.bundle = bundle
         self.bpq_data = bpq_data
         self.json_in = json_in
@@ -151,16 +183,7 @@ class HTTPRequest:
         self.http_hosts_not_completed = None
         self.metadata = None
         self.content = None
-        return
-
-    #--------------------------------------------------------------------------#
-    def set_msg_seqno(self, msg_seqno):
-        """
-        @brief record msg_seqno for this request
-        @param msg_seqno integer message sequence number of message
-                                 this request was sent with
-        """
-        self.msg_seqno = msg_seqno
+        self.timeout = None
         return
 
     #--------------------------------------------------------------------------#
@@ -170,7 +193,7 @@ class HTTPRequest:
         @return string representation
         """
         return "\n".join(("Request type: %s" % self.req_type,
-                          "Message seqno: %d" % self.msg_seqno))
+                          "Request seqno: %d" % self.req_seqno))
 
 #==============================================================================#
 class MsgDtnEvt:
@@ -235,10 +258,8 @@ class MsgDtnEvt:
                 ((msg_data is not None) and isinstance(msg_data, HTTPRequest))):
             raise ValueError
         self._send_type = send_type
+        self._msg_seqno = MsgDtnEvt.next_seqno()
         self._msg_data = msg_data
-        self._msg_seqno = self.next_seqno()
-        if (send_type != self.MSG_END):
-            self._msg_data.set_msg_seqno(self._msg_seqno)
         self._reply_to = reply_to
 
     #--------------------------------------------------------------------------#

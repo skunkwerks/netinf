@@ -51,13 +51,15 @@ import time
 import platform
 import multiprocessing
 from itertools import chain
-from threading import Thread, Event
+from threading import Thread, Event, Timer
 from threading import Lock as ThreadingLock
 from os.path import join
 import tempfile
 import logging
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 from nifeedparser import DigestFile, FeedParser
+from nidtnevtmsg import HTTPRequest, MsgDtnReq
+from metadata import NetInfMetadata
 
 #============================================================================#
 verbose = False
@@ -95,17 +97,25 @@ def nilog(string):
 	return
 
 #===============================================================================#
-def getone(ni_url, http_host, dest):
+def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
-    @brief Perform a NetInf 'get' from the host for the ni name made with alg and
-    @brief digest provided by alg_digest.  If dest is not None leave the output
-    @brief in specified path.
-    @param ni_url NIname instance with combination of auth, digest algorithm and
-                         digest separated
-    @param http_host string FQDN or IP address and port of host to send get message to
-    @param dest None or string where to put destination contents if received
-
-    Assume that dest provides a directory path into which file can be written
+    @brief Perform a NetInf 'get' from the http_host for the ni_url.
+    @param req_id integer sequence number of message containing request
+    @param ni_url string ni name to be retrieved
+    @param http_host string HTTP host name to be accessed
+                            (FQDN or IP address with optional port number)
+    @param http_index integer index of host name being processed within request
+    @param form_params dictionary of paramter values to pass to HTTP
+    @param tempdir string ditrectory where to place retrieved content if any
+    @return 5-tuple with:
+                boolean - True if succeeds, False if fails
+                string req_id as supplied as parameter
+                integer http_index as supplied as parameter
+                string pathname for content file/response or None is no content etc
+                dictionary returned JSON metadata if any, decoded
+                
+    Assume that ni_url has a valid ni URI
+    Assume that tempdir provides a directory path into which file can be written
     """
 
     # Record start time
@@ -114,24 +124,27 @@ def getone(ni_url, http_host, dest):
     # Must be a complete ni: URL with non-empty params field
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
-        nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
-        return (False, ni_url.get_url())
+            nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
+            return(False, req_id, http_index, None, None)
 
     # Generate NetInf form access URL
     ni_url_str = ni_url.get_canonical_ni_url()
+    
+    # Generate NetInf form access URL
     http_url = "http://%s/netinfproto/get" % http_host
     
     # Set up HTTP form data for get request
-    form_data = urllib.urlencode({ "URI":   ni_url.get_url(),
-                                   "msgid": random.randint(1, 32000),
-                                   "ext":   "" })
+    form_data = urllib.urlencode({ "URI":   ni_url,
+                                   "msgid": form_params["msgid"],
+                                   "ext": "" if not form_params.has_key["ext"] else
+                                          form_params["ext"]})
 
     # Send POST request to destination server
     try:
         http_object = urllib2.urlopen(http_url, form_data)
     except Exception, e:
         nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
-        return (False, ni_url_str)
+        return(False, req_id, http_index, None, None)
 
     # Get HTTP result code
     http_result = http_object.getcode()
@@ -160,12 +173,8 @@ def getone(ni_url, http_host, dest):
     # Parse the MIME object
 
     primer = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
-    if dest is None:
-        fd, digested_file = tempfile.mkstemp()
-        fo = os.fdopen(fd, "w")
-    else:
-        digested_file = dest
-        fo = None
+    fd, digested_file = tempfile.mkstemp(dir=tempdir)
+    fo = os.fdopen(fd, "w")
     debug("Writng content to %s" % digested_file)
 
     digester = DigestFile(digested_file, fo, ni_url.get_hash_function())
@@ -195,11 +204,13 @@ def getone(ni_url, http_host, dest):
 
     if len(msg.defects) > 0:
         nilog("Response was not a correctly formed MIME object")
-        return (False, ni_url_str)
+        os.remove(digested_file)
+        return(False, req_id, http_index, None, None)
     # Verify length 
     if ((obj_length != None) and (payload_len != obj_length)):
         nilog("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
-        return (False, ni_url_str)
+        os.remove(digested_file)
+        return(False, req_id, http_index, None, None)
         
     debug( msg.__dict__)
     # If the msg is multipart this is a list of the sub messages
@@ -209,7 +220,8 @@ def getone(ni_url, http_host, dest):
         debug("Number of parts: %d" % len(parts))
         if len(parts) != 2:
             nilog("Error: Response from server does not have two parts.")
-            return (False, ni_url_str)
+            os.remove(digested_file)
+            return(False, req_id, http_index, None, None)
         json_msg = parts[0]
         ct_msg = parts[1]
     else:
@@ -222,7 +234,8 @@ def getone(ni_url, http_host, dest):
     debug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
         nilog("First or only component (metadata) of result is not of type application/json")
-        return (False, ni_url_str)
+        os.remove(digested_file)
+        return(False, req_id, http_index, None, None)
 
     # Extract the JSON structure
     try:
@@ -230,12 +243,18 @@ def getone(ni_url, http_host, dest):
     except Exception, e:
         nilog("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
                                                                     str(e)))
-        return (False, ni_url_str)
+        os.remove(digested_file)
+        return(False, req_id, http_index, None, None)
     
     debug("Returned metadata for %s:" % ni_url_str)
     debug(json.dumps(json_report, indent = 4))
 
     msgid = json_report["msgid"]
+    if msgid != form_params["msgid"]:
+        nilog("Returned msgid (%s) does not match request msgid (%s)" %
+              (msgid, form_params["msgid"]))
+        os.remove(digested_file)
+        return(False, req_id, http_index, None, None)
 
     # If the content was also returned..
     if ct_msg != None:
@@ -247,27 +266,61 @@ def getone(ni_url, http_host, dest):
         #print digest, ni_url.get_digest()
         if (digest != ni_url.get_digest()):
             nilog("Digest of %s did not verify" % ni_url.get_url())
-            return (False, ni_url_str)
+            os.remove(digested_file)
+            return(False, req_id, http_index, None, None)
         etime = time.time()
         duration = etime - stime
         nilog("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
               (msgid, ni_url_str, obj_length, duration*1000))
+    else:
+        # Clean up unused temporary file
+        os.remove(digested_file)
+        digested_file = None
 
-        return(True, ni_url_str)
+        return(True, req_id, http_index, digested_file, json_report)
         
 #===============================================================================#
-goodlist = []
-badlist = []
-complete_count = 0
+#===============================================================================#
+#===============================================================================#
+def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tempdir):
+    """
+    @brief Switch to correct proceeing routine for req_type
+    @param req_type string HTTP_GET, HTTP_PUBLISH or HTTP_SEARCH from HTTPRequest
+    @param req_id integer sequence number of message containing request
+    @param ni_url NIname object instance with ni URI to be retrieved or
+                                         published or None (search case)
+    @param http_host string HTTP host name to be accessed
+    @param http_index integer index of host name being processed within request
+    @param form_params dictionary of paramter values to pass to HTTP
+    @param tempdir string where to place retrieved data
+    @return 5-tuple with:
+                boolean - True if succeeds, False if fails
+                string req_id as supplied as parameter
+                integer http_index as supplied as parameter
+                string pathname for content file/response or None is no content etc
+                dictionary returned JSON metadata if any, decoded
+                
+    Requests translated from DTN bundles to be actioned by HTTP CL are
+    funneled through this routine to simplify the multi-process interface.
+    The result is a tuple that is fed back to the callback routine when using
+    multiprocessing implementation allowing the result to be linked to the
+    original request.
+    """
+    try:
+        req_rtn = {HTTPRequest.HTTP_GET: get_req,
+                   HTTPRequest.HTTP_PUBLISH: publish_req,
+                   HTTPRequest.HTTP_SEARCH: search_req}[req_type]
+    except:
+        nilog("Bad req_type (%s) supplied to action_req" % req_type)
+        return(False, req_id, http_index, None, None)
 
-def getres(tuple):
-    global goodlist, badlist, complete_count
-    complete_count += 1
-    if tuple[0]:
-        goodlist.append(tuple[1])
-    else:
-        badlist.append(tuple[1])
-    return
+    try:
+        return req_rtn(req_id, ni_url, http_host, http_index,
+                       form_params, tempdir)
+    except Exception, e:
+        nilog("Exception occurred while processing (%s, %s, %d): %s" %
+              (req_type, req_id, http_index, str(e)))
+        return(False, req_id, http_index, None, None)
 
 #===============================================================================#
 
@@ -345,6 +398,7 @@ class HTTPAction(Thread):
 
         # Initialize records of work in progress
         self.curr_reqs = []
+        self.req_dict = {}
         # Number of running processes
         self.running_procs = 0
         # Provide lock to control access to curr_reqs and process count
@@ -376,6 +430,7 @@ class HTTPAction(Thread):
         # See if there is a locliat in the json_in field
         if json_in.has_key("loclist"):
             ll1 = json_in["loclist"]
+            # Worry about unicode
             if type(ll1) != StringType:
                 ll1 = [ ll1 ]
             elif type(ll) != ListType:
@@ -412,12 +467,17 @@ class HTTPAction(Thread):
         req_msg.http_hosts_not_completed = \
                                         set(range(len(req_msg.http_host_list)))
 
+        # Initialize timer to cut off waiting for more results
+        req_msg.timeout = Timer(10.0, self.send_result, args = [True, req_msg])
+
         # Add the new request to list of requests to process and flag action
         # needed
         with self.reqs_lock:
             self.curr_reqs.append(req_msg)
+            self.req_dict[req_msg.req_seqno]= req_msg
             self.work_todo = True
             self.action_needed.set()
+            req_msg.timeout.start()
             
         return True
     
@@ -468,7 +528,7 @@ class HTTPAction(Thread):
                     # Record this one as being in progress
                     req.http_hosts_pending.add(http_index)
                     # Increment processes in progress
-                    self.running_processes += 1
+                    self.running_procs += 1
                     break
 
             # Did we find anything to do?
@@ -477,7 +537,6 @@ class HTTPAction(Thread):
 
             # Set up parameters for action routine
             # Create a dictionary with keys:
-            # - uri (for GET and PUBLISH)
             # - msgid (all cases)
             # - loc1, loc2 (optional if has loclist in json_in)
             # - fullPut (for PUBLISH only)
@@ -488,9 +547,7 @@ class HTTPAction(Thread):
             form_params["msgid"] = curr_reg.bpq_data.query_id
 
             if curr_req.req_type == HTTPRequest.HTTP_SEARCH:
-                form_params["tokens"] = curr_req.bpa_data.query_val
-            else:
-                form_params["uri"] = curr_req.ni_name.get_canonical_url()
+                form_params["tokens"] = curr_req.bpq_data.query_val
 
             if curr_req.json_in.has_key("rform"):
                 form_params["rform"] = curr_req.json_in["rform"]
@@ -511,66 +568,33 @@ class HTTPAction(Thread):
                     if len(ll) > 0:
                         form_params["loc1"] = ll[0]
                     if len(ll) > 1:
-                        form_params["loc2"] = ll[1]
-                        
-            
-                
+                        form_params["loc2"] = ll[1]            
 
-                
-                        
-
-            
-                
-                
-                # Create NIname instance for supplied URL 
-                if not ndo.startswith("ni:"):
-                    if host is None:
-                        nilog("Must provide authority with -n if not included in name: %s" %
-                            ndo)
-                        break
-                    url_str = "ni://%s/%s" % (host, ndo)
-                else:
-                    url_str = ndo
-                ni_url = NIname(url_str)
-                http_host = ni_url.get_netloc()
-                if http_host == "":
-                    if host is None:
-                        nilog("Must provide authority with -n if not included in name: %s" %
-                            ndo)
-                        break
-                    ni_url.set_netloc(host)
-                elif host is not None:
-                    http_host = host
-        
-                if dest_dir is not None:
-                    dest = "%s/%s" % (dest_dir, ndo)
-                else:
-                    dest = None
-                 
+            try:
                 if multi:
-                    pool.apply_async(getone,args=(ni_url, http_host, dest),callback=getres)
+                    self.pool.apply_async(action_req,
+                                          args=(curr_req.req_type,
+                                                curr_req,req_seqno,
+                                                curr_req.ni_name,
+                                                http_host, http_index.
+                                                form_params, self.tempdir),
+                                          callback=self.handle_result)
                 else:
-                    getres(getone(ni_url, http_host, dest))
+                    self.handle_result(action_req(curr_req.req_type,
+                                                  curr_req.req_seqno,
+                                                  curr_req.ni_name,
+                                                  http_host,
+                                                  http_index,
+                                                  form_params,
+                                                  self.tempdir))
                 # count how many we do
                 count = count + 1
-                # if limit > 0 then we'll stop there
-                if count==limit:
-                        if multi:
-                                pool.close()
-                                pool.join()
-                        return (count, complete_count, goodlist, badlist)
-        except KeyboardInterrupt:
-            nilog("Keyboard interrupt")
-            if multi:
-                    pool.close()
-                    pool.join()
-            return (count, complete_count, goodlist, badlist)
-        except Exception, e:
-            nilog("Exception: %s" %  str(e))
-            if multi:
-                    pool.close()
-                    pool.join()
-            return (count, complete_count, goodlist, badlist)
+            except Exception, e:
+                nilog("Exception: %s" %  str(e))
+                if multi:
+                        pool.close()
+                        pool.join()
+                return (count, complete_count, goodlist, badlist)
 
         # Close down the multiprocessing if used
         if multi:
@@ -578,7 +602,55 @@ class HTTPAction(Thread):
                 pool.join()
         return (count,complete_count, goodlist,badlist)
 
+    #--------------------------------------------------------------------------#
+    def handle_result(self, result_tuple):
+        rv, req_id, http_index, content_file, metadata = result_tuple
+        try:
+            req_msg = self.req_dict[req_id]
+        except KeyError:
+            logerror("Result req_id (%d) not found in req_dict." % req_id)
+            self.running_procs -= 1
+            self.action_needed.set()
+            self.work_todo = True
+            return
+        with self.reqs_lock:
+            if rv:
+                req_msg.content = content_file
+                if req_msg.metadata is None:
+                    req_msg.metadata = NetInfMetadata()
+                    req_msg.metadata.set_json_val(metadata)
+                else:
+                    req_msg.metadata.insert_resp_metadata(metadata)
+            try:
+                req_msg.http_hosts_pending.remove(http_index)
+                req_msg.http_hosts_not_completed.remove(http_index)
+            except KeyError:
+                logerror("Result http_index (%d) not in trq_msg set(s)" %
+                         http_index)
+            self.running_procs -= 1
+            if len(req_msg.http_hosts_not_completed) == 0:
+                # All hosts have responded - sent back to DTN
+                self.send_result(False, req_msg)
+
+        self.action_needed.set()
+        self.work_todo = True                          
+        return
                                                                                             
+    #--------------------------------------------------------------------------#
+    def send_result(self, timed_out, req_msg):
+        # Clear the timer if still running
+        if not timed_out:
+            req_msg.timeout.cancel()
+        evt_msg = DtnEvtMsg(MsgDtnEvt.MSG_TO_DTN, req_msg)
+        self.resp_q.put(evt_msg)
+        with self.reqs_lock:
+            try:
+                del self.req_dict[req_msg.req_seqno]
+                self.curr_reqs.remove(req_msg)
+            except:
+                loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
+
+        return
 #===============================================================================#
 if __name__ == "__main__":
     py_nigetlist()

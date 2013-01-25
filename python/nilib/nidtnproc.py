@@ -54,6 +54,7 @@ import dtnapi
 from dtn_api_const import *
 
 # Nilib modules
+from ni import NIname, ni_errs
 from nidtnbpq import BPQ
 from nidtnmetadata import Metadata
 from nidtnevtmsg import MsgDtnEvt, HTTPRequest
@@ -184,22 +185,6 @@ class DtnReceive(threading.Thread):
             There should always be something to read
             Put in a timeout just in case
             The call to dtn_recv terminates the poll
-            We accept the email as a (temporary) file.
-            There is a nasty snag here. There is small window
-            of opportunity where the bundle has been written
-            to a temporary file delivered to this application
-            but before file has been renamed and registered in the maildir
-            and database. If the application exits during this period
-            the email will be lost.  This is not a happy situation.
-            At present DTN2 does not have a means for dtn_recv to offer
-            a filename that could be used.
-            
-            Uing DTN_PAYLOAD_MEM would present a similar problem
-            During the period the memory image is being written to file
-            in the application there is no permanent  copy of the file
-            but the DTN daemon believes it has delivered and is busy sending
-            a delivery notification.
-
             NOTE: On receiving the file, the file name is in the bundle
             payload as a NULL terminated string.  Python leaves the terminating
             byte in place.
@@ -250,7 +235,30 @@ class DtnReceive(threading.Thread):
                 if od[-1:] == '\x00':
                     od = od[:-1]
                 json_dict = json.loads(od)
-                bpq_msg = HTTPRequest("http_search", bpq_bundle, bpq_data, json_dict)
+
+                # Determine what sort of a request this is
+                if bpq_data.bpq_kind == BPQ.BPQ_BLOCK_KIND_QUERY:
+                    if bpq_data.matching_rule == BPQ.BPQ_MATCHING_RULE_EXACT:
+                        req_type = HTTPRequest.HTTP_GET
+                    else:
+                        req_type = HTTPRequest.HTTP_SEARCH
+                elif bpq_data.bpq_kind = BPQ.BPQ_BLOCK_KIND_PUBLISH:
+                    req_type = HTTPRequest.HTTP_PUBLISH
+                else:
+                    req_type = HTTPRequest.HTTP_RESPONSE
+
+                # Create ni_name if appropriate
+                ni_name = NIname(bpq_data.bpq_val)
+                rv = ni_name.validate_ni_url(has_params = True)
+                if rv != ni_errs.niSUCCESS:
+                    ni_name = None
+
+                dtnapi.dtn_bundle.
+                
+
+                
+                
+                bpq_msg = HTTPRequest(req_type, bpq_bundle, bpq_data, json_dict)
                                       
 
                 if self.recv_q != None:                             
