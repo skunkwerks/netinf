@@ -63,6 +63,7 @@ via the syslogger.
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       25/01/2013 Elwyn Davies   Add mechanism for selecting Redis database.
 1.3       10/12/2012 Elwyn Davies   Set up for alternative cache mechanisms.
 1.2       07/12/2012 Elwyn Davies   Alter logging setup.
 1.1       22/11/2012 Elwyn Davies   Updated name of shim class.
@@ -94,6 +95,7 @@ NETINF_DEFAULTS = {
     "NETINF_PROVIDE_NRS": "yes",
     "NETINF_SYSLOG_FACILITY": "", # Use stderr by default
     "NETINF_CACHE": "file",
+    "NETINF_REDIS_DB_NUM": "0",
     # Replace NETINF_LOG_INFO with NET_INF_LOG_ERROR, ..._WARN or ..._DEBUG as
     # seems appropriate
     "NETINF_LOG_LEVEL": "NETINF_LOG_INFO"

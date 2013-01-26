@@ -121,6 +121,7 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       25/01/2013 Elwyn Davies   Allow for selection of Redis database.
 1.3       13/12/2012 Elwyn Davies   Allow for check of storageRoot name in Redis.
 1.2       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.1       10/12/2012 Elwyn Davies   Adapted for Redis cache.
@@ -631,6 +632,7 @@ class wsgiHTTPRequestShim:
         environ["NETINF_NRSFORM"] = "/var/niserver/nrsconfig.html"
         environ["NETINF_FAVICON"] = "/var/niserver/favicon.ico"
         environ["NETINF_PROVIDE_NRS"] = "no"
+        environ["NTINF_REDIS_DB_NUM"] = "0"
         environ["NETINF_LOG_FACILITY"]: "local0"
 
         # Optionally...
@@ -702,6 +704,10 @@ class wsgiHTTPRequestShim:
     ##@var DEFAULT_ERROR_CONTENT_TYPE
     # The content-type corresponding to the DEFAULT_ERROR_MESSAGE.
     DEFAULT_ERROR_CONTENT_TYPE = "text/html"
+
+    ##@var DEFAULT_REDIS_DB_NUM
+    # The default Redis database to use
+    DEFAULT_REDIS_DB_NUM = 0
 
     ##@var NETINF_LOG_MAP
     # Table mapping string values for NETINF_LOG_LEVEL environent values
@@ -1145,6 +1151,9 @@ class wsgiHTTPRequestShim:
         provide_nrs, rv          = set_from_env("NETINF_PROVIDE_NRS", rv, "NetInf")
         self.favicon, rv         = set_from_env("NETINF_FAVICON", rv, "NetInf")
 
+        redis_db                 = environ.get("NETINF_REDIS_DB_NUM",
+                                               self.DEFAULT_REDIS_DB_NUM)
+
         if not rv:
             self.send_error(500, "NetInf environment not correctly configured")
             return self.trigger_response(start_response)
@@ -1177,7 +1186,7 @@ class wsgiHTTPRequestShim:
             # If an NRS server is wanted, create a Redis client instance
             # Assume it is the default local_host, port 6379 for the time being
             try:
-                netinf_redis = redis.StrictRedis()
+                netinf_redis = redis.StrictRedis(db=int(redis_db))
             except Exception, e:
                 self.logerror("Unable create connection for Redis server: %s" % str(e))
                 self.send_error(500, "Unable to create connection for Redis server")

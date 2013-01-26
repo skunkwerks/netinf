@@ -31,6 +31,7 @@
 # Revision History
 # ================
 # Version   Date       Author         Notes
+# 1.4	  25/01/2013 Elwyn Davies   Added Redis database selection. 
 # 1.3	  10/12/2012 Elwyn Davies   Added mechanisms for selecting Redis or 
 #                                   filesystem only cache storage.
 # 1.2	  06/12/2012 Elwyn Davies   Add knock-on change to log file location.
@@ -53,6 +54,7 @@ NETINF_LOG_FACILITY=local${SYSLOG_CHANNEL}
 SYSLOG_CONFIG_DIR=/etc/rsyslog.d
 NETINF_SYSLOG=${NILIB_PATH}/log/log_mod_wsgi
 NETINF_CACHE=file
+REDIS_DB_NUM=0
 RSYSLOG_CONF_FILE=60-netinf-${NETINF_CACHE}.conf
 
 variables() {
@@ -70,6 +72,7 @@ Syslog facility name       $NETINF_LOG_FACILITY
 Syslog config directory    $SYSLOG_CONFIG_DIR
 Output file for NetInf log $NETINF_SYSLOG
 NetInf Cache mechanism     $NETINF_CACHE
+Redis database number      $REDIS_DB_NUM
 Rsyslog configuration file $RSYSLOG_CONF_FILE
 
 EOF
@@ -101,6 +104,7 @@ OPTIONS:
     -d <path>       Directory where rsyslog configuration files are stored
     -l <filepath>   File name for syslog output file (absolute path)
     -m <cachemode>  Mechanism to use for NDO cache (file or redis)
+    -D <integer>    Redis database number to use for this virtual host
 
 Assumes installation is using rsyslog - if not the syslog will have to be
 configured manually.
@@ -114,7 +118,7 @@ variables
 email_set=0
 log_set=0
 syslog_chan_set=0
-while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
+while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:D:" OPTION; do
     case $OPTION in
         h)
             usage
@@ -184,6 +188,9 @@ while getopts "hu:g:r:v:n:a:e:s:c:f:d:l:m:" OPTION; do
             fi
             syslog_chan_set=1
             NETINF_LOG_FACILITY=local${SYSLOG_CHANNEL}
+            ;;
+        D)
+            REDIS_DB_NUM=$OPTARG
             ;;
         ?)
             usage
@@ -354,6 +361,7 @@ cat <<EOF >${SITES_PATH}/${VIRTHOST}
 	SetEnv NETINF_NRSFORM ${NILIB_PATH}/www/nrsconfig.html
 	SetEnv NETINF_FAVICON ${NILIB_PATH}/www/favicon.ico
 	SetEnv NETINF_PROVIDE_NRS no
+	SetEnv NETINF_REDIS_DB_NUM ${REDIS_DB_NUM}
 	SetEnv NETINF_LOG_FACILITY $NETINF_LOG_FACILITY
 	SetEnv NETINF_LOG_LEVEL NETINF_LOG_INFO
 

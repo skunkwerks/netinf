@@ -35,6 +35,7 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       25/01/2013 Elwyn Davies   Add option to specify Redis DB number.
 1.1       10/12/2012 Elwyn Davies   Add options for Redis cache storage.
 1.0       04/12/2012 Elwyn Davies   Move check_cache_dirs into cache module.
                                     Now called in niserver.py.
@@ -79,6 +80,10 @@ SERVER_PORT = 8080
 # Default name for favicon file requested by browsers
 FAVICON_FILE = "/favicon.ico"
 
+##@var REDIS_DB_NUM
+# Default Redis DB number
+REDIS_DB_NUM = 0
+
 #==============================================================================#
 def py_niserver_start(default_config_file):
     """
@@ -118,7 +123,7 @@ def py_niserver_start(default_config_file):
             "                [-n <logger name>] [-s <storage root>] [-a <authority>]\n" + \
             "                [-b <logging base directory>] [-c <control port>] [-i <favicon file>]\n" + \
             "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]\n" + \
-            "                [-c [file|redis]]"
+            "                [-c [file|redis]] [-d <Redis db number>]"
 
     parser = OptionParser(usage=usage, prog="niserver")
     
@@ -163,6 +168,9 @@ def py_niserver_start(default_config_file):
     parser.add_option("-m", "--cache-mode", dest="cache",
                       type="string",
                       help="Select cache mechanism ('file' - default - or 'redis').")
+    parser.add_option("-d", "--db-number", dest="redis_db",
+                      type="int", default=None,
+                      help="Redis database number to use (if mode is redis).")
 
     (options, args) = parser.parse_args()
 
@@ -184,6 +192,7 @@ def py_niserver_start(default_config_file):
     provide_nrs = None if (options.provide_nrs == 0) else True
     favicon = options.favicon
     cache_mode = options.cache
+    redis_db = options.redis_db
 
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
@@ -338,6 +347,19 @@ def py_niserver_start(default_config_file):
                                      "acceptable boolean representation" %
                                      conf_option)
 
+        conf_section = "redis"
+        if config.has_section(conf_section):
+            if (redis_db is None):
+                conf_option = "redis_db"
+                if config.has_option(conf_section, conf_option):
+                    try:
+                        redis_db = int(config.get(conf_section,
+                                                  conf_option))
+                    except ValueError:
+                        parser.error("Value supplied for %s is not an "
+                                     "acceptable integer representation" %
+                                     conf_option)
+
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Check we have all the configuration we need and apply fallback
     # defaults for others
@@ -386,6 +408,10 @@ def py_niserver_start(default_config_file):
     else:
         parser.error("Unrecognised cache mode - possibilities are 'file' and 'redis'")
 
+    # Default to database #0 if using Redis
+    if (redis_db is None):
+        redis_db = REDIS_DB_NUM
+        
     # Now load the main server module so that it gets the right cache module loaded            
     from niserver import ni_http_server
 
@@ -462,7 +488,7 @@ def py_niserver_start(default_config_file):
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port,
                                niserver_logger, getputform, nrsform,
-                               provide_nrs, favicon)
+                               provide_nrs, favicon, redis_db)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request

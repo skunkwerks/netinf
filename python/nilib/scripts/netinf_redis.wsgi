@@ -46,6 +46,7 @@ SetEnv NETINF_GETPUTFORM <file path name>
 SetEnv NETINF_NRSFORM <file path name>
 SetEnv NETINF_FAVICON <file path name>
 SetEnv NETINF_PROVIDE_NRS <boolean> [yes/true/1|no/false/0]
+SetEnv NETINF_REDIS_DB_NUM <integer>
 SetEnv NETINF_LOG_FACILITY <facility name> (e.g., "local0")
 SetEnv NETINF_LOG_LEVEL <log level>
 Log level can be any of NETINF_LOG_INFO, ..._ERROR, ..._WARN or ..._DEBUG
@@ -55,6 +56,7 @@ Default is NETINF_LOG_INFO if this variable is not defined.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       25/01/2013 Elwyn Davies   Added comment for NETINF_REDIS_DB_NUM.
 1.0       10/12/2012 Elwyn Davies   Cloned from netinf_file.wsgi to use Redis.
 
 @endcode

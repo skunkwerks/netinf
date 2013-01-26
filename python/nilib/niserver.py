@@ -341,7 +341,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
     #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority_name, server_port,
-                 logger, getputform, nrsform, provide_nrs, favicon):
+                 logger, getputform, nrsform, provide_nrs, favicon, redis_db=0):
         """
         @brief Constructor for the NI HTTP threaded server.
         @param addr tuple two elements (<IP address>, <TCP port>) where server listens
@@ -353,6 +353,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         @param nrsform string pathname of NRS configuration form HTML file
         @param provide_nrs boolean True if server is to offer NRS server function
         @param favicon string pathname for browser favicon.ico icon file
+        @param redis_db integer number of Redis database to use
+                                (if provide_nrs Truw)
         @return (none)
 
         Save the parameters (except for addr) as instance variables.
@@ -402,7 +404,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         # Assume it is the default local_host, port 6379 for the time being
         if provide_nrs or use_redis_cache:
             try:
-                self.nrs_redis = redis.StrictRedis()
+                self.nrs_redis = redis.StrictRedis(db=redis_db)
             except Exception, e:
                 logger.error("Unable to connect to Redis server: %s" % str(e))
                 sys.exit(-1)
@@ -496,7 +498,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 #==============================================================================#
 #------------------------------------------------------------------------------#
 def ni_http_server(storage_root, authority, server_port, logger,
-                   getputform, nrsform, provide_nrs, favicon):
+                   getputform, nrsform, provide_nrs, favicon, redis_db=0):
     """
     @brief Set up the NI HTTP threaded server.
     @param storage_root string pathname for root of cache directory tree
@@ -545,7 +547,7 @@ def ni_http_server(storage_root, authority, server_port, logger,
     return NIHTTPServer((ipaddr, server_port), storage_root,
                         authority, server_port,
                         logger, getputform, nrsform,
-                        provide_nrs, favicon)
+                        provide_nrs, favicon, redis_db)
 
 #==============================================================================#
 
