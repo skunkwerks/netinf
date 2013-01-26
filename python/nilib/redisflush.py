@@ -34,6 +34,7 @@ Clear out the Redis database and the corresponding object storage cache.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       25/01/2013 Elwyn Davies   Add parameter to select database to flush.
 1.0       13/12/2012 Elwyn Davies   Create.
 
 @endcode
@@ -43,15 +44,28 @@ Version   Date       Author         Notes
 
 import redis
 import os
+import sys
 
 STORAGE_ROOT_KEY = "NISERVER_STORAGE_ROOT"
+
+# Get database number from command line (if given)
+if len(sys.argv) > 1:
+    try:
+        redis_db = int(sys.argv[1])
+    except Exception, e:
+        print "Usage: %s [<Redis database - integer>]" % sys.argv[0]
+        os._exit(1)
+else:
+    redis_db = 0
+    
 try:
-    ans = raw_input("This will flush the Redis database.  Are you sure you want to continue? [y/n] " )
+    ans = raw_input("This will flush the Redis database #%d.  Are you sure you want to continue? [y/n] " %
+                    redis_db)
 except:
     print "Interrupted"
     os._exit(1)
 if ans == "y":
-    c = redis.StrictRedis()
+    c = redis.StrictRedis(db=redis_db)
     try:
         storage_root = c.get(STORAGE_ROOT_KEY)
         if c.flushdb():
@@ -78,7 +92,7 @@ if os.path.isdir(storage_root):
         os.system("rm -rf %s/*" % storage_root)
         os._exit(0)
     else:
-        print "Abandoned deleteing object cache"
+        print "Abandoned deleting object cache"
         os._exit(1)
 else:
     print "Storage root directory %s does not exist" % storage_root
