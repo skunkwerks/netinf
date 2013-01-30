@@ -59,7 +59,7 @@ import logging
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 from nifeedparser import DigestFile, FeedParser
 from nidtnevtmsg import HTTPRequest, MsgDtnReq
-from metadata import NetInfMetadata
+from metadata import NetInfMetaData
 
 #============================================================================#
 verbose = False
@@ -338,7 +338,7 @@ class HTTPAction(Thread):
     actions are carried out in series.
 
     When an action completes, the manager sends a message to the DTN sender
-    thread whic encapsulates it into bundle and injects back into the DTN
+    thread which encapsulates it into bundle and injects back into the DTN
     """
     HTTP_SCHEME_PREFIX = "http://"
     DTN_SCHEME_PREFIX = "dtn://"
@@ -360,7 +360,7 @@ class HTTPAction(Thread):
     # Convenience function for logging error reporting messages
     
     #--------------------------------------------------------------------------#
-    def __init__(self, resp_q, tempdir, logger, redis_conn,
+    def __init__(self, resp_q, tempdir, logger, redis_conn, ndo_cache,
                  mprocs=1, parallel_limit=1, per_req_limit=1):
         """
         @brief Constructor - set up logging and squirrel parameters
@@ -374,6 +374,7 @@ class HTTPAction(Thread):
 
         self.resp_q = resp_q
         self.tempdir = tempdir
+        self.ndo_cache = ndo_cache
         self.mprocs = mprocs
         if parallel_limit > mprocs:
             self.parallel_limit = mprocs
@@ -503,6 +504,8 @@ class HTTPAction(Thread):
             # Need to have the lock on the requests data for this
             with self.reqs_lock:
                 restart_loop = False
+                # XXX  - may need to move this later so sorting out new
+                # requests already in local cache isn't delayed unecessarily
                 if self.running_procs >= self.parallel_limit:
                     # Can't do anything till a process comes free
                     restart_loop = True
@@ -512,6 +515,20 @@ class HTTPAction(Thread):
                 http_host = None
                 http_index = None
                 for req in self.curr_reqs:
+                    # Check if this is first look at this request
+                    if not req.proc_started:
+                        # If it is first pass, check local cache first if a GET
+                        if ((not req.proc_started) and
+                            (req.req_type == HTTPRequest.HTTP_GET)):
+                            try:
+                                metadata, cfn = self.ndo_cache.get_cache(req.ni_name)
+                                req.content = cfn
+                                req.metadata = NetInfMetaData()
+                                req.metadata. set_json_val(metadata.summary())
+                            except Exception, e:
+                                pass
+                    req.proc_started = True
+                        
                     if req.http_host_next is None:
                         # No more to start for this request
                         continue
@@ -617,7 +634,7 @@ class HTTPAction(Thread):
             if rv:
                 req_msg.content = content_file
                 if req_msg.metadata is None:
-                    req_msg.metadata = NetInfMetadata()
+                    req_msg.metadata = NetInfMetaData()
                     req_msg.metadata.set_json_val(metadata)
                 else:
                     req_msg.metadata.insert_resp_metadata(metadata)
@@ -651,6 +668,14 @@ class HTTPAction(Thread):
                 loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
 
         return
-#===============================================================================#
+
+    #--------------------------------------------------------------------------#
+    def end_run(self):
+        """
+        @brief terminate running of HTTP action thread.
+        """
+        self.keep_running = False
+        return
+ #===============================================================================#
 if __name__ == "__main__":
     py_nigetlist()

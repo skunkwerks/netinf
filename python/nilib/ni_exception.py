@@ -36,6 +36,7 @@ Definitions of exceptions used in Python NI library.
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       27/01/2013 Elwyn Davies   Added DtnError.
 1.2       13/01/2013 Elwyn Davies   Added InvalidNIname and MetadataMismatch.
 1.1       10/12/2012 Elwyn Davies   Added InconsistentDatabase
 1.0       05/12/2012 Elwyn Davies   Created from definitions in various other
@@ -47,7 +48,7 @@ Version   Date       Author         Notes
 __all__ = ['UnvalidatedNIname', 'EmptyParams', 'NonEmptyNetlocOrQuery',
            'InconsistentParams', 'InvalidMetaData', 'CacheEntryExists',
            'NoCacheEntry', 'InconsistentDatabase', 'InvalidNIname',
-           'MetadataMismatch' ]
+           'MetadataMismatch', 'DtnError' ]
 
 #==============================================================================#
 #=== Exceptions ===
@@ -128,3 +129,13 @@ class MetadataMismatch(Exception):
            metadata already in place in this cache.
     """
     pass
+
+#------------------------------------------------------------------------------#
+#=== Raised by nidtnproc ===
+
+# Exception resulting from DTN problems
+class DtnError(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+    def __str__(self):
+        return "Error communication with DTN daemon: %s" % (repr(self.reason),)

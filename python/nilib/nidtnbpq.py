@@ -73,6 +73,9 @@ class BPQ:
     Holds details for a single BPQ block, providing validation, decoding
     from an on-the-wire string and generation of the on-the-wire string.
 
+    Uses a specialized version of the struct module that can deal with
+    SDNVs (Self-Defining Numeric Values).
+
     """
     #--------------------------------------------------------------------------#
     # CONSTANT VALUES USED BY CLASS
@@ -98,6 +101,15 @@ class BPQ:
     ##@var BPQ_MATCHING_RULE_EXACT
     # integer   Value of matching_rule when the query ID has to match exactly.
     BPQ_MATCHING_RULE_EXACT = 0x00
+    
+    ##@var BPQ_MATCHING_RULE_TOKENS
+    # integer   Value of matching_rule when the query ID is used a search key.
+    BPQ_MATCHING_RULE_TOKENS = 0x01
+    
+    ##@var BPQ_MATCHING_RULE_NEVER
+    # integer   Value of matching_rule when the query ID should not be matched.
+    #           Used for responses to PUBLISH
+    BPQ_MATCHING_RULE_NEVER = 0x02
     
     #--------------------------------------------------------------------------#
     # INSTANCE VARIABLES
@@ -186,7 +198,7 @@ class BPQ:
             
             offset += used_len
             if ((offset + self.bpq_val_len) > input_len):
-                raise struct_error("Input string too short at bpq_va;")
+                raise struct_error("Input string too short at bpq_val")
 
             self.bpq_val = inputstr[offset : (offset + self.bpq_val_len)]
 
@@ -230,7 +242,9 @@ class BPQ:
                 (self.bpq_kind == self.BPQ_BLOCK_KIND_PUBLISH)):
             return False
 
-        if not ((self.matching_rule == self.BPQ_MATCHING_RULE_EXACT)):
+        if not ((self.matching_rule == self.BPQ_MATCHING_RULE_EXACT) or
+                (self.matching_rule == self.BPQ_MATCHING_RULE_TOKENS) or
+                (self.matching_rule == self.BPQ_MATCHING_RULE_NEVER)):
             return False
 
         if not (self.src_eid and (len(self.src_eid) == self.src_eid_len)):
@@ -302,7 +316,9 @@ class BPQ:
 
         @raises ValueError if not a valid value
         """
-        if not ((matching_rule == self.BPQ_MATCHING_RULE_EXACT)):
+        if not ((matching_rule == self.BPQ_MATCHING_RULE_EXACT) or
+                (matching_rule == self.BPQ_MATCHING_RULE_TOKENS) or
+                (matching_rule == self.BPQ_MATCHING_RULE_NEVER)):
             raise ValueError
         
         self.matching_rule = matching_rule
@@ -394,7 +410,16 @@ class BPQ:
         self.frag_desc.append(d)
         self.frag_cnt += 1
         
-        return         
+        return
+
+    #--------------------------------------------------------------------------#
+    def clear_frag_desc(self):
+        """
+        @brief Clear the fragment descriptor list.
+        """
+        self.frag_cnt = 0
+        self.frag_desc = []
+        return
 
     #--------------------------------------------------------------------------#
     def __repr__(self):

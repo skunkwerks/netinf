@@ -35,6 +35,7 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       26/01/2013 Elwyn Davies   Add DTN->HTTP gateway functionality.
 1.2       25/01/2013 Elwyn Davies   Add option to specify Redis DB number.
 1.1       10/12/2012 Elwyn Davies   Add options for Redis cache storage.
 1.0       04/12/2012 Elwyn Davies   Move check_cache_dirs into cache module.
@@ -123,7 +124,7 @@ def py_niserver_start(default_config_file):
             "                [-n <logger name>] [-s <storage root>] [-a <authority>]\n" + \
             "                [-b <logging base directory>] [-c <control port>] [-i <favicon file>]\n" + \
             "                [-g <GET/PUT/SEARCH form code file>] [-r <NRS config from code file]\n" + \
-            "                [-c [file|redis]] [-d <Redis db number>]"
+            "                [-c [file|redis]] [-d <Redis db number>] [-G]"
 
     parser = OptionParser(usage=usage, prog="niserver")
     
@@ -168,9 +169,13 @@ def py_niserver_start(default_config_file):
     parser.add_option("-m", "--cache-mode", dest="cache",
                       type="string",
                       help="Select cache mechanism ('file' - default - or 'redis').")
+    # REDIS_DB_NUM is used as a fallback if neither command line nor config file specify
     parser.add_option("-d", "--db-number", dest="redis_db",
                       type="int", default=None,
                       help="Redis database number to use (if mode is redis).")
+    parser.add_option("-G", "--gateway", dest="run_gateway",
+                      default=0, action="count",
+                      help="If present, offer DTN<->HTTP gateway services.")
 
     (options, args) = parser.parse_args()
 
@@ -193,6 +198,7 @@ def py_niserver_start(default_config_file):
     favicon = options.favicon
     cache_mode = options.cache
     redis_db = options.redis_db
+    run_gateway = None if (options.run_gateway == 0) else True
 
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
@@ -360,6 +366,19 @@ def py_niserver_start(default_config_file):
                                      "acceptable integer representation" %
                                      conf_option)
 
+        conf_section = "gateway"
+        if config.has_section(conf_section):
+            if (run_gateway is None):
+                conf_option = "run_gateway"
+                if config.has_option(conf_section, conf_option):
+                    try:
+                        run_gateway = config.getboolean(conf_section,
+                                                        conf_option))
+                    except ValueError:
+                        parser.error("Value supplied for %s is not an "
+                                     "acceptable boolean representation" %
+                                     conf_option)
+
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Check we have all the configuration we need and apply fallback
     # defaults for others
@@ -411,6 +430,10 @@ def py_niserver_start(default_config_file):
     # Default to database #0 if using Redis
     if (redis_db is None):
         redis_db = REDIS_DB_NUM
+
+    # Default to not running HTTP<->DTN gateway
+    if (run_gateway is None):
+        run_gateway = False
         
     # Now load the main server module so that it gets the right cache module loaded            
     from niserver import ni_http_server
@@ -488,7 +511,7 @@ def py_niserver_start(default_config_file):
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port,
                                niserver_logger, getputform, nrsform,
-                               provide_nrs, favicon, redis_db)
+                               provide_nrs, favicon, redis_db, run_gateway)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request

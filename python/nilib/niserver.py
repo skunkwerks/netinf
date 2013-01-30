@@ -141,6 +141,8 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.11      26/01/2013 Elwyn Davies   Add HTTP<->DTN gateway functionality..
+1.10      26/01/2013 Elwyn Davies   Allow for Redis database selection.
 1.9       13/12/2012 Elwyn Davies   Allow for Redis storage_root check.
 1.8       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
 1.7       10/12/2012 Elwyn Davies   Select Redis or filesystem cache.
@@ -225,6 +227,7 @@ except ImportError:
 import netinf_ver
 import ni
 from nihandler import NIHTTPRequestHandler
+from nidtnhttpgateway import DtnHttpGateway
 
 # Load either filesystem or Redis cache module depending on
 # whether redis_store or file_store was imported.  Must have
@@ -312,6 +315,14 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     # object StrictRedis instance used for communication between the NRS server
     # and the Redis database.
 
+    ##@var dtn_gateway_enabled
+    # boolean True if run_gateway is True and the gateway was started
+    #              successfully.
+
+    ##@var dtn_gateway
+    # object instance of gateway HTTP<->DTN controller.
+    #                    Needed when shutting down.
+
     ##@var cache
     # object instance of NetInfCache interface to cache storage
     
@@ -328,20 +339,23 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     # and the previous value used as part of the name for the thread.
     
     ##@var allow_reuse_address
-    # boolean (from TCPServer) if set, when the listener socket is bound to the server
-    # address, the ioctl SO_REUSEADDR is called on the socket before being bound.This is
-    # handy especially during development as otherwise you have to wait for a
-    # significant period (typically at least 4 minutes) while the TIME_WAIT state
-    # on the socket from a previous instance terminates before the server can be
-    # restarted using the same (address, port) pair.
+    # boolean (from TCPServer) if set, when the listener socket is bound to the
+    #         server address, the ioctl SO_REUSEADDR is called on the socket
+    #         before being bound.  This is handy especially during development
+    #         as otherwise you have to wait for a significant period (typically
+    #         at least 4 minutes) while the TIME_WAIT state on the socket from
+    #         a previous instance terminates before the server can be restarted
+    #         using the same (address, port) pair.
     
     ##@var daemon_threads
-    # boolean set to make all the spawned handler threads are made daemon threads. This
-    # means that the handler threads are terminated when the main thread terminates.
+    # boolean set to make sure all the spawned handler threads are made daemon
+    #         threads. This means that the handler threads are terminated when
+    #         the main thread terminates.
 
     #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority_name, server_port,
-                 logger, getputform, nrsform, provide_nrs, favicon, redis_db=0):
+                 logger, getputform, nrsform, provide_nrs, favicon,
+                 redis_db=0, run_gateway=False):
         """
         @brief Constructor for the NI HTTP threaded server.
         @param addr tuple two elements (<IP address>, <TCP port>) where server listens
@@ -354,7 +368,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         @param provide_nrs boolean True if server is to offer NRS server function
         @param favicon string pathname for browser favicon.ico icon file
         @param redis_db integer number of Redis database to use
-                                (if provide_nrs Truw)
+                                (if provide_nrs True or using Redis NDO cache)
+        @param run_gateway boolean True if DTN<->HTTP functionality is enabled.
         @return (none)
 
         Save the parameters (except for addr) as instance variables.
@@ -383,7 +398,9 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         When the HTTPServer listener receives a connection request, and  creates
         a new thread to handle the request(s) that is(are) passed over the
         connection, it calls the overridden 'handle' method in the shim class.
-        
+
+        If run_gateway is True, the DTN connection threads are started and
+        linked to the cache. 
         """
         # These are used  by individual requests
         # accessed via self.server in the handle function
@@ -396,13 +413,19 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         self.nrsform = nrsform
         self.provide_nrs = provide_nrs
         self.favicon = favicon
+        self.dtn_gateway_enabled = False
+        self.dtn_gateway = None
 
         # Initialize cache
         self.cache = NetInfCache(self.storage_root, self.logger)
 
-        # If an NRS server is wanted, create a Redis client instance
+        # If any of:
+        #  - an NRS server is wanted,
+        #  - the NDO cache is using Redis, or
+        #  - the HTTP<->DTN gateway is enabled,
+        # create a Redis client instance
         # Assume it is the default local_host, port 6379 for the time being
-        if provide_nrs or use_redis_cache:
+        if provide_nrs or use_redis_cache or run_gateway:
             try:
                 self.nrs_redis = redis.StrictRedis(db=redis_db)
             except Exception, e:
@@ -426,6 +449,16 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         # Check cache is prepared
         if not self.cache.check_cache_dirs():
             sys.exit(-1)
+
+        # If requested try to start HTTP<->DTN gateway
+        if run_gateway:
+            self.dtn_gateway = DtnHttpGateway(logger, self.cache, self.nrs_redis, self)
+            if self.dtn_gateway is None:
+                logger.error("Unable to start HTTP<->DTN gateway as requested")
+                self.dtn_gateway_enabled = False
+            else:
+                logger.info("HTTP<->DTN gateway started")
+                self.drn_gateway_enabled = True
         
         self.running_threads = set()
         self.next_handler_num = 1
@@ -441,7 +474,15 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         self.server_activate()
                          
         self.daemon_threads = True
+        return
 
+    #--------------------------------------------------------------------------#
+    def start(self):
+        if self.dtn_gateway_enabled:
+            self.dtn_gateway.start_gateway()
+        HTTPServer.start(self)
+        return
+    
     #--------------------------------------------------------------------------#
     def add_thread(self, thread):
         """
@@ -491,6 +532,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
             if thread.request_thread.isAlive():
                 thread.request.close()
         del self.running_threads
+        if dtn_gateway_enabled:
+            dtn_gateway.shutdown_gateway()
         self.shutdown()
 
 #==============================================================================#
@@ -498,7 +541,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 #==============================================================================#
 #------------------------------------------------------------------------------#
 def ni_http_server(storage_root, authority, server_port, logger,
-                   getputform, nrsform, provide_nrs, favicon, redis_db=0):
+                   getputform, nrsform, provide_nrs, favicon,
+                   redis_db=0, run_gateway = False):
     """
     @brief Set up the NI HTTP threaded server.
     @param storage_root string pathname for root of cache directory tree
@@ -509,6 +553,8 @@ def ni_http_server(storage_root, authority, server_port, logger,
     @param nrsform string pathname of NRS configuration form HTML file
     @param provide_nrs boolean True if server is to offer NRS server function
     @param favicon string pathname for browser favicon.ico icon file
+    @param redis_db integer number of Redis database to use
+    @param run_gateway boolean True if DTN<->HTTP functionality is enabled.
     @return threaded HTTP server instance object ready for use
     
     Before creating the server:
@@ -537,17 +583,18 @@ def ni_http_server(storage_root, authority, server_port, logger,
                                                         str(ipaddr),
                                                         server_port))
 
-    if provide_nrs:
+    if provide_nrs or run_gateway:
         if not redis_loaded:
-            logger.error("Unable to import redis module needed for NRS server")
+            logger.error("Unable to import redis module needed for NRS server and/or DTN gateway")
             sys.exit(-1)
-        logger.info("Successfully loaded redis module for NRS server")
+        logger.info("Successfully loaded redis module for NRS server and/or DTN gateway")
 
     # Pass the parameters and the derived IP address to the constructor
     return NIHTTPServer((ipaddr, server_port), storage_root,
                         authority, server_port,
                         logger, getputform, nrsform,
-                        provide_nrs, favicon, redis_db)
+                        provide_nrs, favicon,
+                        redis_db, run_gateway)
 
 #==============================================================================#
 
