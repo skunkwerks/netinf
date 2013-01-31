@@ -70,7 +70,7 @@ __all__ = ['DtnReceive', 'DtnSend']
 
 ##@var NETINF_SERVICE
 # string basic service tag for NetInf DTN application interface
-NETINF_SERVICE = "netinf_service/"
+NETINF_SERVICE = "netinfproto/service/"
 
 ##@var NETINF_SERVICE_ANY
 # string service tag pattern for generic NetInf service
@@ -521,14 +521,13 @@ class DtnSend(Thread):
         # - The report address is always the report_eid
         # - The registration id needed in dtn_send is only relevant when
         #   dealing with publish/subscribe case.  We don't use this.
-        #   Reports will come back through the receive thread so useno regid
+        #   Reports will come back through the receive thread so use no regid
         regid = dtnapi.DTN_REGID_NONE
-        # - The destination address has to be copied from 
         # - We want delivery reports (and maybe deletion reports?)
         dopts = dtnapi.DOPTS_DELIVERY_RCPT
         # - Send with normal priority.
         pri = dtnapi.COS_NORMAL
-        # Mail bundlesshould last a while..
+        # NetInf bundles should last a while..
         exp = self.NETINF_EXPIRY
 
         self.logdebug("Entering DTN send Queue loop")
@@ -671,8 +670,26 @@ if (__name__ == "__main__"):
     class HTTPActionTest:
         def __init__(self):
             return
-        def add_new_req(self, req):
-            print "Received req: %s" % str(req)
+        def add_new_req(self, in_req):
+            print "Received req: %s" % str(in_req)
+
+            if in_req.response_destn.find("netinfproto/service") != -1:
+                return
+
+            # This has come in from an app
+            print "sending back to app"
+            req = HTTPRequest(HTTPRequest.HTTP_GET, in_req.bundle,
+                              in_req.bpq_data, json_in,
+                              has_payload=True, ni_name=in_req.ni_name,
+                              make_response=True,
+                              response_destn=in_req.response_destn,
+                              content="/etc/group")
+            req.metadata = { "d": "e" }
+
+            evt = MsgDtnEvt(MsgDtnEvt.MSG_TO_DTN, req)
+            print "sending message %s" % str(evt)
+            dtn_send_q.put_nowait(evt)
+   
             return
         
     logger = logging.getLogger("test2")
@@ -708,6 +725,11 @@ if (__name__ == "__main__"):
     # Note that we don't actually need the original bundle to do this
     # This is deliberate so that can use this for forwarding.
     # BPQ data structure
+    # digest used here is for a snapshot of the /etc/group
+    # file that is specified as content later. It is irrelevant
+    # for internal testing as the digest is not checked but
+    # you might wish to modify it if using this test code to
+    # test the nigetalt.py module.
     nis = "ni:///sha-256-32;IEtLRQ"
     bndl = dtnapi.dtn_bundle()
     bpq = BPQ()
@@ -756,7 +778,7 @@ if (__name__ == "__main__"):
     print "sending message %s" % str(evt)
     dtn_send_q.put_nowait(evt)
 
-    time.sleep(60)
+    time.sleep(10)
    
     # Receiving thread
     dtn_recv_handler = DtnReceive(http_action, logger)

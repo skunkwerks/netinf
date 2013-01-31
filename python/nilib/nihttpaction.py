@@ -101,7 +101,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
     @brief Perform a NetInf 'get' from the http_host for the ni_url.
     @param req_id integer sequence number of message containing request
-    @param ni_url string ni name to be retrieved
+    @param ni_url object instance of NIname with ni name to be retrieved
     @param http_host string HTTP host name to be accessed
                             (FQDN or IP address with optional port number)
     @param http_index integer index of host name being processed within request
@@ -134,7 +134,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     http_url = "http://%s/netinfproto/get" % http_host
     
     # Set up HTTP form data for get request
-    form_data = urllib.urlencode({ "URI":   ni_url,
+    form_data = urllib.urlencode({ "URI":   ni_url_str,
                                    "msgid": form_params["msgid"],
                                    "ext": "" if not form_params.has_key["ext"] else
                                           form_params["ext"]})
