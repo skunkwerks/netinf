@@ -39,6 +39,7 @@ Version   Date       Author         Notes
 @endcode
 """
 import sys
+from types import *
 import os.path
 import  random
 from optparse import OptionParser
@@ -56,10 +57,16 @@ from threading import Lock as ThreadingLock
 from os.path import join
 import tempfile
 import logging
+import Queue
+
+from redis import StrictRedis
+
 from ni import ni_errs, ni_errs_txt, NIname, NIproc
 from nifeedparser import DigestFile, FeedParser
-from nidtnevtmsg import HTTPRequest, MsgDtnReq
+from nidtnevtmsg import HTTPRequest, MsgDtnEvt
 from metadata import NetInfMetaData
+from ni_exception import NoCacheEntry
+from nidtnbpq import BPQ
 
 #============================================================================#
 verbose = False
@@ -75,12 +82,7 @@ def debug(string):
     return
 
 #===============================================================================#
-logger=logging.getLogger("nigetlist")
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+process_logger= None
 
 def nilog(string):
 	"""
@@ -92,7 +94,7 @@ def nilog(string):
 	nano= "%.10f" %now
 	utct = time.strftime("%Y-%m-%dT%H:%M:%S")
 	
-	logger.info('NILOG: ' + node + ',' + nano + ',' + utct + ',' + string)
+	process_logger.info('NILOG: ' + node + ',' + nano + ',' + utct + ',' + string)
 	
 	return
 
@@ -136,7 +138,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     # Set up HTTP form data for get request
     form_data = urllib.urlencode({ "URI":   ni_url_str,
                                    "msgid": form_params["msgid"],
-                                   "ext": "" if not form_params.has_key["ext"] else
+                                   "ext": "" if not form_params.has_key("ext") else
                                           form_params["ext"]})
 
     # Send POST request to destination server
@@ -277,10 +279,54 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
         os.remove(digested_file)
         digested_file = None
 
-        return(True, req_id, http_index, digested_file, json_report)
+    return(True, req_id, http_index, digested_file, json_report)
         
 #===============================================================================#
+def publish_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
+    """
+    @brief Perform a NetInf 'publish' towards the http_host for the ni_url.
+    @param req_id integer sequence number of message containing request
+    @param ni_url object instance of NIname with ni name to be retrieved
+    @param http_host string HTTP host name to be accessed
+                            (FQDN or IP address with optional port number)
+    @param http_index integer index of host name being processed within request
+    @param form_params dictionary of paramter values to pass to HTTP
+    @param tempdir string ditrectory where to place retrieved content if any
+    @return 5-tuple with:
+                boolean - True if succeeds, False if fails
+                string req_id as supplied as parameter
+                integer http_index as supplied as parameter
+                string pathname for response or None is no response etc
+                dictionary returned JSON metadata if any, decoded
+                
+    Assume that ni_url has a valid ni URI
+    Assume that tempdir provides a directory path into which file can be written
+    """
+
+    return(False, req_id, http_index, None, None)
 #===============================================================================#
+def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
+    """
+    @brief Perform a NetInf 'search' on the http_host using the form_params.
+    @param req_id integer sequence number of message containing request
+    @param ni_url None for earch requests
+    @param http_host string HTTP host name to be accessed
+                            (FQDN or IP address with optional port number)
+    @param http_index integer index of host name being processed within request
+    @param form_params dictionary of paramter values to pass to HTTP
+    @param tempdir string ditrectory where to place retrieved response if any
+    @return 5-tuple with:
+                boolean - True if succeeds, False if fails
+                string req_id as supplied as parameter
+                integer http_index as supplied as parameter
+                string pathname for response or None is no response etc
+                dictionary returned JSON metadata if any, decoded
+                
+    Assume that ni_url has a valid ni URI
+    Assume that tempdir provides a directory path into which file can be written
+    """
+
+    return(False, req_id, http_index, None, None)
 #===============================================================================#
 def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
@@ -306,6 +352,8 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tem
     multiprocessing implementation allowing the result to be linked to the
     original request.
     """
+    nilog("Entering action_req %s: id %s http index %d" %
+          (req_type, req_id, http_index))
     try:
         req_rtn = {HTTPRequest.HTTP_GET: get_req,
                    HTTPRequest.HTTP_PUBLISH: publish_req,
@@ -314,9 +362,15 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tem
         nilog("Bad req_type (%s) supplied to action_req" % req_type)
         return(False, req_id, http_index, None, None)
 
-    try:
-        return req_rtn(req_id, ni_url, http_host, http_index,
+    rv = req_rtn(req_id, ni_url, http_host, http_index,
                        form_params, tempdir)
+    print rv
+    return rv
+    try:
+        rv = req_rtn(req_id, ni_url, http_host, http_index,
+                       form_params, tempdir)
+        print rv
+        return rv
     except Exception, e:
         nilog("Exception occurred while processing (%s, %s, %d): %s" %
               (req_type, req_id, http_index, str(e)))
@@ -365,12 +419,15 @@ class HTTPAction(Thread):
         """
         @brief Constructor - set up logging and squirrel parameters
         """
+        Thread.__init__(self, name="http-action")
         # Logging functions
-        self.logger = self.server.logger
-        self.loginfo = self.server.logger.info
-        self.logdebug = self.server.logger.debug
-        self.logwarn = self.server.logger.warn
-        self.logerror = self.server.logger.error
+        global process_logger
+        process_logger = logger
+        self.logger = logger
+        self.loginfo = logger.info
+        self.logdebug = logger.debug
+        self.logwarn = logger.warn
+        self.logerror = logger.error
 
         self.resp_q = resp_q
         self.tempdir = tempdir
@@ -429,23 +486,27 @@ class HTTPAction(Thread):
             else:
                 ll0 = []
         # See if there is a locliat in the json_in field
-        if json_in.has_key("loclist"):
-            ll1 = json_in["loclist"]
+        if req_msg.json_in.has_key("loclist"):
+            ll1 = req_msg.json_in["loclist"]
             # Worry about unicode
-            if type(ll1) != StringType:
+            if type(ll1) == StringType:
                 ll1 = [ ll1 ]
-            elif type(ll) != ListType:
+            elif type(ll1) != ListType:
                 ll1 = []
         else:
             ll1 = []
+        print ll1
         # Add next hops from Redis database
         try:
-            ll2 = self.redis_conn.hgetall(self.nexthop_key)
-            # Gets empty dictionary if key not present
+            ll2 = self.redis_conn.hvals(self.nexthop_key)
+            self.logdebug("Next hops: %s" % str(ll2))
+            # Gets empty list if key not present
         except Exception, e:
             self.logerror("Unable to retrieve nexthop list from Redis: %s" %
                           str(e))
             return False
+
+        self.logdebug("Retrieving from %s" % str(" ".join(chain(ll0, ll1, ll2))))
 
         # Remove duplicates and select only HTTP URLs if specified
         # (remove explicitly DTN URLs)
@@ -456,6 +517,7 @@ class HTTPAction(Thread):
             if nh.startswith(self.HTTP_SCHEME_PREFIX):
                 nh = nh[len(HTTP_SCHEME_PREFIX):]
             if nh not in req_msg.http_host_list:
+                self.logdebug("add %s" % nh)
                 req_msg.http_host_list.append(nh)
 
         # See if we have any next hops
@@ -469,7 +531,7 @@ class HTTPAction(Thread):
                                         set(range(len(req_msg.http_host_list)))
 
         # Initialize timer to cut off waiting for more results
-        req_msg.timeout = Timer(10.0, self.send_result, args = [True, req_msg])
+        req_msg.timeout = Timer(10.0, self.id_timed_out, args = [req_msg.req_seqno])
 
         # Add the new request to list of requests to process and flag action
         # needed
@@ -487,7 +549,10 @@ class HTTPAction(Thread):
         count = 0
 
         while (self.keep_running):
-            work_todo = self.action_needed.wait(1.0)
+            self.logdebug("Waiting for more work")
+            work_todo = self.action_needed.wait()
+            self.logdebug("Starting http_action loop: %s %s" %
+                          (self.keep_running, work_todo))
             self.action_needed.clear()
             # Fudge for Python 2.6
             # For timeout case just loop in case this thread is being shutdown
@@ -521,11 +586,16 @@ class HTTPAction(Thread):
                         if ((not req.proc_started) and
                             (req.req_type == HTTPRequest.HTTP_GET)):
                             try:
-                                metadata, cfn = self.ndo_cache.get_cache(req.ni_name)
+                                metadata, cfn = self.ndo_cache.cache_get(req.ni_name)
                                 req.content = cfn
                                 req.metadata = NetInfMetaData()
                                 req.metadata. set_json_val(metadata.summary())
+                            except NoCacheEntry,e:
+                                # It's not in the local cache
+                                pass
                             except Exception, e:
+                                self.logerror("Cache failure for %s: %s" %
+                                              (ni_name.get_url(), str(e)))
                                 pass
                     req.proc_started = True
                         
@@ -544,8 +614,9 @@ class HTTPAction(Thread):
                         req.http_host_index = None
                     # Record this one as being in progress
                     req.http_hosts_pending.add(http_index)
-                    # Increment processes in progress
-                    self.running_procs += 1
+                    # Increment processes in progress if multiprocess
+                    if self.multi:
+                        self.running_procs += 1
                     break
 
             # Did we find anything to do?
@@ -561,10 +632,10 @@ class HTTPAction(Thread):
             # - tokens (for SEARCH only)
             form_params = {}
 
-            form_params["msgid"] = curr_reg.bpq_data.query_id
+            form_params["msgid"] = curr_req.bpq_data.bpq_id
 
             if curr_req.req_type == HTTPRequest.HTTP_SEARCH:
-                form_params["tokens"] = curr_req.bpq_data.query_val
+                form_params["tokens"] = curr_req.bpq_data.bpq_val
 
             if curr_req.json_in.has_key("rform"):
                 form_params["rform"] = curr_req.json_in["rform"]
@@ -588,15 +659,17 @@ class HTTPAction(Thread):
                         form_params["loc2"] = ll[1]            
 
             try:
-                if multi:
+                if self.multi:
+                    self.logdebug("Starting async request")
                     self.pool.apply_async(action_req,
                                           args=(curr_req.req_type,
-                                                curr_req,req_seqno,
+                                                curr_req.req_seqno,
                                                 curr_req.ni_name,
-                                                http_host, http_index.
+                                                http_host, http_index,
                                                 form_params, self.tempdir),
                                           callback=self.handle_result)
                 else:
+                    self.logdebug("Starting synchronous request")
                     self.handle_result(action_req(curr_req.req_type,
                                                   curr_req.req_seqno,
                                                   curr_req.ni_name,
@@ -607,75 +680,229 @@ class HTTPAction(Thread):
                 # count how many we do
                 count = count + 1
             except Exception, e:
-                nilog("Exception: %s" %  str(e))
-                if multi:
-                        pool.close()
-                        pool.join()
-                return (count, complete_count, goodlist, badlist)
+                self.logerror("Exception: %s" %  str(e))
+                if self.multi:
+                        self.pool.close()
+                        self.pool.join()
+                raise
+            self.logdebug("Going round the loop")
 
         # Close down the multiprocessing if used
-        if multi:
-                pool.close()
-                pool.join()
-        return (count,complete_count, goodlist,badlist)
+        self.logdebug("Exitting HTTP action thread run")  
+        if self.multi:
+                self.pool.close()
+                self.pool.join()
+        return
 
     #--------------------------------------------------------------------------#
     def handle_result(self, result_tuple):
         rv, req_id, http_index, content_file, metadata = result_tuple
+        self.logdebug("Received result for request #%d for request id %s" %
+                      (http_index, req_id))
         try:
             req_msg = self.req_dict[req_id]
+            self.logdebug(req_msg)
         except KeyError:
-            logerror("Result req_id (%d) not found in req_dict." % req_id)
-            self.running_procs -= 1
+            self.logerror("Result req_id (%d) not found in req_dict." % req_id)
+            if self.multi:
+                self.running_procs -= 1
             self.action_needed.set()
             self.work_todo = True
             return
         with self.reqs_lock:
             if rv:
+                self.logdebug("Request #%d for %s succeeded" %
+                              (http_index, req_msg.bpq_data.bpq_val))
                 req_msg.content = content_file
                 if req_msg.metadata is None:
                     req_msg.metadata = NetInfMetaData()
-                    req_msg.metadata.set_json_val(metadata)
-                else:
-                    req_msg.metadata.insert_resp_metadata(metadata)
+                req_msg.metadata.insert_resp_metadata(metadata)
             try:
                 req_msg.http_hosts_pending.remove(http_index)
                 req_msg.http_hosts_not_completed.remove(http_index)
             except KeyError:
-                logerror("Result http_index (%d) not in trq_msg set(s)" %
-                         http_index)
-            self.running_procs -= 1
-            if len(req_msg.http_hosts_not_completed) == 0:
-                # All hosts have responded - sent back to DTN
-                self.send_result(False, req_msg)
-
+                self.logerror("Result http_index (%d) not in trq_msg set(s)" %
+                              http_index)
+            if self.multi:
+                self.running_procs -= 1
+        if len(req_msg.http_hosts_not_completed) == 0:
+            # All hosts have responded - send back to DTN
+            self.logdebug("Sending back response for request %d" %
+                          req_msg.req_seqno)
+            # Warning: send_result also requires the reqs_lock!
+            self.send_result(False, req_msg)
+        else:
+            self.logdebug("Waiting for more responses for request %d" %
+                          req_msg.req_seqno)
         self.action_needed.set()
-        self.work_todo = True                          
+        self.work_todo = True
+        self.logdebug(self.req_dict[req_id].content)
         return
                                                                                             
     #--------------------------------------------------------------------------#
+    def id_timed_out(self, req_id):
+        self.logdebug("Handling request time out for req id %d" % req_id)
+        try:
+            req_msg = self.req_dict[req_id]
+            self.logdebug(req_msg)
+        except:
+            self.logerror("Result req_id (%d) not found in req_dict." % req_id)
+            return
+        
+        self.logdebug(req_msg.content)
+        self.send_result(True, req_msg)
+        return
+    
+    #--------------------------------------------------------------------------#
     def send_result(self, timed_out, req_msg):
+        self.logdebug("Sending result - response %s" %
+                      "timed out" if timed_out else "received")
         # Clear the timer if still running
         if not timed_out:
             req_msg.timeout.cancel()
-        evt_msg = DtnEvtMsg(MsgDtnEvt.MSG_TO_DTN, req_msg)
+        evt_msg = MsgDtnEvt(MsgDtnEvt.MSG_TO_DTN, req_msg)
         self.resp_q.put(evt_msg)
         with self.reqs_lock:
             try:
                 del self.req_dict[req_msg.req_seqno]
                 self.curr_reqs.remove(req_msg)
             except:
-                loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
-
+                self.loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
         return
 
     #--------------------------------------------------------------------------#
     def end_run(self):
         """
-        @brief terminate running of HTTP action thread.
+        @brief terminate running of HTTP action thread and semd 'end' message
+        to DTN send thread.
         """
+        self.logdebug("HTTP action end run called")
         self.keep_running = False
+        self.action_needed.set()
+        self.work_todo = True                          
+        evt = MsgDtnEvt(MsgDtnEvt.MSG_END, None)
+        self.resp_q.put_nowait(evt)
         return
- #===============================================================================#
+ #=============================================================================#
 if __name__ == "__main__":
-    py_nigetlist()
+    #=== Test Code ===#
+    # dtnapi is only needed for testing for definitions of structures
+    import dtnapi
+    class TestCache():
+        def __init(self):
+            return
+        def cache_get(self, ni_name):
+            raise NoCacheEntry("Test cache")
+        # Normally returns 2-tuple (metadata, content file name)
+            
+    logger = logging.getLogger("test")
+    logger.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    fmt = logging.Formatter("%(levelname)s %(threadName)s %(message)s")
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    dtn_send_q = Queue.Queue()
+    tempdir = "/tmp"
+    redis_conn = StrictRedis()
+    
+    nh_key = "NIROUTER/GET_FWD/nh"
+    nhl = {}
+    nhl[0] = "tcd.netinf.eu"
+    nhl[1] = "dtn://mightyatom.dtn"
+    nhl[2] = "tcd-nrs.netinf.eu"
+    redis_conn.hmset(nh_key, nhl)
+    ndo_cache = TestCache()
+    http_action = HTTPAction(dtn_send_q, tempdir, logger, redis_conn, ndo_cache,
+                             mprocs=5, parallel_limit=3, per_req_limit=3)
+    http_action.setDaemon(True)
+
+    http_action.start()
+
+    
+    time.sleep(0.1)
+    logger.info("HTTP action handler running: %s" % http_action.getName())
+
+    # Build a request message to send
+    # Note that we don't actually need the original bundle to do this
+    # This is deliberate so that can use this for forwarding.
+    # BPQ data structure
+    # digest used here is for a snapshot of the /etc/group
+    # file that is specified as content later. It is irrelevant
+    # for internal testing as the digest is not checked but
+    # you might wish to modify it if using this test code to
+    # test the nigetalt.py module.
+    #nis = "ni:///sha-256-32;IEtLRQ"
+    nis = "ni:///sha-256;--3eVr68lofft_RqlGiV_R8xSBbj2MUul7zoCK1TO7I"
+    bndl = dtnapi.dtn_bundle()
+    bpq = BPQ()
+    bpq.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_QUERY)
+    bpq.set_matching_rule(BPQ.BPQ_MATCHING_RULE_EXACT)
+    bpq.set_src_eid("dtn://example.dtn")
+    bpq.set_bpq_id("msgid_zzz")
+    bpq.set_bpq_val(nis)
+    bpq.clear_frag_desc()
+    print "BPQ block:\n%s" % str(bpq)
+
+    json_in = { "loc": "http://tcd.netinf.eu" }
+
+    nin = NIname(nis)
+    nin.validate_ni_url()
+
+    req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
+                      has_payload=True, ni_name=nin,
+                      make_response=True,
+                      response_destn="dtn://example.dtn/netinfproto/app/response",
+                      content=None)
+    #req.metadata = { "d": "e" }
+    rv = http_action.add_new_req(req)
+    if not rv:
+        print "Adding request failed correctly on account of nowhere to get from"
+
+    json_in = { "loclist": "tcd.netinf.eu" }
+    req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
+                      has_payload=True, ni_name=nin,
+                      make_response=True,
+                      response_destn="dtn://example.dtn/netinfproto/app/response",
+                      content=None)
+    rv = http_action.add_new_req(req)
+    """
+    # Build a response to a GET request with no content payload
+    req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
+                      has_payload=False, ni_name=nin,
+                      make_response=True, response_destn=response_eid,
+                      content=None)
+
+    req.metadata = { "d": "e" }
+
+
+    # Build a GET request
+    req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
+                      has_payload=False, ni_name=nin,
+                      make_response=False, response_destn=get_eid,
+                      content=None)
+
+    """
+    test_run = True
+    def end_test():
+        http_action.end_run()
+        test_run = False
+    t = Timer(10.0, end_test)
+    t.start()
+    
+    while test_run:
+        try:
+            evt = dtn_send_q.get(True, 1.0)
+        except:
+            continue
+        if evt.is_last_msg():
+            print "End msg received"
+            break
+        print "Event seqno: %d" % evt.msg_seqno()
+        print "Data:\n%s" % str(evt.msg_data())
+        print "Metadata: %s" % str(evt.msg_data().metadata)
+        print "Content in %s" % evt.msg_data().content
+
+    print "End of test"
+    time.sleep(1)
+    
