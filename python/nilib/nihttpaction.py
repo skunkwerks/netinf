@@ -68,22 +68,28 @@ from metadata import NetInfMetaData
 from ni_exception import NoCacheEntry
 from nidtnbpq import BPQ
 
+timeout_test = False 
 #============================================================================#
-verbose = False
+# === Routines Executed in Asynchronous Multiprocess
 
+# === GLOBAL VARIABLES ===
+
+##@var process_logger
+# instance of logger object used for logging in synchronous processes 
+process_logger= None
+
+#===============================================================================#
+verbose = False
 def debug(string):
     """
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    global verbose
     if verbose:
-        print string
+        process_logger.debug(string)
     return
 
-#===============================================================================#
-process_logger= None
-
+#------------------------------------------------------------------------------#
 def nilog(string):
 	"""
 	@brief Log the node, time, and the string
@@ -98,7 +104,7 @@ def nilog(string):
 	
 	return
 
-#===============================================================================#
+#------------------------------------------------------------------------------#
 def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
     @brief Perform a NetInf 'get' from the http_host for the ni_url.
@@ -281,7 +287,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
 
     return(True, req_id, http_index, digested_file, json_report)
         
-#===============================================================================#
+#------------------------------------------------------------------------------#
 def publish_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
     @brief Perform a NetInf 'publish' towards the http_host for the ni_url.
@@ -304,7 +310,8 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
 
     return(False, req_id, http_index, None, None)
-#===============================================================================#
+
+#------------------------------------------------------------------------------#
 def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
     @brief Perform a NetInf 'search' on the http_host using the form_params.
@@ -327,7 +334,8 @@ def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
 
     return(False, req_id, http_index, None, None)
-#===============================================================================#
+
+#------------------------------------------------------------------------------#
 def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tempdir):
     """
     @brief Switch to correct proceeing routine for req_type
@@ -362,10 +370,6 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tem
         nilog("Bad req_type (%s) supplied to action_req" % req_type)
         return(False, req_id, http_index, None, None)
 
-    rv = req_rtn(req_id, ni_url, http_host, http_index,
-                       form_params, tempdir)
-    print rv
-    return rv
     try:
         rv = req_rtn(req_id, ni_url, http_host, http_index,
                        form_params, tempdir)
@@ -387,7 +391,7 @@ class HTTPAction(Thread):
     out to subsidiary routine to carry out each request using the HTTP
     CL.  The name of the host to use 
 
-    The individual requests can be arried out in sub-processes in parallel
+    The individual requests can be carried out in sub-processes in parallel
     if the 'multi' parameter to the constructor is True.  Otherwise the
     actions are carried out in series.
 
@@ -448,27 +452,29 @@ class HTTPAction(Thread):
         # Set up multiprocessing if mprocs > 1
         if mprocs > 1:
             # Generate a pool of mprocs worker processes
+            self.logdebug("HTTP action running in multiprocess mode")
             self.multi = True
             self.pool = multiprocessing.Pool(mprocs)
         else:
+            self.logdebug("HTTP action running in single process mode")
             self.multi = False
             self.pool = None
 
         # Initialize records of work in progress
         self.curr_reqs = []
         self.req_dict = {}
-        # Number of running processes
+        
+        # Number of running asynchronous processes when using multiprocessing
         self.running_procs = 0
+        
         # Provide lock to control access to curr_reqs and process count
         self.reqs_lock = ThreadingLock()
 
         # Event indicating that there is something to be done
         self.action_needed = Event()
         self.action_needed.clear()
-        # Fudge for Python 2.6
-        self.work_todo = False
-
-        # Connection to Redis database
+        
+       # Connection to Redis database
         self.redis_conn = redis_conn
 
         self.nexthop_key = "NIROUTER/GET_FWD/nh"
@@ -538,7 +544,6 @@ class HTTPAction(Thread):
         with self.reqs_lock:
             self.curr_reqs.append(req_msg)
             self.req_dict[req_msg.req_seqno]= req_msg
-            self.work_todo = True
             self.action_needed.set()
             req_msg.timeout.start()
             
@@ -549,32 +554,21 @@ class HTTPAction(Thread):
         count = 0
 
         while (self.keep_running):
-            self.logdebug("Waiting for more work")
+            self.logdebug("Waiting for more work - running procs %d" %
+                          self.running_procs)
             work_todo = self.action_needed.wait()
-            self.logdebug("Starting http_action loop: %s %s" %
-                          (self.keep_running, work_todo))
+            self.logdebug("Starting http_action loop: %s %s %d" %
+                          (self.keep_running, work_todo, self.running_procs))
             self.action_needed.clear()
-            # Fudge for Python 2.6
-            # For timeout case just loop in case this thread is being shutdown
-            if work_todo is None:
-                if not self.work_todo:
-                    continue
-            elif not work_todo:
-                continue
-            self.work_todo = False
 
             # Either a request has arrived or there is a spare process now
             # Check if there are any spare processes
             # If so start the next request running
             # Need to have the lock on the requests data for this
             with self.reqs_lock:
-                restart_loop = False
-                # XXX  - may need to move this later so sorting out new
-                # requests already in local cache isn't delayed unecessarily
-                if self.running_procs >= self.parallel_limit:
-                    # Can't do anything till a process comes free
-                    restart_loop = True
-                    continue
+                # Need this flag because may need to 'continue' from nexted loop
+                wait_for_event = False
+
                 # Find the request to process next
                 curr_req = None
                 http_host = None
@@ -583,8 +577,7 @@ class HTTPAction(Thread):
                     # Check if this is first look at this request
                     if not req.proc_started:
                         # If it is first pass, check local cache first if a GET
-                        if ((not req.proc_started) and
-                            (req.req_type == HTTPRequest.HTTP_GET)):
+                        if req.req_type == HTTPRequest.HTTP_GET:
                             try:
                                 metadata, cfn = self.ndo_cache.cache_get(req.ni_name)
                                 req.content = cfn
@@ -592,6 +585,7 @@ class HTTPAction(Thread):
                                 req.metadata. set_json_val(metadata.summary())
                             except NoCacheEntry,e:
                                 # It's not in the local cache
+                                self.logdebug("Not found in local cache")
                                 pass
                             except Exception, e:
                                 self.logerror("Cache failure for %s: %s" %
@@ -599,6 +593,13 @@ class HTTPAction(Thread):
                                 pass
                     req.proc_started = True
                         
+                    if self.running_procs >= self.parallel_limit:
+                        # Can't do anything till a process comes free
+                        self.logdebug("All available processes in use - waiting for a free one")
+                        wait_for_event = True
+                        # Continue processing other requests to find new ones
+                        # and look in local cache.
+                        continue
                     if req.http_host_next is None:
                         # No more to start for this request
                         continue
@@ -611,16 +612,18 @@ class HTTPAction(Thread):
                     req.http_host_next += 1
                     if req.http_host_next >= len(req.http_host_list):
                         # Now handled all hosts for this request
-                        req.http_host_index = None
+                        self.logdebug("Despatched to all hosts for this request")
+                        req.http_host_next = None
+                        # Test timeout
+                        if timeout_test:
+                            time.sleep(10.0)
                     # Record this one as being in progress
                     req.http_hosts_pending.add(http_index)
-                    # Increment processes in progress if multiprocess
-                    if self.multi:
-                        self.running_procs += 1
                     break
 
             # Did we find anything to do?
-            if restart_loop or (http_host is None):
+            if wait_for_event or (http_host is None):
+                self.logdebug("Nothing to do on this pass - wait for event")
                 continue
 
             # Set up parameters for action routine
@@ -668,6 +671,16 @@ class HTTPAction(Thread):
                                                 http_host, http_index,
                                                 form_params, self.tempdir),
                                           callback=self.handle_result)
+                    with self.reqs_lock:
+                        # Increment count of processes in progress
+                        self.running_procs += 1
+
+                        # If now have as many as is allowed at once wait for
+                        # one to finish
+                        if self.running_procs >= self.parallel_limit:
+                            self.logdebug("Pause until process free")
+                            wait_for_event = True
+
                 else:
                     self.logdebug("Starting synchronous request")
                     self.handle_result(action_req(curr_req.req_type,
@@ -685,6 +698,11 @@ class HTTPAction(Thread):
                         self.pool.close()
                         self.pool.join()
                 raise
+            
+            if not wait_for_event:
+                self.logdebug("Forcing immediate next pass") 
+                self.action_needed.set()
+
             self.logdebug("Going round the loop")
 
         # Close down the multiprocessing if used
@@ -699,21 +717,24 @@ class HTTPAction(Thread):
         rv, req_id, http_index, content_file, metadata = result_tuple
         self.logdebug("Received result for request #%d for request id %s" %
                       (http_index, req_id))
-        try:
-            req_msg = self.req_dict[req_id]
-            self.logdebug(req_msg)
-        except KeyError:
-            self.logerror("Result req_id (%d) not found in req_dict." % req_id)
-            if self.multi:
-                self.running_procs -= 1
-            self.action_needed.set()
-            self.work_todo = True
-            return
+        #time.sleep(2)
+        old_content = None
         with self.reqs_lock:
+            try:
+                req_msg = self.req_dict[req_id]
+                self.logdebug(req_msg)
+            except KeyError:
+                self.logerror("Result req_id (%d) not found in req_dict." % req_id)
+                if self.multi:
+                    self.running_procs -= 1
+                self.action_needed.set()
+                return
             if rv:
                 self.logdebug("Request #%d for %s succeeded" %
                               (http_index, req_msg.bpq_data.bpq_val))
-                req_msg.content = content_file
+                if content_file is not None:
+                    old_content = req_msg.content
+                    req_msg.content = content_file
                 if req_msg.metadata is None:
                     req_msg.metadata = NetInfMetaData()
                 req_msg.metadata.insert_resp_metadata(metadata)
@@ -725,36 +746,43 @@ class HTTPAction(Thread):
                               http_index)
             if self.multi:
                 self.running_procs -= 1
-        if len(req_msg.http_hosts_not_completed) == 0:
-            # All hosts have responded - send back to DTN
-            self.logdebug("Sending back response for request %d" %
-                          req_msg.req_seqno)
-            # Warning: send_result also requires the reqs_lock!
-            self.send_result(False, req_msg)
-        else:
-            self.logdebug("Waiting for more responses for request %d" %
-                          req_msg.req_seqno)
+            if len(req_msg.http_hosts_not_completed) == 0:
+                # All hosts have responded - send back to DTN
+                self.logdebug("Sending back response for request %d" %
+                              req_msg.req_seqno)
+                # Warning: send_result also requires the reqs_lock!
+                self.send_result(False, req_msg)
+            else:
+                self.logdebug("Waiting for more responses for request %d" %
+                              req_msg.req_seqno)
+
+        # Eemove duplicate content file
+        if old_content is not None:
+            self.logdebug("Removing duplicate content file %s" % old_content)
+            os.remove(old_content)
+
+        # There is now a free process if multiprocessing or
+        # in single processing we are ready for the next host/request.
         self.action_needed.set()
-        self.work_todo = True
-        self.logdebug(self.req_dict[req_id].content)
         return
                                                                                             
     #--------------------------------------------------------------------------#
     def id_timed_out(self, req_id):
         self.logdebug("Handling request time out for req id %d" % req_id)
-        try:
-            req_msg = self.req_dict[req_id]
-            self.logdebug(req_msg)
-        except:
-            self.logerror("Result req_id (%d) not found in req_dict." % req_id)
-            return
+        with self.reqs_lock:
+            try:
+                req_msg = self.req_dict[req_id]
+                self.logdebug(req_msg)
+            except:
+                self.logerror("Result req_id (%d) not found in req_dict." % req_id)
+                return
         
-        self.logdebug(req_msg.content)
-        self.send_result(True, req_msg)
+            self.send_result(True, req_msg)
         return
     
     #--------------------------------------------------------------------------#
     def send_result(self, timed_out, req_msg):
+        # Must be called with reqs_lock on
         self.logdebug("Sending result - response %s" %
                       "timed out" if timed_out else "received")
         # Clear the timer if still running
@@ -762,31 +790,30 @@ class HTTPAction(Thread):
             req_msg.timeout.cancel()
         evt_msg = MsgDtnEvt(MsgDtnEvt.MSG_TO_DTN, req_msg)
         self.resp_q.put(evt_msg)
-        with self.reqs_lock:
-            try:
-                del self.req_dict[req_msg.req_seqno]
-                self.curr_reqs.remove(req_msg)
-            except:
-                self.loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
+        try:
+            del self.req_dict[req_msg.req_seqno]
+            self.curr_reqs.remove(req_msg)
+        except:
+            self.loginfo("Duplicate removal of req_msg %d" % req_msg.req_seqno)
         return
 
     #--------------------------------------------------------------------------#
     def end_run(self):
         """
-        @brief terminate running of HTTP action thread and semd 'end' message
+        @brief terminate running of HTTP action thread and send 'end' message
         to DTN send thread.
         """
         self.logdebug("HTTP action end run called")
         self.keep_running = False
         self.action_needed.set()
-        self.work_todo = True                          
         evt = MsgDtnEvt(MsgDtnEvt.MSG_END, None)
         self.resp_q.put_nowait(evt)
         return
+
  #=============================================================================#
 if __name__ == "__main__":
     #=== Test Code ===#
-    # dtnapi is only needed for testing for definitions of structures
+    # dtnapi is only needed during testing for definitions of structures
     import dtnapi
     class TestCache():
         def __init(self):
@@ -804,24 +831,31 @@ if __name__ == "__main__":
 
     dtn_send_q = Queue.Queue()
     tempdir = "/tmp"
+
+    # Clear existing next hop key in Redis
     redis_conn = StrictRedis()
-    
     nh_key = "NIROUTER/GET_FWD/nh"
-    nhl = {}
-    nhl[0] = "tcd.netinf.eu"
-    nhl[1] = "dtn://mightyatom.dtn"
-    nhl[2] = "tcd-nrs.netinf.eu"
-    redis_conn.hmset(nh_key, nhl)
+    redis_conn.delete(nh_key)
+    
     ndo_cache = TestCache()
     http_action = HTTPAction(dtn_send_q, tempdir, logger, redis_conn, ndo_cache,
-                             mprocs=5, parallel_limit=3, per_req_limit=3)
+                             mprocs=5, parallel_limit=2, per_req_limit=3)
     http_action.setDaemon(True)
+
+    # With timeout_test True, the last despatch to a host for a request is
+    # held up for 10s, sufficient to trigger the timeout for that request
+    # and demonstrate that the timeout mechanism works.
+    # The remaining despatch will be processed after the request has been
+    # removed from the request queue, so this also checks that late returning
+    # results do not break the system,
+    timeout_test = False
 
     http_action.start()
 
     
     time.sleep(0.1)
     logger.info("HTTP action handler running: %s" % http_action.getName())
+    logger.info("Test will end in approximately 15s")
 
     # Build a request message to send
     # Note that we don't actually need the original bundle to do this
@@ -842,7 +876,7 @@ if __name__ == "__main__":
     bpq.set_bpq_id("msgid_zzz")
     bpq.set_bpq_val(nis)
     bpq.clear_frag_desc()
-    print "BPQ block:\n%s" % str(bpq)
+    logger.info("BPQ block:\n%s" % str(bpq))
 
     json_in = { "loc": "http://tcd.netinf.eu" }
 
@@ -857,7 +891,14 @@ if __name__ == "__main__":
     #req.metadata = { "d": "e" }
     rv = http_action.add_new_req(req)
     if not rv:
-        print "Adding request failed correctly on account of nowhere to get from"
+        logger.info("Adding request failed correctly on account of nowhere to get from")
+
+    # Put some entires in the next hop database
+    nhl = {}
+    nhl[0] = "tcd.netinf.eu"
+    nhl[1] = "dtn://mightyatom.dtn"
+    nhl[2] = "tcd-nrs.netinf.eu"
+    redis_conn.hmset(nh_key, nhl)
 
     json_in = { "loclist": "tcd.netinf.eu" }
     req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
@@ -887,22 +928,26 @@ if __name__ == "__main__":
     def end_test():
         http_action.end_run()
         test_run = False
-    t = Timer(10.0, end_test)
+    t = Timer(15.0, end_test)
     t.start()
     
     while test_run:
         try:
             evt = dtn_send_q.get(True, 1.0)
+            logger.debug("Event received")
         except:
             continue
         if evt.is_last_msg():
-            print "End msg received"
+            logger.info("End msg received")
             break
-        print "Event seqno: %d" % evt.msg_seqno()
-        print "Data:\n%s" % str(evt.msg_data())
-        print "Metadata: %s" % str(evt.msg_data().metadata)
-        print "Content in %s" % evt.msg_data().content
+        logger.info("=== Response received in test routine: ===")
+        logger.info("Event seqno: %d" % evt.msg_seqno())
+        logger.info("Data:\n%s" % str(evt.msg_data()))
+        logger.info("Metadata: %s" % str(evt.msg_data().metadata))
+        logger.info("Content in %s" % evt.msg_data().content)
+        logger.info("=== End of response ===")
 
-    print "End of test"
-    time.sleep(1)
+    logger.info("End of test")
+    time.sleep(4)
+    logger.info("Exitting")
     
