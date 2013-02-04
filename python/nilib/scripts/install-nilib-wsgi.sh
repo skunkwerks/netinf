@@ -411,7 +411,7 @@ echo "Please use \"sudo service rsyslog restart\" to activate logging for mod_ws
 echo "Installation successfully done"
 echo ""
 echo "Post-installation setup:"
-echo "Please access http://${SERVER}/checkcache once the installation"
+echo "Please access http://${SERVER}/netinfproto/checkcache once the installation"
 echo "is complete.  This will ensure the cache directory structure"
 echo "is initialized"
 
