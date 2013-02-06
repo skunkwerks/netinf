@@ -45,6 +45,7 @@ import  random
 from optparse import OptionParser
 import urllib
 import urllib2
+import magic
 import json
 import email.parser
 import email.message
@@ -58,15 +59,18 @@ from os.path import join
 import tempfile
 import logging
 import Queue
+import StringIO
 
 from redis import StrictRedis
 
-from ni import ni_errs, ni_errs_txt, NIname, NIproc
+from ni import ni_errs, ni_errs_txt, NIname, NIproc, NIdigester
 from nifeedparser import DigestFile, FeedParser
 from nidtnevtmsg import HTTPRequest, MsgDtnEvt
 from metadata import NetInfMetaData
 from ni_exception import NoCacheEntry
 from nidtnbpq import BPQ
+from encode import *
+import streaminghttp
 
 timeout_test = False 
 #============================================================================#
@@ -79,7 +83,7 @@ timeout_test = False
 process_logger= None
 
 #===============================================================================#
-verbose = False
+verbose = True
 def debug(string):
     """
     @brief Print out debugging information string
@@ -105,7 +109,8 @@ def nilog(string):
 	return
 
 #------------------------------------------------------------------------------#
-def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
+def get_req(req_id, ni_url, http_host, http_index, form_params,
+            file_name, tempdir):
     """
     @brief Perform a NetInf 'get' from the http_host for the ni_url.
     @param req_id integer sequence number of message containing request
@@ -114,6 +119,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
                             (FQDN or IP address with optional port number)
     @param http_index integer index of host name being processed within request
     @param form_params dictionary of paramter values to pass to HTTP
+    @param file_name string file name of content to be published or None
     @param tempdir string ditrectory where to place retrieved content if any
     @return 5-tuple with:
                 boolean - True if succeeds, False if fails
@@ -288,7 +294,8 @@ def get_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     return(True, req_id, http_index, digested_file, json_report)
         
 #------------------------------------------------------------------------------#
-def publish_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
+def publish_req(req_id, ni_url, http_host, http_index, form_params,
+                file_name, tempdir):
     """
     @brief Perform a NetInf 'publish' towards the http_host for the ni_url.
     @param req_id integer sequence number of message containing request
@@ -297,22 +304,177 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
                             (FQDN or IP address with optional port number)
     @param http_index integer index of host name being processed within request
     @param form_params dictionary of paramter values to pass to HTTP
+    @param file_name string file name of content to be published or None
     @param tempdir string ditrectory where to place retrieved content if any
     @return 5-tuple with:
                 boolean - True if succeeds, False if fails
                 string req_id as supplied as parameter
                 integer http_index as supplied as parameter
-                string pathname for response or None is no response etc
+                string actual response or None is no response etc
                 dictionary returned JSON metadata if any, decoded
                 
     Assume that ni_url has a valid ni URI
     Assume that tempdir provides a directory path into which file can be written
     """
 
-    return(False, req_id, http_index, None, None)
+    # Where to send the publish request.
+    http_url = "http://%s/netinfproto/publish" % http_host
+    debug("Publishing via: %s" % http_url)
+
+    # Handle full_put = True cases - we have a file with the octets in it
+    full_put = (file_name is not None)
+    if full_put:
+        # Create NIdigester for use with form encoder and StreamingHTTP
+        ni_digester = NIdigester()
+
+        # Install the template URL built from the scheme, the nttp_host and
+        # the digest algorithm
+        scheme = ni_url.get_scheme()
+        hash_alg = ni_url.get_alg_name()
+        rv = ni_digester.set_url((scheme, http_host, "/%s" % hash_alg))
+        if rv != ni_errs.niSUCCESS:
+            nilog("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
+            return(False, req_id, http_index, None, None)
+        debug(ni_digester.get_url())
+
+        # Open the file if possible
+        try:
+            f = open(file_name, "rb")
+        except Exception, e :
+            nilog("Unable to open file %s: Error: %s" % (file_name, str(e)))
+            return(False, req_id, http_index, None, None)
+
+        # If we don't know content type, guess it
+        if form_params.has_key("ct"):
+            ctype = form_params["ct"]
+        else:
+            # Guess the mimetype of the file
+            m = magic.Magic(mime=True)
+            ctype = m.from_file(file_name)
+            debug("Content-Type: %s" % ctype)
+            if ctype is None:
+                # Guessing didn't work - default
+                ctype = "application/octet-stream"
+
+        # Set up HTTP form data for publish request
+        # Make parameter for file with digester
+        octet_param = MultipartParam("octets",
+                                     fileobj=f,
+                                     filetype=ctype,
+                                     filename=file_name,
+                                     digester = ni_digester)
+        # Make dictionary that will dynamically retrieve ni URI when it has been made
+        uri_dict = { "generator": octet_param.get_url,
+                     "length": (len(ni_digester.get_url()) + len(";") +
+                                ni_digester.get_b64_encoded_length())}
+
+        rform = form_params.get("rform", "json")
+        param_list = [octet_param,
+                      ("URI",       uri_dict),
+                      ("msgid",     form_params["msgid"]),
+                      ("ext",       form_params["ext"]),
+                      ("fullPut",   "yes"),
+                      ("rform",     rform),
+                      ("loc1",      form_params.get("loc1", "")),
+                      ("loc2",      form_params.get("loc2", ""))]
+    else:
+        # full_put = False case
+        # No need for complicated multipart parameters
+        param_list = [("URI",       ni_name.get_url()),
+                      ("msgid",     form_params["msgid"]),
+                      ("ext",       form_params["ext"]),
+                      ("fullPut",   "no"),
+                      ("rform",     rform),
+                      ("loc1",      form_params.get("loc1", "")),
+                      ("loc2",      form_params.get("loc2", ""))]
+        
+    # Construct data generator and header strings
+    datagen, headers = multipart_encode(param_list)
+
+    #debug("Parameters prepared: %s"% "".join(datagen))
+    debug("Parameters prepared")
+
+    # Set up streaming HTTP mechanism - register handlers with urllib2
+    opener = streaminghttp.register_openers()
+                                         
+    # Send POST request to destination server
+    try:
+        req = urllib2.Request(http_url, datagen, headers)
+    except Exception, e:
+        nilog("Error: Unable to create request for http URL %s: %s" %
+              (http_url, str(e)))
+        if full_put:
+            f.close()
+        return(False, req_id, http_index, None, None)
+
+    # Get HTTP results
+    try:
+        http_object = urllib2.urlopen(req)
+    except Exception, e:
+        nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
+        if full_put:
+            f.close()
+        return(False, req_id, http_index, None, None)
+
+    if full_put:
+        f.close()
+        target = octet_param.get_url()
+    else:
+        target = ni_name.get_url()
+    debug("Sent request: URL: %s" % target)
+
+
+    # Get message headers
+    http_info = http_object.info()
+    http_result = http_object.getcode()
+    nilog("HTTP result: %d" % http_result)
+    debug("Response info: %s" % http_info)
+    debug("Response type: %s" % http_info.gettype())
+
+    # Read results into buffer
+    payload = http_object.read()
+    http_object.close()
+    debug(payload)
+
+    # Report outcome
+    if (http_result != 200):
+        nilog("Unsuccessful publish request returned HTTP code %d" %
+              http_result) 
+        return(False, req_id, http_index, None, None)
+
+    # Check content type of returned message matches requested response type
+    ct = http_object.headers["content-type"]
+    if rform == "plain":
+        if ct != "text/plain":
+            nilog("Error: Expecting plain text (text/plain) response "
+                  "but received Content-Type: %s" % ct)
+        return(False, req_id, http_index, None, None)
+    elif rform == "html":
+        if ct != "text/html":
+            nilog("Error: Expecting HTML document (text/html) response "
+                  "but received Content-Type: %s" % ct)
+    else:
+        if ct != "application/json":
+            nilog("Error: Expecting JSON coded (application/json) "
+                  "response but received Content-Type: %s" % ct)
+            return(False, req_id, http_index, None, None)
+    """
+    try:
+        fd, response_file = tempfile.mkstemp(dir=tempdir)
+        fo = os.fdopen(fd, "wb")
+        fo.write(payload)
+        fo.close()
+    except Exception, e:
+        nilog("Writing response to temp file %s failed: %s" %
+              (response_file, str(e)))
+        return(False, req_id, http_index, None, None)
+    debug("Written response to %s" % response_file)
+    """
+    return(True, req_id, http_index, payload, None)
 
 #------------------------------------------------------------------------------#
-def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
+def search_req(req_id, ni_url, http_host, http_index, form_params,
+               file_name, tempdir):
     """
     @brief Perform a NetInf 'search' on the http_host using the form_params.
     @param req_id integer sequence number of message containing request
@@ -321,12 +483,13 @@ def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
                             (FQDN or IP address with optional port number)
     @param http_index integer index of host name being processed within request
     @param form_params dictionary of paramter values to pass to HTTP
+    @param file_name string file name of content to be published or None
     @param tempdir string ditrectory where to place retrieved response if any
     @return 5-tuple with:
                 boolean - True if succeeds, False if fails
                 string req_id as supplied as parameter
                 integer http_index as supplied as parameter
-                string pathname for response or None is no response etc
+                string actual response or None is no response etc
                 dictionary returned JSON metadata if any, decoded
                 
     Assume that ni_url has a valid ni URI
@@ -336,7 +499,8 @@ def search_req(req_id, ni_url, http_host, http_index, form_params, tempdir):
     return(False, req_id, http_index, None, None)
 
 #------------------------------------------------------------------------------#
-def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tempdir):
+def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
+               file_name, tempdir):
     """
     @brief Switch to correct proceeing routine for req_type
     @param req_type string HTTP_GET, HTTP_PUBLISH or HTTP_SEARCH from HTTPRequest
@@ -346,12 +510,13 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tem
     @param http_host string HTTP host name to be accessed
     @param http_index integer index of host name being processed within request
     @param form_params dictionary of paramter values to pass to HTTP
+    @param file_name string file name of content to be published or None
     @param tempdir string where to place retrieved data
     @return 5-tuple with:
                 boolean - True if succeeds, False if fails
                 string req_id as supplied as parameter
                 integer http_index as supplied as parameter
-                string pathname for content file/response or None is no content etc
+                string pathname for content file or response or None is no content etc
                 dictionary returned JSON metadata if any, decoded
                 
     Requests translated from DTN bundles to be actioned by HTTP CL are
@@ -372,7 +537,7 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params, tem
 
     try:
         rv = req_rtn(req_id, ni_url, http_host, http_index,
-                       form_params, tempdir)
+                       form_params, file_name, tempdir)
         print rv
         return rv
     except Exception, e:
@@ -484,13 +649,12 @@ class HTTPAction(Thread):
     #--------------------------------------------------------------------------#
     def add_new_req(self, req_msg):
         # Create the set of next hops to try
-        # If there is a netloc in the ni_name, put it first
-        if (req.ni_name is not None):
-            nl = req.ni_name.get_netloc()
-            if nl != "":
-                ll0 = [ nl ]
-            else:
-                ll0 = []
+        # If there is a http_auth in the json_in, put it first
+        # This will have been derived from original ni URI specified
+        if req_msg.json_in.has_key("http_auth"):
+            ll0 = [ req_msg.json_in["http_auth"] ]
+        else:
+            ll0 = []
         # See if there is a locliat in the json_in field
         if req_msg.json_in.has_key("loclist"):
             ll1 = req_msg.json_in["loclist"]
@@ -521,7 +685,7 @@ class HTTPAction(Thread):
             if nh.startswith(self.DTN_SCHEME_PREFIX):
                 continue
             if nh.startswith(self.HTTP_SCHEME_PREFIX):
-                nh = nh[len(HTTP_SCHEME_PREFIX):]
+                nh = nh[len(self.HTTP_SCHEME_PREFIX):]
             if nh not in req_msg.http_host_list:
                 self.logdebug("add %s" % nh)
                 req_msg.http_host_list.append(nh)
@@ -545,7 +709,6 @@ class HTTPAction(Thread):
             self.curr_reqs.append(req_msg)
             self.req_dict[req_msg.req_seqno]= req_msg
             self.action_needed.set()
-            req_msg.timeout.start()
             
         return True
     
@@ -591,7 +754,9 @@ class HTTPAction(Thread):
                                 self.logerror("Cache failure for %s: %s" %
                                               (ni_name.get_url(), str(e)))
                                 pass
-                    req.proc_started = True
+                        req.proc_started = True
+                        # Start timeout for processing request
+                        req.timeout.start()
                         
                     if self.running_procs >= self.parallel_limit:
                         # Can't do anything till a process comes free
@@ -630,28 +795,12 @@ class HTTPAction(Thread):
             # Create a dictionary with keys:
             # - msgid (all cases)
             # - loc1, loc2 (optional if has loclist in json_in)
-            # - fullPut (for PUBLISH only)
+            # - fullPut, ct and meta (for PUBLISH only)
             # - rform (for PUBLISH and SEARCH)
             # - tokens (for SEARCH only)
             form_params = {}
 
             form_params["msgid"] = curr_req.bpq_data.bpq_id
-
-            if curr_req.req_type == HTTPRequest.HTTP_SEARCH:
-                form_params["tokens"] = curr_req.bpq_data.bpq_val
-
-            if curr_req.json_in.has_key("rform"):
-                form_params["rform"] = curr_req.json_in["rform"]
-            else:
-                form_params["rform"] = "json"
-
-            if curr_req.req_type == HTTPRequest.HTTP_PUBLISH:
-                form_params["fullPut"] = \
-                                    "true" if curr_req.has_payload else "false"
-
-                if curr_req.json_in.has_key("meta"):
-                    md = { "meta": curr_req.json_in["meta"] }
-                    form_params["ext"] = json.dumps(md)
 
             if curr_req.json_in.has_key("loclist"):
                 ll = curr_req.json_in["loclist"]
@@ -661,6 +810,30 @@ class HTTPAction(Thread):
                     if len(ll) > 1:
                         form_params["loc2"] = ll[1]            
 
+            if curr_req.req_type == HTTPRequest.HTTP_SEARCH:
+                form_params["tokens"] = curr_req.bpq_data.bpq_val
+
+            if curr_req.req_type == HTTPRequest.HTTP_PUBLISH:
+                form_params["fullPut"] = \
+                                    "true" if curr_req.has_payload else "false"
+
+                if curr_req.json_in.has_key("meta"):
+                    md = { "meta": curr_req.json_in["meta"] }
+                else:
+                    md = { "meta" : { } }
+                md["meta"]["dtn-to-http"] = "yes"
+                form_params["ext"] = json.dumps(md)
+
+                if curr_req.json_in.has_key("ct"):
+                    form_params["ct"] = curr_req.json_in["ct"]
+
+            if ((curr_req.req_type == HTTPRequest.HTTP_SEARCH) or
+                (curr_req.req_type == HTTPRequest.HTTP_PUBLISH)):
+                if curr_req.json_in.has_key("rform"):
+                    form_params["rform"] = curr_req.json_in["rform"]
+                else:
+                    form_params["rform"] = "json"
+
             try:
                 if self.multi:
                     self.logdebug("Starting async request")
@@ -668,8 +841,11 @@ class HTTPAction(Thread):
                                           args=(curr_req.req_type,
                                                 curr_req.req_seqno,
                                                 curr_req.ni_name,
-                                                http_host, http_index,
-                                                form_params, self.tempdir),
+                                                http_host,
+                                                http_index,
+                                                form_params,
+                                                curr_req.content,
+                                                self.tempdir),
                                           callback=self.handle_result)
                     with self.reqs_lock:
                         # Increment count of processes in progress
@@ -689,6 +865,7 @@ class HTTPAction(Thread):
                                                   http_host,
                                                   http_index,
                                                   form_params,
+                                                  curr_req.content,
                                                   self.tempdir))
                 # count how many we do
                 count = count + 1
@@ -714,7 +891,7 @@ class HTTPAction(Thread):
 
     #--------------------------------------------------------------------------#
     def handle_result(self, result_tuple):
-        rv, req_id, http_index, content_file, metadata = result_tuple
+        rv, req_id, http_index, response, metadata = result_tuple
         self.logdebug("Received result for request #%d for request id %s" %
                       (http_index, req_id))
         #time.sleep(2)
@@ -732,12 +909,31 @@ class HTTPAction(Thread):
             if rv:
                 self.logdebug("Request #%d for %s succeeded" %
                               (http_index, req_msg.bpq_data.bpq_val))
-                if content_file is not None:
-                    old_content = req_msg.content
-                    req_msg.content = content_file
-                if req_msg.metadata is None:
-                    req_msg.metadata = NetInfMetaData()
-                req_msg.metadata.insert_resp_metadata(metadata)
+                if req_msg.req_type == HTTPRequest.HTTP_GET:
+                    # Take latest content file (all the same in theory)
+                    if response is not None:
+                        old_content = req_msg.result
+                        req_msg.result = response
+                    # Combine metadata
+                    if req_msg.metadata is None:
+                        req_msg.metadata = NetInfMetaData()
+                    req_msg.metadata.insert_resp_metadata(metadata)
+                else:
+                    # PUBLISH and SEARCH - concatentate responses
+                    src = req_msg.http_host_list[http_index]
+                    rform_json = (req_msg.json_in.get("rform") == "json")
+                    if req_msg.result is None:
+                        # First response
+                        req_msg.result = StringIO.StringIO()
+                        if rform_json:
+                            req_msg.result.write('{ "%s" :' % src)
+                        else:
+                            req_msg.result.write("From %s:\n" % src)
+                    elif rform_json:
+                        req_msg.result.write(', "%s" :' % src)
+                    else:
+                        req_msg.result.write("\n\n==========\n\nFrom %s:\n" % src)
+                    req_msg.result.write(response)
             try:
                 req_msg.http_hosts_pending.remove(http_index)
                 req_msg.http_hosts_not_completed.remove(http_index)
@@ -750,6 +946,26 @@ class HTTPAction(Thread):
                 # All hosts have responded - send back to DTN
                 self.logdebug("Sending back response for request %d" %
                               req_msg.req_seqno)
+                # Move concatentated PUBLISh and SEARCH response to disk file
+                if req_msg.req_type != HTTPRequest.HTTP_GET:
+                    if req_msg.json_in.get("rform") == "json":
+                        req_msg.result.write("}")
+                    try:
+                        fd, response_file = tempfile.mkstemp(dir=tempdir)
+                        fo = os.fdopen(fd, "wb")
+                        fo.write(req_msg.result.getvalue())
+                        fo.close()
+                    except Exception, e:
+                        nilog("Writing responses to temp file %s failed: %s" %
+                              (response_file, str(e)))
+                        req_msg.result.close()
+                        req_msg.result = None
+                    finally:
+                        req_msg.result = response_file
+
+                    debug("Written response to %s" % response_file)
+                    
+
                 # Warning: send_result also requires the reqs_lock!
                 self.send_result(False, req_msg)
             else:
@@ -839,7 +1055,7 @@ if __name__ == "__main__":
     
     ndo_cache = TestCache()
     http_action = HTTPAction(dtn_send_q, tempdir, logger, redis_conn, ndo_cache,
-                             mprocs=5, parallel_limit=2, per_req_limit=3)
+                             mprocs=1, parallel_limit=1, per_req_limit=1)
     http_action.setDaemon(True)
 
     # With timeout_test True, the last despatch to a host for a request is
@@ -889,7 +1105,8 @@ if __name__ == "__main__":
                       response_destn="dtn://example.dtn/netinfproto/app/response",
                       content=None)
     #req.metadata = { "d": "e" }
-    rv = http_action.add_new_req(req)
+    rv =True
+    #rv = http_action.add_new_req(req)
     if not rv:
         logger.info("Adding request failed correctly on account of nowhere to get from")
 
@@ -900,12 +1117,39 @@ if __name__ == "__main__":
     nhl[2] = "tcd-nrs.netinf.eu"
     redis_conn.hmset(nh_key, nhl)
 
-    json_in = { "loclist": "tcd.netinf.eu" }
+    json_in = { "loclist": ["tcd.netinf.eu"] }
     req = HTTPRequest(HTTPRequest.HTTP_GET, bndl, bpq, json_in,
                       has_payload=True, ni_name=nin,
                       make_response=True,
                       response_destn="dtn://example.dtn/netinfproto/app/response",
                       content=None)
+    #rv = http_action.add_new_req(req)
+
+    nis = "ni:///sha-256;--3eVr68lofft_RqlGiV_R8xSBbj2MUul7zoCK1TO7I"
+    bndl = dtnapi.dtn_bundle()
+    bpq = BPQ()
+    bpq.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_PUBLISH)
+    bpq.set_matching_rule(BPQ.BPQ_MATCHING_RULE_EXACT)
+    bpq.set_src_eid("dtn://example.dtn")
+    bpq.set_bpq_id("msgid_zzz")
+    bpq.set_bpq_val(nis)
+    bpq.clear_frag_desc()
+    logger.info("BPQ block:\n%s" % str(bpq))
+
+    json_in = { "loclist": [ "http://neut-r.netinf.eu" ],
+                "rform" : "json",
+                "meta" : { },
+                "fullPut" : "no"
+                }
+
+    nin = NIname(nis)
+    nin.validate_ni_url()
+
+    req = HTTPRequest(HTTPRequest.HTTP_PUBLISH, bndl, bpq, json_in,
+                      has_payload=False, ni_name=nin,
+                      make_response=True,
+                      response_destn="dtn://example.dtn/netinfproto/app/response",
+                      content="ss")
     rv = http_action.add_new_req(req)
     """
     # Build a response to a GET request with no content payload
@@ -944,7 +1188,7 @@ if __name__ == "__main__":
         logger.info("Event seqno: %d" % evt.msg_seqno())
         logger.info("Data:\n%s" % str(evt.msg_data()))
         logger.info("Metadata: %s" % str(evt.msg_data().metadata))
-        logger.info("Content in %s" % evt.msg_data().content)
+        logger.info("Content in %s" % evt.msg_data().result)
         logger.info("=== End of response ===")
 
     logger.info("End of test")

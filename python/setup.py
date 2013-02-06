@@ -31,6 +31,7 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       05/02/2013 Elwyn Davies   Add nigetalt and nipubalt.
 1.1       29/12/2012 Elwyn Davies   Add nistruct module for BPQ and SDNV.
 1.0       10/12/2012 Elwyn Davies   Cater for Redis cache storage.
 0.6       06/12/2012 Elwyn Davies   Add requirement for Python posix_ipc module.
@@ -77,7 +78,9 @@ setup(name='nilib',
                            'pystopniserver = nilib.niserver_stop:stop_niserver',
                            'pynicl = nilib.nicl:py_nicl',
                            'pyniget = nilib.niget:py_niget',
+                           'pynigetalt = nilib.nigetalt:py_nigetalt',
                            'pynipub = nilib.nipub:py_nipub',
+                           'pynipubalt = nilib.nipubalt:py_nipubalt',
                            'pynisearch = nilib.nisearch:py_nisearch',
 			   'pyniwgsiserver = nilib.niwsgiserver.py:py_niwsgiserver']
                     },

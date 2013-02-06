@@ -130,7 +130,10 @@ class HTTPRequest:
     ##@var metadata
     # NetInfMetaData object instance representing metadata received so far
     ##@var content
-    # string filename of content or response file received from HTTP
+    # string filename of content to be sent via HTTP
+    ##@var result
+    # string file name containing content (GET) or response(s) (PUBLISH/SEARCH)
+    #       received via HTTP
     ##@var timeout
     # Timer object instance used to timeout slow HTTP requests
 
@@ -209,6 +212,7 @@ class HTTPRequest:
         self.http_hosts_not_completed = None
         self.metadata = None
         self.content = content
+        self.result = None
         self.timeout = None
         return
 

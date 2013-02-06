@@ -198,7 +198,10 @@ class DtnReceive(Thread):
 
         # Check if service_eid registration exists and register if not
         # Otherwise bind to the existing registration
+        print "Errno 1 %d" % dtnapi.dtn_errno(dtn_handle)
         regid = dtnapi.dtn_find_registration(dtn_handle, self.service_eid)
+        print "Regid 1 %d" % regid
+        print "Errno 2 %d" % dtnapi.dtn_errno(dtn_handle)
         if (regid == -1):
             # Need to register the EID.. make it permanent with 'DEFER'
             # characteristics so that bundles are saved if theye arrive
@@ -213,8 +216,12 @@ class DtnReceive(Thread):
             regid = dtnapi.dtn_register(dtn_handle, self.service_eid,
                                         dtnapi.DTN_REG_DEFER,
                                         exp, passive, script)
+            print "Regid 2 %d" % regid
         else:
             dtnapi.dtn_bind(dtn_handle, regid)
+
+        print "Errno 3 %d" % dtnapi.dtn_errno(dtn_handle)
+        
 
         # Wait for 5 seconds before looping
         recv_timeout = 5
@@ -244,10 +251,12 @@ class DtnReceive(Thread):
             payload as a NULL terminated string.  Python leaves the terminating
             byte in place.
             """
+            self.logdebug("Going to dtn_recv")
             bpq_bundle = dtnapi.dtn_recv(dtn_handle, dtnapi.DTN_PAYLOAD_FILE,
                                          recv_timeout)
             # If bpq_bundle is None then either the dtn_recv timed out or
             # there was some other error.
+            self.logdebug("Gor from dtn_recv %s" % str(bpq_bundle))
             if bpq_bundle != None:
                 # Filter out report bundles
                 stp = bpq_bundle.dest.find(NETINF_SERVICE)
@@ -296,7 +305,8 @@ class DtnReceive(Thread):
                                 bpq_data = None
                             break
 
-                # Does the bundle have a Metadata block of type JSON
+                # Does the bundle have a Metadata block of type JSON or
+                # PAYLOAD_PLACEHOLDER
                 json_data = None
                 has_payload_placeholder = False
                 if bpq_bundle.metadata_cnt > 0:
@@ -317,25 +327,32 @@ class DtnReceive(Thread):
                             else:
                                 self.logwarn("Metadata (type %d) block not processed" %
                                              md.ontology)
-                          
-                if bpq_data is None:
-                    self.logdebug("Skipping this bundle as no BPQ block")
-                    # Need to free payload if any
-                    continue
 
-                print bpq_data
-                if json_data is not None:
+                bad_json = False
+                if ((json_data is not None) and (json_data != "")):
                     self.logdebug("JSON data: %s" % json_data)
                     od = json_data.ontology_data
                     if od[-1:] == '\x00':
                         od = od[:-1]
-                    json_dict = json.loads(od)
+                    try:
+                        json_dict = json.loads(od)
+                    except Exception, e:
+                        self.loginfo("Bundle had malformed JSON metadata: %s" %
+                                     str(e))
+                        bad_json = True
                 else:
-                    json_dict = None
+                    json_dict = {}
 
                 # Check if bundle has a (non-empty) payload
                 has_payload = (bpq_bundle.payload_len > 0)
 
+                if (bpq_data is None) or bad_json:
+                    self.logdebug("Skipping this bundle as no BPQ block or bad JSON")
+                    # Need to free payload file
+                    os.remove(fn)
+                    continue
+
+                print bpq_data
                 # Set up reponse parameters for GET, SEARCH and PUBLISH requests
                 # Response to DTN request sent back to DTN source
                 make_reponse = True
@@ -359,17 +376,28 @@ class DtnReceive(Thread):
                     else:
                         self.loginfo("Ignoring bundle for SEARCH service with inappropriate BPQ kinds")
                         continue
-                    if has_payload:
                         self.loginfo("SEARCH Request had non-empty payload")
                         continue
-                elif service_tag.startswith(NETINF_SERVICE_SEARCH):
+                elif service_tag.startswith(NETINF_SERVICE_PUBLISH):
                     if bpq_data.bpq_kind == BPQ.BPQ_BLOCK_KIND_PUBLISH:
                         req_type = HTTPRequest.HTTP_PUBLISH
                     else:
                         self.loginfo("Ignoring bundle for PUBLISH service with inappropriate BPQ kinds")
                         continue
-                    if has_payload:
+                    if json_dict is None:
+                        self.loginfo("Ignoring bundle for PUBLISH service without JSON metadata")                        
+                        continue
+                    if (has_payload and has_payload_placeholder):
+                        self.loginfo("Ignoring bundle for PUBLISH with non-empty payload and placeholder")
+                        continue
+                    if (has_payload and
+                        (json_dict.has_key("fullPut") and not json_dict["fullPut"]))):
+                        self.loginfo("Ignoring bundle for PUBLISH with non-empty payload and fullPut False")
+                        continue
+                    if not has_payload_placeholder:
                         content = bpq_bundle.payload
+                    else:
+                        has_payload = False
                 elif service_tag.startswith(NETINF_SERVICE_RESPONSE):
                     if ((bpq_data.bpq_kind == BPQ.BPQ_BLOCK_KIND_RESPONSE) or
                         (bpq_data.bpq_kind ==
@@ -392,6 +420,16 @@ class DtnReceive(Thread):
                 # Create ni_name if appropriate
                 if (req_type in [HTTPRequest.HTTP_GET, HTTPRequest.HTTP_PUBLISH]):
                     ni_name = NIname(bpq_data.bpq_val)
+                    
+                    # Replace the authority if sent in JSON metadata
+                    if ((json_dict is not None) and
+                        (json_dict.has_key("http_auth"))):
+                        rv = ni_name.set_netloc(json_dict["http_auth"])
+                        if rv != ni_errs.niSUCCESS:
+                            ni_name = None
+                            self.loginfo("Unable to insert netloc %s in ni_name - ignoring bundle"  %
+                                         json_dict["http_auth"])
+                            continue
                     rv = ni_name.validate_ni_url(has_params = True)
                     if rv != ni_errs.niSUCCESS:
                         ni_name = None
@@ -540,7 +578,8 @@ class DtnSend(Thread):
             if evt.is_last_msg():
                 break
 
-            self.logdebug("Processing message %d" % evt.msg_seqno())
+            self.logdebug("Processing message %d for req type %s" %
+                          (evt.msg_seqno(), evt.msg_data().req_type))
 
             # Retrieve the request structure that triggered this response
             req = evt.msg_data()
@@ -557,15 +596,17 @@ class DtnSend(Thread):
 
             # Create the BPQ block to send with the response
             # Start with a (shallow) copy of the request BPQ block
-            bpq_data = copy(req.bpq_data)
+            #bpq_data = copy(req.bpq_data)
+            bpq_data = BPQ()
 
-            # BPQ kind is RESPONSE if make_response is True or
+            # BPQ kind is PUBLISH if req_type is PUBLISH
+            #             RESPONSE if make_response is True or
             #             otherwise QUERY if req_type is GET or SEARCH
-            #                       PUBLISH if req_type is PUBLISH
-            if req.make_response:
-                bpq_data.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_RESPONSE)
-            elif req.req_type == HTTPRequest.HTTP_PUBLISH:
+            #
+            if req.req_type == HTTPRequest.HTTP_PUBLISH:
                 bpq_data.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_PUBLISH)
+            elif req.make_response:
+                bpq_data.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_RESPONSE)
             else:
                 bpq_data.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_QUERY)
 
@@ -575,6 +616,8 @@ class DtnSend(Thread):
             # (it isn't very interesting and not accessible with an ni name)
             if req.make_response and (req.req_type == HTTPRequest.HTTP_PUBLISH):
                 bpq_data.set_matching_rule(BPQ.BPQ_MATCHING_RULE_NEVER)
+            else:
+                bpq_data.set_matching_rule(req.bpq_data.matching_rule)
 
             # The creation timestamp and sequence number are generated
             # automatically by the DTN2 API.  One could argue that in the case
@@ -589,11 +632,15 @@ class DtnSend(Thread):
             # The bpq_id and bpq_val fields are just copied from the original
             # request.  This gets you the right msgid and the ni name or
             # token string
+            bpq_data.set_bpq_id(req.bpq_data.bpq_id)
+            bpq_data.set_bpq_val(req.bpq_data.bpq_val)
 
             # There will be no fragments to deal with
             # Note that this doesn't damage anything there was in
-            # shallo copied original.
+            # shallow copied original.
             bpq_data.clear_frag_desc()
+
+            self.logdebug("BPQ block to be sent:\n%s" % str(bpq_data))
 
             # Build an extension blocks structure to hold the block
             ext_blocks =  dtnapi.dtn_extension_block_list(1)
@@ -638,14 +685,15 @@ class DtnSend(Thread):
                 meta_blocks = None
 
             # Set the payload type
-            if req.content is None:
+            payload = req.result if req.make_response else req.content
+            if payload is None:
                 # Send an empty string via memory
                 pt = dtnapi.DTN_PAYLOAD_MEM
                 pv = ""
             else:
                 # Send a permanent file
                 pt = dtnapi.DTN_PAYLOAD_FILE
-                pv = req.content
+                pv = payload
                 
             self.loginfo("Sending bundle to %s" % destn_eid)
 
@@ -678,7 +726,7 @@ if (__name__ == "__main__"):
 
             # This has come in from an app
             print "sending back to app"
-            req = HTTPRequest(HTTPRequest.HTTP_GET, in_req.bundle,
+            req = HTTPRequest(in_req.req_type, in_req.bundle,
                               in_req.bpq_data, json_in,
                               has_payload=True, ni_name=in_req.ni_name,
                               make_response=True,
@@ -741,7 +789,7 @@ if (__name__ == "__main__"):
     bpq.clear_frag_desc()
     print "BPQ block:\n%s" % str(bpq)
 
-    json_in = { "a": "b" }
+    json_in = { "http_auth": "rosebud.folly.org.uk:8080" }
 
     nin = NIname(nis)
     nin.validate_ni_url()
@@ -778,7 +826,7 @@ if (__name__ == "__main__"):
     print "sending message %s" % str(evt)
     dtn_send_q.put_nowait(evt)
 
-    time.sleep(10)
+    time.sleep(2)
    
     # Receiving thread
     dtn_recv_handler = DtnReceive(http_action, logger)

@@ -93,7 +93,7 @@ def debug(string):
     print string
     return
 
-#===============================================================================#
+#-------------------------------------------------------------------------------#
 def get_via_http(ni_url, http_host, file_name, verbose, lax):
     """
     @brief Perform a NetInf 'get' from the http_host for the ni_url.
@@ -289,7 +289,7 @@ def get_via_http(ni_url, http_host, file_name, verbose, lax):
 
     return(json_report, got_content, faulty)
 
-#===============================================================================#
+#-------------------------------------------------------------------------------#
 def get_via_dtn(ni_url, dtn_eid, file_name, verbose, lax):
     """
     @brief Perform a NetInf 'get' from the http_host for the ni_url.
@@ -321,6 +321,9 @@ def get_via_dtn(ni_url, dtn_eid, file_name, verbose, lax):
             sys.exit(-10)
 
     # Generate canonical form (no netloc, ni scheme) URI for ni name
+    # This goes in the BPQ block - The canonical form ensures that the
+    # BPQ EXACT_MATCH will find the NDO is it is cached along the DTN path.
+    # If there is a netloc in here it is sent as a Metadats item.
     ni_url_str = ni_url.get_canonical_ni_url()
 
     # Generate EID + service tag for service to be accessed via DTN
@@ -370,7 +373,28 @@ def get_via_dtn(ni_url, dtn_eid, file_name, verbose, lax):
     bpq.set_bpq_val(ni_url_str)
     bpq.clear_frag_desc()
 
-    # Don't need to send any metadata or payload placeholder
+    # Only need to send metadata if there is a non-empty netloc in
+    # the ni_url.
+    netloc = ni_url.get_netloc()
+    meta_blocks = None
+    if netloc != "":
+        # Create a JSON dictionary with netloc in it
+        json_dict = { "http_auth" : netloc }
+        
+        # Build an extension blocks structure to hold the metadata block
+        meta_blocks =  dtnapi.dtn_extension_block_list(1)
+                
+        # Build a metadata block for JSON data
+        md = Metadata()
+        md.set_ontology(Metadata.ONTOLOGY_JSON)
+        md.set_ontology_data(json.dumps(json_dict))
+        json_block = dtnapi.dtn_extension_block()
+        json_block.type = METADATA_BLOCK
+        json_block.flags = 0
+        json_block.data = md.build_for_net()
+        meta_blocks.blocks.append(json_block)
+
+    # Don't need to send any payload placeholder
 
     # Payload is the empty string sent via memory
     pt = dtnapi.DTN_PAYLOAD_MEM
@@ -397,11 +421,12 @@ def get_via_dtn(ni_url, dtn_eid, file_name, verbose, lax):
     bundle_id = dtnapi.dtn_send(dtn_handle, regid, local_service_eid,
                                 remote_service_eid, local_service_eid,
                                 pri, dopts, exp, pt, pv, 
-                                ext_blocks, None, "", "")
+                                ext_blocks, meta_blocks, "", "")
 
     # Wait for a reponse - maybe aalso some reports
     while(True):
-        recv_timeout = 2 * 60
+        # NOTE: BUG in dtnapi - timeout is in msecs
+        recv_timeout = 2000 * 60
         bpq_bundle = dtnapi.dtn_recv(dtn_handle, dtnapi.DTN_PAYLOAD_FILE,
                                      recv_timeout)
         # If bpq_bundle is None then either the dtn_recv timed out or
@@ -615,8 +640,8 @@ def get_via_dtn(ni_url, dtn_eid, file_name, verbose, lax):
     
     return (json_dict, got_content, faulty)
 
-#===============================================================================#
-def py_niget():
+#-------------------------------------------------------------------------------#
+def py_nigetalt():
     """
     @brief Command line program to perform a NetInf 'get' operation using http
     @brief convergence layer.
@@ -625,7 +650,7 @@ def py_niget():
 
     Run:
     
-    >  niget.py --help
+    >  nigetalt.py --help
 
     to see usage and options.
 
@@ -753,7 +778,7 @@ def py_niget():
                                                                                                     
 #===============================================================================#
 if __name__ == "__main__":
-    py_niget()
+    py_nigetalt()
 
 #===============================================================================#
 # === Testing ===
