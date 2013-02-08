@@ -306,6 +306,8 @@ chown -R ${APACHE_USERNAME}.${APACHE_GROUPNAME} $NILIB_PATH
 
 echo "Copying data to ${NILIB_PATH}..."
 sudo -u $APACHE_USERNAME cp -r ${NILIB_PYTHON_CONF}/wsgi/* $NILIB_PATH
+sudo -u $APACHE_USERNAME sed -e "s/==SERVER_NAME==/${SERVER_NAME}/" \
+        ${NILIB_PYTHON_CONF}/wsgi/www/help.html $NILIB_PATH/www/help.html
 sudo -u $APACHE_USERNAME cp -r ${NILIB_SRC}/python/doc/html/* ${NILIB_PATH}/doc
 if [[ $cache_archived -eq 1 ]]; then
   echo "Restoring cache archive from ${cache_archive_name}..."
