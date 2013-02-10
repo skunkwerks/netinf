@@ -65,6 +65,7 @@ items.
 Revision History
 ================
 Version   Date       Author         Notes
+1.3       10/02/2013 Elwyn Davies   Added get_temp_path for use by gateway. 
 1.2       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
 1.1       05/12/2012 Elwyn Davies   Improved comments. Factored out exception
                                     definitions. Renamed to SingleNetInfCache.
@@ -296,6 +297,14 @@ class SingleNetInfCache:
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
+    def get_temp_path(self):
+        """
+        @brief Return the directory used for temporary files in the cache
+        @return string pathname for temporary file directory
+        """
+        return self.temp_path
+    
+    #--------------------------------------------------------------------------#
     def check_cache_dirs(self):
         """
         @brief Check existence of object cache directories and create if necessary

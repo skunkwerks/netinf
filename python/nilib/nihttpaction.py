@@ -584,7 +584,7 @@ class HTTPAction(Thread):
     
     #--------------------------------------------------------------------------#
     def __init__(self, resp_q, tempdir, logger, redis_conn, ndo_cache,
-                 mprocs=1, parallel_limit=1, per_req_limit=1):
+                 mprocs=1, per_req_limit=1):
         """
         @brief Constructor - set up logging and squirrel parameters
         """
@@ -602,13 +602,7 @@ class HTTPAction(Thread):
         self.tempdir = tempdir
         self.ndo_cache = ndo_cache
         self.mprocs = mprocs
-        if parallel_limit > mprocs:
-            self.parallel_limit = mprocs
-            self.logwarn("Limiting parallel processing to %d (parallel_limit %d)" %
-                         (mprocs, parallel_limit))
-        else:
-            self.parallel_limit = parallel_limit
-        
+        self.parallel_limit = mprocs
         self.per_req_limit = per_req_limit
         
         # Keep running indicator
@@ -921,6 +915,9 @@ class HTTPAction(Thread):
                 else:
                     # PUBLISH and SEARCH - concatentate responses
                     src = req_msg.http_host_list[http_index]
+                    self.logdebug("%s response format: %s" % (req_msg.req_type,
+                                                              req_msg.json_in.get("rform", "?")))
+                                                              
                     rform_json = (req_msg.json_in.get("rform") == "json")
                     if req_msg.result is None:
                         # First response
@@ -946,22 +943,21 @@ class HTTPAction(Thread):
                 # All hosts have responded - send back to DTN
                 self.logdebug("Sending back response for request %d" %
                               req_msg.req_seqno)
-                # Move concatentated PUBLISh and SEARCH response to disk file
+                # Move concatentated PUBLISH and SEARCH response to disk file
                 if req_msg.req_type != HTTPRequest.HTTP_GET:
                     if req_msg.json_in.get("rform") == "json":
                         req_msg.result.write("}")
                     try:
-                        fd, response_file = tempfile.mkstemp(dir=tempdir)
+                        fd, response_file = tempfile.mkstemp(dir=self.tempdir)
                         fo = os.fdopen(fd, "wb")
                         fo.write(req_msg.result.getvalue())
                         fo.close()
+                        req_msg.result = response_file
                     except Exception, e:
                         nilog("Writing responses to temp file %s failed: %s" %
                               (response_file, str(e)))
                         req_msg.result.close()
                         req_msg.result = None
-                    finally:
-                        req_msg.result = response_file
 
                     debug("Written response to %s" % response_file)
                     
@@ -1110,7 +1106,7 @@ if __name__ == "__main__":
     if not rv:
         logger.info("Adding request failed correctly on account of nowhere to get from")
 
-    # Put some entires in the next hop database
+    # Put some entries in the next hop database
     nhl = {}
     nhl[0] = "tcd.netinf.eu"
     nhl[1] = "dtn://mightyatom.dtn"
@@ -1170,6 +1166,7 @@ if __name__ == "__main__":
     """
     test_run = True
     def end_test():
+        global test_run
         http_action.end_run()
         test_run = False
     t = Timer(15.0, end_test)

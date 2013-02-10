@@ -72,12 +72,30 @@ DTN_SCHEME = "dtn://"
 DIGEST_DFLT = "sha-256"
 
 #===============================================================================#
+class PublishFailure(Exception):
+    """
+    @brief Exception raised by publish_with_xxx routines - provokes exit
+    """
+    def __init__(self, reason, code):
+        """
+        @brief constructor
+        @param resaon string explanation string priented if verbose is True
+        @param code integer return code to be givem to sys.exit
+        """
+        self.reason = reason
+        self.code = code
+        return
+
+    def __str__(self):
+        return "Error: publish failed - %s" % self.reason
+
+#===============================================================================#
 def debug(string):
     """
     @brief Print out debugging information string
     @param string to be printed (in)
     """
-    print string
+    #print string
     return
 
 
@@ -115,18 +133,16 @@ def publish_with_http(ni_name, destination, authority, hash_alg, ext, locs,
         # Install the template URL built from the scheme, the authority and the digest algorithm
         rv = ni_digester.set_url((scheme, authority, "/%s" % hash_alg))
         if rv != ni_errs.niSUCCESS:
-            print("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
-            sys.exit(-4)
+            raise PublishFailure("Cannot construct valid ni URL: %s" %
+                                 ni_errs_txt[rv], -10)
         debug(ni_digester.get_url())
 
         # Open the file if possible
         try:
             f = open(file_name, "rb")
         except Exception, e :
-            debug("Cannot open file %s: Error: %s" %(file_name, str(e)))
-            if verbose:
-                print("Unable to open file %s: Error: %s" % (file_name, str(e)))
-            sys.exit(-5)
+            raise PublishFailure("Unable to open file %s: Error: %s" %
+                                 (file_name, str(e)), -11)
 
         # Guess the mimetype of the file
         m = magic.Magic(mime=True)
@@ -185,22 +201,19 @@ def publish_with_http(ni_name, destination, authority, hash_alg, ext, locs,
     try:
         req = urllib2.Request(http_url, datagen, headers)
     except Exception, e:
-        if verbose:
-            print("Error: Unable to create request for http URL %s: %s" %
-                  (http_url, str(e)))
         f.close()
-        sys.exit(-4)
-
+        raise PublishFailure("Unable to create request for http URL %s: %s" %
+                             (http_url, str(e)), -12)
 
     # Get HTTP results
     try:
         http_object = urllib2.urlopen(req)
     except Exception, e:
-        if verbose:
-            print("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
         if full_put:
             f.close()
-        sys.exit(-4)
+        raise PublishFailure("Unable to access http URL %s: %s" %
+                             (http_url, str(e)), -13)
+
     if full_put:
         f.close()
         target = octet_param.get_url()
@@ -212,8 +225,7 @@ def publish_with_http(ni_name, destination, authority, hash_alg, ext, locs,
     # Get message headers
     http_info = http_object.info()
     http_result = http_object.getcode()
-    if verbose:
-        print("HTTP result: %d" % http_result)
+    debug("HTTP result: %d" % http_result)
     debug("Response info: %s" % http_info)
     debug("Response type: %s" % http_info.gettype())
 
@@ -224,31 +236,24 @@ def publish_with_http(ni_name, destination, authority, hash_alg, ext, locs,
 
     # Report outcome
     if (http_result != 200):
-        if verbose:
-            print("Unsuccessful publish request returned HTTP code %d" %
-                  http_result) 
-        sys.exit(-3)
+        raise PublishFailure("Unsuccessful publish request returned HTTP code %d" %
+                             http_result, -14) 
 
     # Check content type of returned message matches requested response type
     ct = http_object.headers["content-type"]
     if rform == "plain":
         if ct != "text/plain":
-            if verbose:
-                print("Error: Expecting plain text (text/plain) response "
-                      "but received Content-Type: %s" % ct)
-            sys.exit(-4)
+            raise PublishFailure("Expecting plain text (text/plain) response "
+                                 "but received Content-Type: %s" % ct, -15)
     elif rform == "html":
         if ct != "text/html":
-            if verbose:
-                print("Error: Expecting HTML document (text/html) response "
-                      "but received Content-Type: %s" % ct)
-            sys.exit(-5)
+            raise PublishFailure("Expecting HTML document (text/html) response "
+                                 "but received Content-Type: %s" % ct, -16)
     else:
         if ct != "application/json":
-            if verbose:
-                print("Error: Expecting JSON coded (application/json) "
-                      "response but received Content-Type: %s" % ct)
-            sys.exit(-6)
+            raise PublishFailure("Expecting JSON coded (application/json) "
+                                 "response but received Content-Type: %s" % ct,
+                                 -17)
 
     return (target, payload)
 
@@ -286,18 +291,16 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
             # Construct the digest from the file name and the template
             rv = NIproc.makenif(ni_name, file_name)
             if rv != ni_errs.niSUCCESS:
-                if verbose:
-                    print("Unable to construct digest of file %s: %s" %
-                          (file_name, ni_errs_txt[rv]))
-                sys.exit(-20)
+                raise PublishFailure("Unable to construct digest of file %s: %s" %
+                                     (file_name, ni_errs_txt[rv]), -20)
         else:
             # Check the ni_name and the file match
             rv = Niproc.checknif(ni_name, file_name)
             if rv != ni_errs.niSUCCESS:
-                if verbose:
-                    print("Digest of file %s does not match ni_name %s: %s" %
-                          (file_name, ni_name.get_url(), ni_errs_txt[rv]))
-                sys.exit(-21)
+                raise PublishFailure("Digest of file %s does not match ni_name %s: %s" %
+                                     (file_name,
+                                      ni_name.get_url(),
+                                      ni_errs_txt[rv]), -21)
 
         # Guess the mimetype of the file
         m = magic.Magic(mime=True)
@@ -323,6 +326,7 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     if (locs is not None):
         ext_json["loclist"] = locs[:2]
     ext_json["fullPut"] = full_put
+    ext_json["rform"] = rform
     
     # Generate EID + service tag for service to be accessed via DTN
     remote_service_eid = destination + "/netinfproto/service/publish"
@@ -330,9 +334,8 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     # Create a connection to the DTN daemon
     dtn_handle = dtnapi.dtn_open()
     if dtn_handle == -1:
-        if verbose:
-            print("Error: unable to open connection with DTN daemon")
-        sys.exit(-20)
+        raise PublishFailure("Error: unable to open connection with DTN daemon",
+                             -22)
 
     # Generate the EID and service tag for this service
     local_service_eid = dtnapi.dtn_build_local_eid(dtn_handle,
@@ -366,7 +369,6 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     bpq.set_matching_rule(BPQ.BPQ_MATCHING_RULE_EXACT)
     bpq.set_src_eid(local_service_eid)
     sent_msgid = str(random.randint(1, 32000))
-    print sent_msgid
     bpq.set_bpq_id(sent_msgid)
     bpq.set_bpq_val(target)
     bpq.clear_frag_desc()
@@ -415,8 +417,9 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
         pp_block.data = md.build_for_net()
         meta_blocks.blocks.append(pp_block)
 
-    # - We want delivery reports (and maybe deletion reports?)
-    dopts = dtnapi.DOPTS_DELIVERY_RCPT
+    # We want delivery reports and publication reports
+    # (and maybe deletion reports?)
+    dopts = dtnapi.DOPTS_DELIVERY_RCPT | dtnapi.DOPTS_PUBLICATION_RCPT
     # - Send with normal priority.
     pri = dtnapi.COS_NORMAL
     # NetInf bundles should last a while..
@@ -427,6 +430,10 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
                                 remote_service_eid, local_service_eid,
                                 pri, dopts, exp, pt, pv, 
                                 ext_blocks, meta_blocks, "", "")
+    if bundle_id == None:
+        raise PublishFailure("dtn_send failed - %s" %
+                             dtnapi.dtn_strerror(dtnapi.dtn_errno(dtn_handle)),
+                             -23)
 
     # Wait for a reponse - maybe also some reports
     while(True):
@@ -454,6 +461,13 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
                                bpq_bundle.status_report.bundle_id.creation_secs,
                                bpq_bundle.status_report.bundle_id.creation_seqno))
 
+                elif bpq_bundle.status_report.flags == dtnapi.STATUS_PUBLISHED:
+                    if verbose:
+                        print("Received publication report re from %s sent %d seq %d" %
+                              (bpq_bundle.status_report.bundle_id.source,
+                               bpq_bundle.status_report.bundle_id.creation_secs,
+                               bpq_bundle.status_report.bundle_id.creation_seqno))
+
                 else:
                     if verbose:
                         print("Received unexpected report: Flags: %d" %
@@ -464,9 +478,8 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
 
             # Check the payload really is in a file
             if not bpq_bundle.payload_file:
-                if verbose:
-                    print("Received bundle payload not in file - ignoring bundle")
-                sys.exit(-22)
+                raise PublishFailure("Received bundle payload not in file - "
+                                     "ignoring bundle", -24)
             
             # Have to delete this file before an error exit or if empty
             pfn = bpq_bundle.payload
@@ -478,38 +491,33 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
             # Does the bundle have a BPQ block
             bpq_data = None
             if bpq_bundle.extension_cnt == 0:
-                if verbose:
-                    print("Error: Received bundle with no extension block.")
                 os.remove(pfn)
-                sys.exit(-23)
+                raise PublishFailure("Error: Received bundle with no "
+                               "extension block.", -25)
                           
             for blk in bpq_bundle.extension_blks:
                 if blk.type == QUERY_EXTENSION_BLOCK:
                     bpq_data = BPQ()
                     if not bpq_data.init_from_net(blk.data):
-                        if verbose:
-                          print("Error: Bad BPQ block received")
                         os.remove(pfn)
-                        sys.exit(-24)
-
+                        raise PublishFailure("Error: Bad BPQ block received",
+                                             -26)
+    
             if bpq_data is None:
-                if verbose:
-                    print("Error: Received bundle with no BPQ block in extension blocks")
                 os.remove(pfn)
-                sys.exit(-25)
+                raise PublishFailure("Error: Received bundle with no BPQ block "
+                                     "in extension blocks", -27)
 
             debug(bpq_data)
             # OK.. got the response - finish with daemon
             break
                 
         elif dtnapi.dtn_errno(dtn_handle) != dtnapi.DTN_ETIMEOUT:
-            if verbose:
-                print(dtnapi.dtn_strerror(dtnapi.dtn_errno(dtn_handle)))
-            sys.exit(-26)
+            raise PublishFailure(dtnapi.dtn_strerror(dtnapi.dtn_errno(dtn_handle)),
+                                 -28)
         else:
-            if verbose:
-                print("dtn_recv timed out without receiving response bundle")
-            sys.exit(1)
+            raise PublishFailure("dtn_recv timed out without receiving "
+                                 "response bundle", 1)
                            
     dtnapi.dtn_close(dtn_handle)
 
@@ -517,20 +525,14 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     bpq.set_bpq_kind(BPQ.BPQ_BLOCK_KIND_PUBLISH)
     bpq.set_matching_rule(BPQ.BPQ_MATCHING_RULE_EXACT)
     if bpq_data.bpq_kind != BPQ.BPQ_BLOCK_KIND_PUBLISH:
-        if verbose:
-            print("Returned BPQ block is not PUBLISH kind: %d" %
-                  bpq_data.bpq_kind)
-        sys.exit(-27)
+        raise PublishFailure("Returned BPQ block is not PUBLISH kind: %d" %
+                             bpq_data.bpq_kind, -29)
     if bpq_data.matching_rule != BPQ.BPQ_MATCHING_RULE_NEVER:
-        if verbose:
-            print("Returned BPQ block does not have NEVER matching rule: %d" %
-                  bpq_data.matching_rule)
-        sys.exit(-28)
+        raise PublishFailure("Returned BPQ block does not have NEVER matching rule: %d" %
+                             bpq_data.matching_rule, -30)
     if bpq_data.bpq_id != sent_msgid:
-        if verbose:
-            print("Returned BPQ block has unmatched msgis %s vs %s" %
-                  (bpq_data.bpq_id, sent_msgid))
-        sys.exit(-29)
+        raise PublishFailure("Returned BPQ block has unmatched msgis %s vs %s" %
+                             (bpq_data.bpq_id, sent_msgid), -31)
 
     # Verify the format of the response (a bit)
     try:
@@ -539,18 +541,15 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
         pfd.close()
         os.remove(pfn)
     except Exception, e:
-        if verbose:
-            print("Failed to read response from payload file %s" % pfn)
-        sys.exit(30)
+        raise PublishFailure("Failed to read response from payload file %s" %
+                             pfn, -32)
 
     if rform == "json":
         try:
             payload_json = json.loads(payload)
         except Exception, e:
-            if verbose:
-                print("Alleged JSON response is not valid JSON string: %s" %
-                      payload)
-        sys.exit(-31)
+            raise PublishFailure("Alleged JSON response is not valid JSON string: %s" %
+                                 payload, -33)
             
     debug("publish_via_dtn completed")
     
@@ -667,11 +666,14 @@ def py_nipubalt():
     file_name = None
     
     if options.file_name != None:
-        target = options.file_name
-        file_name = options.file_name
+        file_name = os.path.abspath(options.file_name)
+        # Check the file is readable
+        if not os.access(file_name, os.R_OK):
+            if verbose:
+                print("File to be published %s is not readable" % file_name)
+            sys.exit(1)
         full_put = True
     else:
-        target = None
         full_put = False
     debug("full_put: %s" %full_put)
 
@@ -713,7 +715,7 @@ def py_nipubalt():
             # Already checked this exists
             destination = options.locs[0]
         else:
-            destniation = nl
+            destination = nl
         authority = nl
     else:
         # No ni name given.. where to send must be locs[0] and
@@ -752,18 +754,26 @@ def py_nipubalt():
     debug("Response type requested: %s" % rform)
 
     # Determine convergence layer to use
-    if destination.startswith(DTN_SCHEME):
-        target, payload = publish_with_dtn(ni_name, destination, authority,
-                                           hash_alg, ext_json, options.locs,
-                                           scheme, full_put, file_name,
-                                           rform, verbose)
-    else:
-        if destination.startswith(HTTP_SCHEME):
-            destination = destination[len(HTTP_SCHEME):]
-        target, payload = publish_with_http(ni_name, destination, authority,
-                                            hash_alg, ext, options.locs,
-                                            scheme, full_put, file_name,
-                                            rform, verbose)
+    try:
+        if destination.startswith(DTN_SCHEME):
+            target, payload = publish_with_dtn(ni_name, destination, authority,
+                                               hash_alg, ext_json, options.locs,
+                                               scheme, full_put, file_name,
+                                               rform, verbose)
+        else:
+            if destination.startswith(HTTP_SCHEME):
+                destination = destination[len(HTTP_SCHEME):]
+            target, payload = publish_with_http(ni_name, destination, authority,
+                                                hash_alg, ext, options.locs,
+                                                scheme, full_put, file_name,
+                                                rform, verbose)
+    except PublishFailure, pf:
+        if verbose:
+            print(str(pf))
+        sys.exit(pf.code)
+    except Exception, e:
+        print("Unexpected exception: %s" % str(e))
+        sys.exit(-4)
 
     # If output of response is expected, print in the requested format
     if target == None:

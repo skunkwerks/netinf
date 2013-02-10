@@ -68,6 +68,7 @@ note that these are not currently implemented but may be in future).
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       10/02/2013 Elwyn Davies   Added get_temp_path for use by gateway. 
 1.3       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
 1.2       10/12/2012 Elwyn Davies   Removed set_logger and comments about
                                     changing the logger after moving to
@@ -232,6 +233,14 @@ class MultiNetInfCache:
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
+    def get_temp_path(self):
+        """
+        @brief Return the directory used for temporary files in the cache
+        @return string pathname for temporary file directory
+        """
+        return self.temp_path
+    
+    #--------------------------------------------------------------------------#
     def check_cache_dirs(self):
         """
         @brief Check existence of object cache directories and create if necessary

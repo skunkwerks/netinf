@@ -227,7 +227,8 @@ except ImportError:
 import netinf_ver
 import ni
 from nihandler import NIHTTPRequestHandler
-from nidtnhttpgateway import DtnHttpGateway
+
+# NOTE: nidtnhttpgateway is imported if gateway is to be run - see below
 
 # Load either filesystem or Redis cache module depending on
 # whether redis_store or file_store was imported.  Must have
@@ -354,7 +355,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
     #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority_name, server_port,
-                 logger, getputform, nrsform, provide_nrs, favicon,
+                 config, logger, getputform, nrsform, provide_nrs, favicon,
                  redis_db=0, run_gateway=False):
         """
         @brief Constructor for the NI HTTP threaded server.
@@ -362,6 +363,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
         @param storage_root string pathname for root of cache directory tree
         @param authority_name string server FQDN
         @param server_port integer server port used 
+        @param config object ConfigParser instance pointing to config file
         @param logger object logger instance to output messages
         @param getputform string pathname of GET/PUBLISH/SEARCH form HTML file
         @param nrsform string pathname of NRS configuration form HTML file
@@ -452,13 +454,21 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 
         # If requested try to start HTTP<->DTN gateway
         if run_gateway:
-            self.dtn_gateway = DtnHttpGateway(logger, self.cache, self.nrs_redis, self)
+            # Load gateway control module - this avoids pulling in
+            # DTN API functionality unless it is actually required and
+            # avoid problems on machines that don't support DTN
+            from nidtnhttpgateway import DtnHttpGateway
+
+            # Pass in config file pointer, logger, cache and Redis connection
+            # and a back reference to the HTTP server.
+            self.dtn_gateway = DtnHttpGateway(config, logger, self.cache,
+                                              self.nrs_redis, self)
             if self.dtn_gateway is None:
                 logger.error("Unable to start HTTP<->DTN gateway as requested")
                 self.dtn_gateway_enabled = False
             else:
                 logger.info("HTTP<->DTN gateway started")
-                self.drn_gateway_enabled = True
+                self.dtn_gateway_enabled = True
         
         self.running_threads = set()
         self.next_handler_num = 1
@@ -532,15 +542,15 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
             if thread.request_thread.isAlive():
                 thread.request.close()
         del self.running_threads
-        if dtn_gateway_enabled:
-            dtn_gateway.shutdown_gateway()
+        if self.dtn_gateway_enabled:
+            self.dtn_gateway.shutdown_gateway()
         self.shutdown()
 
 #==============================================================================#
 # EXPORTED GLOBAL FUNCTIONS
 #==============================================================================#
 #------------------------------------------------------------------------------#
-def ni_http_server(storage_root, authority, server_port, logger,
+def ni_http_server(storage_root, authority, server_port, logger, config,
                    getputform, nrsform, provide_nrs, favicon,
                    redis_db=0, run_gateway = False):
     """
@@ -548,6 +558,7 @@ def ni_http_server(storage_root, authority, server_port, logger,
     @param storage_root string pathname for root of cache directory tree
     @param authority string FQDN for machine on which server is running
     @param server_port integer TCP port number on which service is set up
+    @param config object ConfigParser instance pointing to config file
     @param logger object logger instance to output messages
     @param getputform string pathname of GET/PUBLISH/SEARCH form HTML file
     @param nrsform string pathname of NRS configuration form HTML file
@@ -563,11 +574,16 @@ def ni_http_server(storage_root, authority, server_port, logger,
         means the server cannot be accessed from elsewhere
       - However if the authority is localhost (mainly for testing)
         just use gethostbyname.
-      - If providing NRS server, check that Redis module was successfully loaded
+      - If providing NRS server or HTTP<->DTN gateway, check that Redis
+        module was successfully loaded
 
     Create a threaded HTTP server instance and record the various parameter
     values from the server configuration in the server instance so that the
     handler can get at them
+
+    The config is passed down so that the gateway can get configuration
+    parameters if it is started.  Note that the gateway parameters are not
+    available through command line parameters (at present).
 
     TO DO: Handle IPv6 addresses 
     """
@@ -592,7 +608,7 @@ def ni_http_server(storage_root, authority, server_port, logger,
     # Pass the parameters and the derived IP address to the constructor
     return NIHTTPServer((ipaddr, server_port), storage_root,
                         authority, server_port,
-                        logger, getputform, nrsform,
+                        config, logger, getputform, nrsform,
                         provide_nrs, favicon,
                         redis_db, run_gateway)
 
@@ -603,7 +619,6 @@ def ni_http_server(storage_root, authority, server_port, logger,
 #==============================================================================#
 if __name__ == "__main__":
 
-    from nihandler import NDO_DIR, META_DIR
     from metadata import NetInfMetaData
     #==== TEST FUNCTIONS ====
     def test_client(my_host, my_port, ip, port, message):
@@ -687,24 +702,25 @@ aaabbb
 
         # Temporary storage root
         sd = "/tmp/niserver_test"
-
-        server = NIHTTPServer((HOST, PORT), sd, "example.com", PORT, logger,
-                              "./data/getputform.html", "./data/nrsconfig.html",
-                              False, "./data/favicon.ico")
-
-        # Create a dummy file to get
         shutil.rmtree(sd, ignore_errors=True)
         os.mkdir(sd)
-        os.mkdir(sd+NDO_DIR)
-        os.mkdir(sd+NDO_DIR+"sha-256")
-        os.mkdir(sd+META_DIR)
-        os.mkdir(sd+META_DIR+"sha-256")
+        os.mkdir(sd+NetInfCache.NDO_DIR)
+        os.mkdir(sd+NetInfCache.NDO_DIR+"sha-256")
+        os.mkdir(sd+NetInfCache.META_DIR)
+        os.mkdir(sd+NetInfCache.META_DIR+"sha-256")
+
+        server = NIHTTPServer((HOST, PORT), sd, "example.com", PORT, None,
+                              logger, "./data/getputform.html",
+                              "./data/nrsconfig.html", False, # No NRS form
+                              "./data/favicon.ico", 0, False) # No gateway
+
+        # Create a dummy file to get
         content_str = "The quick yellow fox burrowed under the twisting worm.\n"
         ni_name = ni.NIname("ni:///sha-256")
         uri = ni.NIproc.makenib(ni_name, content_str)
         dgst = ni_name.get_digest()
-        ndo_fn = sd+NDO_DIR+"sha-256"+"/"+dgst
-        meta_fn = sd+META_DIR+"sha-256"+"/"+dgst
+        ndo_fn = sd+NetInfCache.NDO_DIR+"sha-256"+"/"+dgst
+        meta_fn = sd+NetInfCache.META_DIR+"sha-256"+"/"+dgst
         logger.info("NDO path: %s" % ndo_fn)
         logger.info("META path: %s" % meta_fn)
         fn = "/sha-256/"+dgst

@@ -66,6 +66,7 @@ note that these are not currently implemented but may be in future).
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       10/02/2013 Elwyn Davies   Added get_temp_path for use by gateway. 
 1.1       14/12/2012 Elwyn Davies   Corrected error return from check_cache_dirs. 
                                     Ensured that STORAGE_ROOT_KEY is recreated.
 1.0       06/12/2012 Elwyn Davies   Created from cache_multi for Redis.
@@ -227,6 +228,14 @@ class RedisNetInfCache:
     #==========================================================================#
     #=== Public methods ===
     #==========================================================================#
+    def get_temp_path(self):
+        """
+        @brief Return the directory used for temporary files in the cache
+        @return string pathname for temporary file directory
+        """
+        return self.temp_path
+    
+    #--------------------------------------------------------------------------#
     def set_storage_root_key(self):
     
         assert(self.redis_conn is not None)

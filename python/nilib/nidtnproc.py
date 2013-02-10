@@ -198,10 +198,7 @@ class DtnReceive(Thread):
 
         # Check if service_eid registration exists and register if not
         # Otherwise bind to the existing registration
-        print "Errno 1 %d" % dtnapi.dtn_errno(dtn_handle)
         regid = dtnapi.dtn_find_registration(dtn_handle, self.service_eid)
-        print "Regid 1 %d" % regid
-        print "Errno 2 %d" % dtnapi.dtn_errno(dtn_handle)
         if (regid == -1):
             # Need to register the EID.. make it permanent with 'DEFER'
             # characteristics so that bundles are saved if theye arrive
@@ -219,9 +216,6 @@ class DtnReceive(Thread):
             print "Regid 2 %d" % regid
         else:
             dtnapi.dtn_bind(dtn_handle, regid)
-
-        print "Errno 3 %d" % dtnapi.dtn_errno(dtn_handle)
-        
 
         # Wait for 5 seconds before looping
         recv_timeout = 5
@@ -251,12 +245,12 @@ class DtnReceive(Thread):
             payload as a NULL terminated string.  Python leaves the terminating
             byte in place.
             """
-            self.logdebug("Going to dtn_recv")
+            self.logdebug("Getting bundle or time out from dtn_recv")
             bpq_bundle = dtnapi.dtn_recv(dtn_handle, dtnapi.DTN_PAYLOAD_FILE,
                                          recv_timeout)
             # If bpq_bundle is None then either the dtn_recv timed out or
             # there was some other error.
-            self.logdebug("Gor from dtn_recv %s" % str(bpq_bundle))
+            self.logdebug("Got from dtn_recv %s" % str(bpq_bundle))
             if bpq_bundle != None:
                 # Filter out report bundles
                 stp = bpq_bundle.dest.find(NETINF_SERVICE)
@@ -355,7 +349,7 @@ class DtnReceive(Thread):
                 print bpq_data
                 # Set up reponse parameters for GET, SEARCH and PUBLISH requests
                 # Response to DTN request sent back to DTN source
-                make_reponse = True
+                make_response = True
                 response_destn = bpq_bundle.source
                 content = None
 
@@ -374,7 +368,8 @@ class DtnReceive(Thread):
                         (bpq_data.matching_rule == BPQ.BPQ_MATCHING_RULE_TOKEN)):
                         req_type = HTTPRequest.HTTP_SEARCH
                     else:
-                        self.loginfo("Ignoring bundle for SEARCH service with inappropriate BPQ kinds")
+                        self.loginfo("Ignoring bundle for SEARCH service with "
+                                     "inappropriate BPQ kinds")
                         continue
                         self.loginfo("SEARCH Request had non-empty payload")
                         continue
@@ -382,20 +377,24 @@ class DtnReceive(Thread):
                     if bpq_data.bpq_kind == BPQ.BPQ_BLOCK_KIND_PUBLISH:
                         req_type = HTTPRequest.HTTP_PUBLISH
                     else:
-                        self.loginfo("Ignoring bundle for PUBLISH service with inappropriate BPQ kinds")
+                        self.loginfo("Ignoring bundle for PUBLISH service with "
+                                     "inappropriate BPQ kinds")
                         continue
                     if json_dict is None:
-                        self.loginfo("Ignoring bundle for PUBLISH service without JSON metadata")                        
+                        self.loginfo("Ignoring bundle for PUBLISH service without "
+                                     "JSON metadata")                        
                         continue
                     if (has_payload and has_payload_placeholder):
-                        self.loginfo("Ignoring bundle for PUBLISH with non-empty payload and placeholder")
+                        self.loginfo("Ignoring bundle for PUBLISH with non-empty "
+                                     "payload and placeholder")
                         continue
                     if (has_payload and
-                        (json_dict.has_key("fullPut") and not json_dict["fullPut"]))):
-                        self.loginfo("Ignoring bundle for PUBLISH with non-empty payload and fullPut False")
+                        (json_dict.has_key("fullPut") and not json_dict["fullPut"])):
+                        self.loginfo("Ignoring bundle for PUBLISH with non-empty "
+                                     "payload and fullPut False")
                         continue
                     if not has_payload_placeholder:
-                        content = bpq_bundle.payload
+                        content = fn # For not very obvious reasons have lose trailing null
                     else:
                         has_payload = False
                 elif service_tag.startswith(NETINF_SERVICE_RESPONSE):
@@ -443,13 +442,13 @@ class DtnReceive(Thread):
                 bpq_msg = HTTPRequest(req_type, bpq_bundle, bpq_data, json_dict,
                                       has_payload, ni_name, make_response,
                                       response_destn, content)
-                http_action.add_new_req(bpq_msg)
+                self.http_action.add_new_req(bpq_msg)
                     
             elif dtnapi.dtn_errno(dtn_handle) != dtnapi.DTN_ETIMEOUT:
                 raise DtnError("Report: dtn_recv failed with error code %s" %
                                dtnapi.dtn_strerror(dtnapi.dtn_errno(dtn_handle)))
             else:
-                self.logdebug("dtn_recv timeout- checking for end run")
+                self.logdebug("dtn_recv timeout - checking for end run")
                 pass
                                
         dtnapi.dtn_close(dtn_handle)
@@ -686,6 +685,7 @@ class DtnSend(Thread):
 
             # Set the payload type
             payload = req.result if req.make_response else req.content
+            print "payload: %s" % payload
             if payload is None:
                 # Send an empty string via memory
                 pt = dtnapi.DTN_PAYLOAD_MEM
@@ -715,6 +715,9 @@ class DtnSend(Thread):
 #==============================================================================#
 # === Test code ===
 if (__name__ == "__main__"):
+    f = open("/tmp/test_json", "w")
+    f.write('{ "a": "b" }')
+    f.close()
     class HTTPActionTest:
         def __init__(self):
             return
@@ -732,7 +735,8 @@ if (__name__ == "__main__"):
                               make_response=True,
                               response_destn=in_req.response_destn,
                               content="/etc/group")
-            req.metadata = { "d": "e" }
+            req.metadata = None
+            req.result = "/tmp/test_json"
 
             evt = MsgDtnEvt(MsgDtnEvt.MSG_TO_DTN, req)
             print "sending message %s" % str(evt)
