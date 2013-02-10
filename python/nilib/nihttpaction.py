@@ -746,7 +746,7 @@ class HTTPAction(Thread):
                                 pass
                             except Exception, e:
                                 self.logerror("Cache failure for %s: %s" %
-                                              (ni_name.get_url(), str(e)))
+                                              (req.ni_name.get_url(), str(e)))
                                 pass
                         req.proc_started = True
                         # Start timeout for processing request

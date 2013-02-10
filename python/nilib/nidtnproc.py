@@ -658,7 +658,7 @@ class DtnSend(Thread):
             if req.metadata is not None:
                 md = Metadata()
                 md.set_ontology(Metadata.ONTOLOGY_JSON)
-                md.set_ontology_data(json.dumps(req.metadata))
+                md.set_ontology_data(json.dumps(req.metadata.summary("http://example.com")))
                 json_block = dtnapi.dtn_extension_block()
                 json_block.type = METADATA_BLOCK
                 json_block.flags = 0
