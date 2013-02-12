@@ -1455,19 +1455,29 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                     if fwdres == nifwd.FWDSUCCESS:
                         self.loginfo("NetInf Fowarding success!: %d" % fwdres)
                         try:
-                            md_out, cfn, new_entry, ignore_upload = \
-                                            self.cache.cache_put(ni_name, metadata, content_file)
+                            self.loginfo("doing put cache")
+                            try:
+                                md_out, cfn, new_entry, ignore_upload = \
+                                                self.cache.cache_put(ni_name, metadata, content_file)
+                            except Exception, e:
+                                self.logdebug("put failed %s" % str(e))
+                            self.loginfo("fwd put cache succeeded")
                             # This is slooow I bet, but let's see if it works for now
                             # and fix up content_file later more quickly
                             metadata, content_file = self.cache.cache_get(ni_name)
-                            # self.loginfo("NetInf put_cache after fwd success1")
+                            self.loginfo("NetInf put_cache after fwd success1")
                         except Exception, e:
-                            self.loginfo("NetInf crap put_cache after fwd success1")
+                            print e
+                            self.loginfo("NetInf crap put_cache after fwd fail1 %s" % str(e))
                             self.send_error(500, str(e))
                             return None
                     elif fwdres == nifwd.FWDTIMEOUT:
                         self.loginfo("NetInf Fowarding timeout: %d" % fwdres)
                         self.send_error(404, "Named Data Object forwarding timeout")
+                        return None
+                    elif fwdres == nifwd.FWDNOTFOUND:
+                        self.loginfo("NetInf Forwarding did not find object at any location tried")
+                        self.send_error(404, "Named data Object forwarding could not find object")
                         return None
                     else:
                         self.loginfo("NetInf Fowarding failure: %d" % fwdres)

@@ -57,6 +57,7 @@ from  metadata import NetInfMetaData
 FWDSUCCESS = 0
 FWDERROR = 1
 FWDTIMEOUT = 2
+FWDNOTFOUND = 3
 
 #===============================================================================#
 # database field names etc
@@ -249,7 +250,7 @@ class forwarder:
 	"""
 	def do_get_fwd(self,nexthops,uri,ext,msgid):
 		self.loginfo("Inside do_fwd");
-		metadata=""
+		metadata=None
 		fname=""
 
 		for nexthop in nexthops:
@@ -394,7 +395,9 @@ class forwarder:
 			break
 
 		# make up stuff to return
-		# print "do_fwd: success" 
+		# print "do_fwd: success"
+		if metadata is None:
+                        return FWDNOTFOUND, metadata, fname
 
 		return FWDSUCCESS,metadata,fname
 

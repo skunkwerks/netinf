@@ -121,6 +121,8 @@ response iterator.
 Revision History
 ================
 Version   Date       Author         Notes
+1.5       12/02/2013 Elwyn Davies   Remove Connection header from send_error.
+                                    Its hop-by-hop and upsets WSGI.
 1.4       25/01/2013 Elwyn Davies   Allow for selection of Redis database.
 1.3       13/12/2012 Elwyn Davies   Allow for check of storageRoot name in Redis.
 1.2       11/12/2012 Elwyn Davies   Add check for Redis server actually running.
@@ -1394,7 +1396,6 @@ class wsgiHTTPRequestShim:
             self.send_string(content)
         self.send_header("Content-Type", self.error_content_type)
         self.send_header("Content-Length", str(len(content)))
-        self.send_header('Connection', 'close')
         self.end_headers()
         self.error_sent = True
         self.loginfo("err,%d,msg,%s" %(code, message))
