@@ -373,7 +373,7 @@ def py_niserver_start(default_config_file):
                 if config.has_option(conf_section, conf_option):
                     try:
                         run_gateway = config.getboolean(conf_section,
-                                                        conf_option))
+                                                        conf_option)
                     except ValueError:
                         parser.error("Value supplied for %s is not an "
                                      "acceptable boolean representation" %
