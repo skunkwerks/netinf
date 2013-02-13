@@ -2,7 +2,8 @@
 """
 @package nilib
 @file nipub.py
-@brief Command line client to perform a NetInf 'publish' operation using http convergence layer.
+@brief Command line client to perform a NetInf 'publish' operation using either
+HTTP or DTN convergence layer.
 @version $Revision: 0.04 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -31,6 +32,11 @@ limitations under the License.
 Revision History
 ================
 Version   Date       Author         Notes
+1.1       12/02/2013 Elwyn davies   Modified so that publish_with_.. functions
+                                    can be used independent of command line
+                                    driver sothat can be used with netinffs.
+                                    Failures in these routines now raise
+                                    PublishFail rather than calling sys.exit.
 1.0       03/02/2013 Elwyn Davies   Cloned from nipub.py. Remove unimplemented
                                     publish of web page.  Added access via DTN
                                     convergence layer.
@@ -270,7 +276,7 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     @param hash_alg string name of hash algorithm used for ni URI
     @param ext_json dictionary additional information to send with request if any
                                in the form of a JSON dictionary or None
-    @param locs list of strings with locators to publish
+    @param locs list of strings with locators to publish - maybe None
     @param scheme URI scheme used for ni URI
     @param full_put boolean True if the file_name with the content was given
     @param file_name string name of file to publish or None if only doing metadata
@@ -328,19 +334,33 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     ext_json["fullPut"] = full_put
     ext_json["rform"] = rform
     
-    # Generate EID + service tag for service to be accessed via DTN
-    remote_service_eid = destination + "/netinfproto/service/publish"
-
     # Create a connection to the DTN daemon
     dtn_handle = dtnapi.dtn_open()
     if dtn_handle == -1:
         raise PublishFailure("Error: unable to open connection with DTN daemon",
                              -22)
 
+    # Generate EID + service tag for service to be accessed via DTN
+    if destination is None:
+        remote_service_eid = \
+                    dtnapi.dtn_build_local_eid(dtn_handle,
+                                               "/netinfproto/service/publish")
+        i = remote_service_eid.find("/netinfproto")
+        destination = remote_service_eid[:i]
+    else:                           
+        remote_service_eid = destination + "/netinfproto/service/publish"
+
+    # Add destination to locs if it isn't there already
+    if locs is None:
+        locs = []
+    if destination not in locs:
+        locs.append(destination)
+    
     # Generate the EID and service tag for this service
     local_service_eid = dtnapi.dtn_build_local_eid(dtn_handle,
                                                    "netinfproto/app/response")
-    debug("Service EID: %s" % local_service_eid)
+    debug("Local Service EID: %s" % local_service_eid)
+    debug("Remote Service EID: %s" % remote_service_eid)
 
     # Check if service_eid registration exists and register if not
     # Otherwise bind to the existing registration
