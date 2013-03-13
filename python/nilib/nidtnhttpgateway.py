@@ -284,7 +284,7 @@ if __name__ == "__main__":
     gw.start_gateway()
 
     time.sleep(0.1)
-    test_run_length = 30.0
+    test_run_length = 200.0
     logger.info("Gateway running - will run for %f secs or until Ctrl/C" %
                 test_run_length)
 

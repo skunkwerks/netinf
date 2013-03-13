@@ -669,7 +669,7 @@ class DtnSend(Thread):
             # This distinguishes an empty payload file from the no content case
             if (req.make_response and
                 (req.req_type == HTTPRequest.HTTP_GET) and
-                (req.content == None)):
+                (req.result == None)):
                 md = Metadata()
                 md.set_ontology(Metadata.ONTOLOGY_PAYLOAD_PLACEHOLDER)
                 md.set_ontology_data("No content available")

@@ -344,7 +344,7 @@ def publish_with_dtn(ni_name, destination, authority, hash_alg, ext_json, locs,
     if destination is None:
         remote_service_eid = \
                     dtnapi.dtn_build_local_eid(dtn_handle,
-                                               "/netinfproto/service/publish")
+                                               "netinfproto/service/publish")
         i = remote_service_eid.find("/netinfproto")
         destination = remote_service_eid[:i]
     else:                           

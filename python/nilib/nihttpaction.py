@@ -2,7 +2,7 @@
 """
 @package nilib
 @file nigetlist.py
-@brief Command line client to perform a NetInf 'get' operation on a list of files.
+@brief Multiprocess handler for forwarding requests via HTTP convergence layer.
 @version $Revision: 0.05 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
       This is an adjunct to the NI URI library developed as
@@ -27,7 +27,7 @@ limitations under the License.
 ===============================================================================#
 
 @details
-To send 'get' requests to a server to retrieve a whole list of files.
+Multiprocess handler for forwarding requests via HTTP convergence layer.
 
 
 @code
@@ -908,6 +908,7 @@ class HTTPAction(Thread):
                     if response is not None:
                         old_content = req_msg.result
                         req_msg.result = response
+                        self.logdebug("Updated GET result: %s" % response)
                     # Combine metadata
                     if req_msg.metadata is None:
                         req_msg.metadata = NetInfMetaData()
