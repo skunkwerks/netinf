@@ -75,12 +75,15 @@ setup(name='nilib',
       entry_points={
                       'console_scripts': [
                            'pyniserver = nilib.niserver_main:py_niserver',
+                           'pyredisflush = nilib.redisflush:py_redisflush',
                            'pystopniserver = nilib.niserver_stop:stop_niserver',
                            'pynicl = nilib.nicl:py_nicl',
                            'pyniget = nilib.niget:py_niget',
                            'pynigetalt = nilib.nigetalt:py_nigetalt',
+                           'pynigetlist = nilib.nigetlist:py_nigetlist',
                            'pynipub = nilib.nipub:py_nipub',
                            'pynipubalt = nilib.nipubalt:py_nipubalt',
+                           'pynipubdir = nilib.nipubdir:py_nipubdir',
                            'pynisearch = nilib.nisearch:py_nisearch',
 			   'pyniwgsiserver = nilib.niwsgiserver.py:py_niwsgiserver']
                     },

@@ -6,7 +6,9 @@ HELP for Nilib Python Server
 <h2>The server responds to the following at ==SERVER_NAME==:</h2>
 <h3><b>GET</b> requests on paths:</h3>
 <ul>
-<li>/help.html</li>
+<li>/help.html,</li>
+<li>/testapp, (prints 'Hello World!'),</li>
+<li>/envapp, (outputs WSGI environment dictionary),</li>
 <li>/.well-known/ni[h]/&lt;digest algorithm id>/&lt;digest>,</li>
 <li>/ni_cache/&lt;digest algorithm id>;&lt;digest>,</li>
 <li>/ni_meta/&lt;digest algorithm id>;&lt;digest>,</li>

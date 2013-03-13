@@ -52,6 +52,7 @@ The handler deals with a limited set of URLs
                  - /.well-known/ni[h]/<digest algorithm id>/<digest>,
                  - /ni_cache/<digest algorithm id>;<digest>,
                  - /ni_meta/<digest algorithm id>;<digest>,
+                 - /ni_qrcode/<digest algorithm id>;<digest>,
                  - /getputform.html,
                  - /nrsconfig.html, (when running NRS server)
                  - /favicon.ico, and<
@@ -61,7 +62,7 @@ The handler deals with a limited set of URLs
                  - /netinfproto/get,
                  - /netinfproto/publish,
                  - /netinfproto/put, and
-                 - /netinf/search
+                 - /netinfproto/search
 - POST on paths (when running NRS server):
                  - /netinfproto/nrsconf,
                  - /netinfproto/nrslookup,
@@ -177,6 +178,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.7       07/03/2013 Elwyn Davies   Corrected some comments.
 1.6       14/12/2012 Elwyn Davies   Cope with module selection in installed case.
 1.5       10/12/2012 Elwyn Davies   Allow for Redis cache implementation.
 1.4       09/12/2012 Elwyn Davies   Changed format of loginfo output to ease
