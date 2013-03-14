@@ -1,18 +1,26 @@
-NI URI format implementation in Python
-======================================
+NetINf Protocol and NI URI format implementation in Python
+==========================================================
 
-Author:: Elwyn Davies <davieseb@scaa.tcd.ie>/<elwynd@folly.org.uk> 
-Specification:: http://tools.ietf.org/html/draft-farrell-decade-ni-00
+Author:: Elwyn Davies <davieseb@scss.tcd.ie>/<elwynd@folly.org.uk>
 License:: Apache 2.0 - See LICENSE file.
-Copyright (c) 2012 Elwyn Davies, Trinity College Dublin and Folly Consulting Ltd
-You can redistribute it and/or modify it under the same terms as Python.
+Copyright (c) 2012, 2013 Elwyn Davies, Trinity College Dublin and
+                                       Folly Consulting Ltd
+You can redistribute it and/or modify it under essentially the same terms as
+Python.
 
-Basic implementation of the the NI URI format. Work in Progress.
+Provides implementations of:
+    - ni and nih URI schemes plus binary format of ni scheme
+    - NetInf protocol HTTP and DTN convergence layers
+    - Clients and servers for HTTP with forwarding
+    - Clients for DTN
+    - HTTP<->DTN NetInf gateway
+    - Caches for Named Sata Objects (NDOs) using either purely files or
+      files for content and a Redis NoSQL database for affiliated data
 
 The specifications that this is based on - note, versions may change:
           - http://tools.ietf.org/html/draft-farrell-decade-ni-10
           - http://tools.ietf.org/html/draft-hallambaker-decade-ni-params-03
-          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-00
+          - http://tools.ietf.org/html/draft-kutscher-icnrg-netinf-proto-01
 
 Currently the code is for release 2 (version 2.6 or later) of Python.
 Support for release 3 will need some conversion work.
@@ -58,43 +66,359 @@ Requires Python 'posix_ipc' module (version 0.9.4 or later) to provide
 support for shared memory blocks.  This module can be downloaded from
 http://semanchuk.com/philip/posix_ipc/
 
-(In each case the modules can be installed using:
-sudo python setup.py install
-assuming you have the distutils module installed).
+In each case the modules can be installed using:
+    sudo python setup.py install
+assuming you have the setuptools module installed.
 
-They are also all in the PyPi repository and the Python 'nilib' setup checks 
-that they have been installed, and installs them for you if they are missing. 
-They can be individually installed using 
-sudo pip install <modulename>
+If you don't have setuptools installed, it can be obtained from:
+    https://pypi.python.org/pypi/setuptools
 
-Provides:
+Building the package involves compiling a C extension module (_nistruct.c).
+This requires the Python development headers for the version of Python in use
+to be installed (e.g., using the python-dev package in Debian/Ubuntu) and
+a suitable C compiler being installed.
+
+All the modules are also all in the PyPi repository and the Python 'nilib' setup
+checks that they have been installed, and installs them for you if they are
+missing and you have the setuptools mddule installed. They can be individually
+installed using sudo pip install <modulename>
+
+Overview of Python NIlib Modules
+================================
+
+1 Core ni URI Support
+  - ni.py                          - Library of ni: and nih: URL processing and
+                                     digest making/checking functions.  Also
+                                     handles binary format and provides error
+                                     codes and error texts.
+  - nicl.py                        - Basic command line tool to make and check
+                                     digests using ni.py for anyy of 
+                                     ni/nih URI or binary encoding.
+
+2 NetInf Command Line Client Utilities
+  - niget.py                       - Basic command line utility to issue a GET
+                                     request over the HTTP convergence layer
+  - nigetalt.py                    - More comprehensive command line utility
+                                     to issue a GET requests over either the
+                                     HTTP or DTN BP convergence layer
+  - nigetlist.py                   - Performace testing command line utility
+                                     to issue GET requests for a list of files;
+                                     the requests can be run in parallel in
+                                     spawned sub-processes using HTTP CL.
+  - nipub.py                       - Basic command line utility to issue a
+                                     PUBLISH request over the HTTP convergence
+                                     layer.
+  - nipubalt.py                    - More comprehensive command line utility
+                                     to issue a PUBLISH requests over either
+                                     the HTTP or DTN BP convergence layer
+  - nipubdir.py                    - Performance testing and configuration
+                                     utility to issue PUBLISH requests for a
+                                     complete tree of files (or some initial
+                                     number of them) over the HTTP CL; the
+                                     requests can be run in parallel in
+                                     spawned sub-processes if required.
+  - nisearch.py                    - Basic command line utility to issue a
+                                     SEARCH request over the HTTP convergence
+                                     layer using a specified set of tokens.
+
+3 Server Common Code
+  - metadata.py                    - Class to handle the internal form of the
+                                     metadata of an NDO and handle the transform
+                                     to and from encoded JSON string in whcih it
+                                     is stored in the cache.
+  - file_store.py                  - Dummy module that signifies that the cache
+                                     should store metadata in disk files. Used
+                                     to drive the later importing of the
+                                     correct cache manager module
+  - redis_store.py                 - Dummy module that signifies that the cache
+                                     should store metadata in a Redis database.
+                                     Used to drive the later importing of the
+                                     correct cache manager module
+  - cache_single.py                - Cache manager module using files to hold
+                                     metadata that is suitable for use with
+                                     a server that is single process but
+                                     potentially multi-threaded.  Uses only
+                                     process internal locks and provides an
+                                     in-memory 2nd level cache.
+  - cache_multi.py                 - Cache manager module using files to hold
+                                     metadata that is suitable for use with
+                                     a server that is potentailly multiprocess
+                                     and may also be multi-threaded.  Uses
+                                     process internal locks and also operating
+                                     system file locks for the metadata files.
+                                     Does not provide a 2nd level cache because
+                                     of difficulties of inter-process
+                                     synchroniztion.
+  - cache_redis.py                 - Cache manager module using a Redis database
+                                     to hold metadata that is suitabel for
+                                     multiprocess and multi-threaded servers.
+                                     Uses internal process locks and Redis
+                                     optimistic locking to synthesize
+                                     transactions when writing metadata.
+  - redisflush.py                  - Command line utility to flush a NetInf
+                                     cache using a Redis database for metadata.
+  - nihandler.py                   - Core handler routines for HTTP convergence
+                                     layer servers.
+  - nifwd.py                       - HTTP server extension to handle forwarding
+                                     of requests that cannot be satisfied
+                                     locally.
+  - ni_exception.py                - Definitions for all exceptions used in the
+                                     NIlib.
+
+4 Servers Handling the HTTP Convergence Layer
+  - niserver.py                    - Wrapper class for Python standard  
+                                     HTTPServer and ThreadingMixIn classes that
+                                     instantiates a multi-threaded single 
+                                     process HTTP server.  The server creates a
+                                     new thread and invokes the nihandler.py for
+                                     each new connection received.  This then
+                                     handles all the requests received on the
+                                     connection until it is closed.
+  - httpshim.py                    - Shim adaptor class that combines the
+                                     standard Python BaseHTTPHandler class and
+                                     the handler in nihandler.py so that it can
+                                     be used with niserver.py to create a
+                                     standalone HTTP server that processes
+                                     NetInf requests, manages an NDO cache and,
+                                     optionally, provides an HTTP<->DTN gateway.
+  - niserver_main.py               - Startup script for standalone HTTP server.
+                                     Reads configuration file (see
+                                     niserver.conf) and then invokes
+                                     niserver.py to create the server which runs
+                                     in a separate thread.  The main thread then
+                                     hangs up waiting for a UDP packet thet will
+                                     stop the server on port 2114 (or as
+                                     configured).
+  - niserver_stop.py               - Script that sends a UDP packet to port 2114 
+                                     to etop the satndalone HTTP server.
+  - niwsgiserver.py                - Startup script to start a standalone WSGI
+                                     server using the WSGI reference
+                                     implementation provided with Python. This
+                                     is a single-threaded, single process server
+                                     primarily designed for teesting the WSGI
+                                     version of the HTTP server that is used as
+                                     a plug-in for Apache 2.  It is configured
+                                     by setting various environment variables.
+  - wsgishim.py                    - Shim adaptor class and support mechanisms 
+                                     allowing nihandler.py to provide a request
+                                     handler for HTTP servers using the Python
+                                     WSGI interface. 
+
+5 HTTP Server Support Files
+  - netinf_ver.py                  - Version strings for the system.
+  - data/niserver.conf             - Default configuration file for the HTTP
+                                     standalone server. Read by
+                                     niserver_main.py.
+  - data/niserver_log.conf         - Default logging configuration file for the
+                                     HTTP standalone server.
+  - scripts/install-nilib-wsgi.sh  - Shell script used to create a virtual host
+                                     file to provide a WSGI-based NetInf server
+                                     in an Apache 2 instance.
+  - scripts/test.wsgi              - Test application used to verify 
+                                     functionality of mod_wsgi installation
+                                     in an Apache 2 server.
+                                     Displays 'Hello, World!' when invoked.
+  - scripts/showenv.wsgi           - Stage 2 test application for checking 
+                                     mod_wsgi virtual host installations in
+                                     Apache 2 instances.  Displays the
+                                     complete environment dictionary passed
+                                     to the WSGI application function when
+                                     a request that invokes it is processed.
+  - scripts/netinf_file.wsgi       - 'Application' function to be invoked by
+                                     a NetInf request processed by a mod_wsgi
+                                     Apache 2 server instance when a purely
+                                     file based cache  is in use.
+  - scripts/netinf_redis.wsgi      - 'Application' function to be invoked by
+                                     a NetInf request processed by a mod_wsgi
+                                     Apache 2 server instance when a combined
+                                     file and Redis database based cache is in 
+                                     use.
+  - data/help.html                 - Basic help page installed with mod_wsgi
+                                     HTTP servers that displays the various
+                                     URLs that can be sent to such a server.
+  - data/getputform.html           - HTML form template delivered to browsers
+                                     to enable a user to send NetInf requests
+                                     from a browser screen rather than using
+                                     command line applicastions.
+  - data/nrsconfig.html            - HTML form template delivered to browsers
+                                     to enable a user to configure the Name
+                                     Resolution System that can be optionally
+                                     enabled in HTTP servers, via a browser
+                                     screen.
+  - data/favicon.ico               - NetInf mini-icon shown in browser bookmark
+                                     lists and on address bars by sites
+                                     running an HTTP convergence layer server.
+
+6 Server and Gateway Handling the DTN Convergence Layer
+  - nidtnhttpgateway.py            - HTTP<->DTN gateway control class. Sets up
+                                     and runs the DTN send and receive
+                                     interfaces and the nihttpaction.py
+                                     request forwarder.
+  - nihttpaction.py                - Request forwarder for gateway.
+  - nidtnproc.py                   - DTN send and receive threads for gateway.
+                                     Used to process requests received over
+                                     DTN and send corresponding responses.
+  - nidtnevtmsg.py                 - Encapsulator for incoming messages and 
+                                     responses.
+
+7 DTN Support and DTN2 BPA Interface
+  - dtnapi.py                      - (not part of NIlib) Python scripting 
+                                     interface to DTN2 - installed by DTN2
+                                     package and used by DTN convergence layer
+                                     to send and receive BP bundles via DTN2.
+  - dtn_api_const.py               - Some constants used by DTN2 that are not
+                                     incorporated in dtnapi.py
+  - nidtnbpq.py                    - Encapsulation for BP Bundle Protocol
+                                     Query extension block.  Provides methods
+                                     to convert from on-the-wire binary form
+                                     to instenal form and vice versa, and
+                                     structure to build and access a BPQ block.
+  - nidtnmetadata.py               - Encapsulation for BP Metadata block.
+                                     Provides methods to convert from
+                                     on-the-wire binary form to internal form
+                                     and vice versa, and structure to build and
+                                     access a Metadata blcok.
+  - nistruct.py                    - Python wrapper for _nistruct.c.
+  - _nistruct.c                    - Extension of the standard Python struct
+                                     module that copes with SDNV (Self-Defining
+                                     Numeric Values) items in binary data
+                                     structures.  Extensively used in BP.
+                                     Needed for assembling and disassembling
+                                     BPQ and Metadata blocks.  Needs the Python
+                                     development package installed and a
+                                     suitable C compiler.  If you are working
+                                     with a development version of NIlib rather
+                                     than an installed version, you will probably
+                                     find it convenient to build _nistruct.so
+                                     locally by running (in the python
+                                     directory of the NIlib distribution tree):
+                                         python setup.py build
+                                     and then make a soft link from the
+                                     python/build-<sysname>/nilib/_nistruct.so
+                                     to python/nilib/_nistruct.so
+
+8 Modified 'Poster' Software
+The two modules is in this section are modified versions of the 'poster'
+software written by Chris Atlee.  The original code and further documentation is
+available at
+            http://atlee.ca/software/poster/index.html
+This software is licensed under the MIT license which is somewhat different from
+the Apache 2 license but is also acceptable for Open Source releases.
+  - streaminghttp.py               - Supports the sending of 
+                                     multipart/form-encoded HTTP POST requests
+                                     that are needed for uploading and
+                                     publishing (large) files.  Extends the
+                                     standard Python httplib and urllib2 HTTP
+                                     client modules so that iterable objects
+                                     can be used in the body of requests.
+                                     This allows large objects to be sent to the
+                                     outgoing HTTP stream in chunks rather than
+                                     as a single block in the standard modules.
+                                     Only the documentation has been altered.
+  - encode.py                      - Supports mechanisms for generating the 
+                                     multipart/form-encoded data to go with
+                                     an HTTP POST or PUT request.  Extended to
+                                     allow a digest for a file being uploaded
+                                     to be accumulated on-the-fly as the data
+                                     is sent out to the network for transmission
+                                     over HTTP/TCP, and to provide values for
+                                     form parameters to be genrated at the time
+                                     the parameter is written to the network
+                                     rather than when the form is constructed.
+                                     This allows values to be dependent on
+                                     things (such as the digest) that are
+                                     calculated as the form is uploaded. 
+9 Modified Standard Python Modules
+  - ni_urlparse.py                 - A modification of the standard urlparse.py.
+                                     Entriee added to recognize ni amd nih 
+                                     schemes.  Mostly a matter of adding ni and
+                                     nih to the appropriate tables, except that
+                                     nih is the first entry in non_hierarchical
+                                     which suppresses the addition of /// in
+                                     front of the path in urlunsplit.
+  - nifeedparser.py                - A modification of email/feedparser.py.
+                                     Allows the parser to be configured to dump
+                                     message payloads directly into a file
+                                     rather than being placed in a buffer.
+                                     The class (FiledMessage) that does this
+                                     can also create a digest of the payload
+                                     as it writes.
+10 NIlib Setup Support and Documentation
+  - setup.py                       - Control script for package installation
+                                     using setuptools.  Needs the Python
+                                     development headers for the Python version
+                                     in use to be installed and a suitable C
+                                     compiler installed.
+  - __init__.py                    - Required to be present by setuptools.
+                                     Currently contains no code but does hold
+                                     the Doygen mainpage text.
+  - MANIFEST.in                    - List of files other than Python modules 
+                                     to be included in a distribution.
+  - scripts/pynilib_test.sh        - Test script for nicl.py.
+  - python/README                  - A pointer to this file and other
+                                     documentation in the python directory
+                                     of the distribution tree.
+  - doc/README                     - This file
+  - doc/netinf-python-00.odg/.pdf  - More complete description of the package
+
+The following sections describe the various executables that can be built
+out of the modules described above and the components that they use.
 
 Command line utilities:
-- nicl.py -         basic command line tool to make and check digests using ni.py.
-- niget.py -        command line tool to perform NetInf get requests over HTTP.
-- nipub.py -        command line tool to perform NetInf publish requests over HTTP.
-- nisearch.py -     command line tool to perform NetInf search requests over HTTP.
-- pynilib_test.sh - shell script used for checking ni.py and nicl.py.
+=======================
 
-Lightweight NI NDO cache server:
-================================
+The installation script creates handy wrappers for the various command line
+clients and tools and places them in /usr/bin or other convenient location
+on the default shell search path so that they can be easily run.  The
+mapping from script name NIlib module is as follows:
+pynicl         - runs nicl.py
+pyniget        - runs niget.py
+pynigetalt     - runs nigetalt.py
+pynigetlist    - runs nigetlist.py
+pynipub        - runs nipub.py
+pynipubalt     - runs nipubalt.py
+pynipubdir     - runs nipubdir.py
+pynisearch     - runs nisearch.py
+pyniserver     - runs niserver_main.py
+pystopniserver - runs niserver_stop.py
+pyniwgsiserver - runs niwsgiserver.py
+pyredisflush   - runs redisflush.py
+
+Lightweight Standalone NetInf HTTP Convergence Layer NDO cache server:
+======================================================================
      
- Provides an HTTP server that just serves as the server end of the NetInf
- protocol, manages a local cache of NDOs and provides http: access using
- the .well-known/ni mechanism. It provides the following functions:
+Provides an HTTP server that provides the server end of the NetInf protocol
+using the HTTP converegence layer, manages a local cache of NDOs and provides
+http: access using the .well-known/ni mechanism. It provides the following
+functions:
+Send NetInf protocol requests over HTTP:
  - NetInf GET over HTTP CL (responds to POSTs to /netinfproto/get)
- - NetInf PUBLISH over HTTP CL (responds to POSTs to /netinfproto/publish or .../put)
+ - NetInf PUBLISH over HTTP CL (responds to POSTs to /netinfproto/publish or
+                                /netinfproto/put)
  - NetInf SEARCH over HTTP CL (responds to POSTs to /netinfproto/search)
+Access cached items directly via HTTP
  - HTTP GET for /.well-known/ni/<alg name>/<digest>
+ - HTTP GET for /ni_cache/<alg name>;<digest>
+ - HTTP GET for /ni_meta/<alg name>;<digest>
+ - HTTP GET for /ni_qrcode/<alg name>;<digest>
+Configure and/or check the local cache integrity:
+ - HTTP GET for /netinfprotoc/checkcache
+Provide browser support:
  - HTTP GET for /getputform.html
- - HTTP GET for /netinfproto/list and /netinfproto/list?showcache.html?alg=<alg-name>
+ - HTTP GET for /netinfproto/list and /netinfproto/list?alg=<alg-name>
  - HTTP GET for /favicon.ico (NetInf mini icon displayed in browser URL box)
 
 The server can be configured to provide Name Resolution Services (NRS):
  - Add an NRS database entry (responds on POSTs on /netinfproto/nrsconf)
  - Lookup an NRS database entry (responds on POSTs on /netinfproto/nrslookup)
  - Delete an NRS database entry (responds on POSTs on /netinfproto/nrsdelete)
- - Examine available NRS database entries (responds on POSTs on /netinfproto/nrsvals)
+ - Examine available NRS database entries (responds on POSTs on
+                                           /netinfproto/nrsvals)
+The server can also forward unsatisfied requests using the NRS and other hints
+to other servers.
+
+The server can also be configured to act as a HTTP<->DTN gateway.  This is
+discussed in more detail below.
 
 The server uses the standard Python BaseHTTPHandler paradigm with threading and
 various improvements to the handler to allow streaming of input and output 
@@ -112,18 +436,24 @@ Uses the following files:
                          nihandler to the BaseHTTPHandler derived code needed 
 			 by niserver.py
  - metadata.py         - encapsulation for NDO metadata
+ - netinf_ver.py       - version strings
+ - ni_exception.py     - exceptions generated by code in this library
+One of the following cache managers and associated dummy controller:
+ - file_store.py       - triggers loading of cache_single.py
  - cache_single.py     - encapsulation for NDO cache (metadata and contents)
                          in a filesystem (with enhancements for single process, 
 		         multithreaded server)
- - netinf_ver.py       - version strings
- - ni_exception.py     - exceptions generated by code in this library
+ - redis_store.py      - triggers loading of cache_redis.py
+ - cache_redis.py      - encapsulation for NDO cache using file system for
+                         content and Redis database for metadata.
+Configuration files:
  - niserver.conf       - main configuration file - 
                          specifies locations for logs, cache
  - niserver_log.conf   - configuration file for Python logging system for server
 
 Also:
  - niserver_stop.py    - command line utility to stop the server (only from the
-                       same host as it was started on)
+                         same host as it was started on)
 
 Support modules:
 - ni.py                - library of ni: and nih: URL processing and digest
@@ -139,6 +469,20 @@ Support modules (acquired from http://atlee.ca/software/poster/index.html):
 			 and coping with Python generators (essentially as-is from 
 			 Poster site).
 
+Components for HTTP<->DTN gateway:
+ - nidtnhttpgateway.py - HTTP<->DTN gateway controller.
+ - nihttpaction.py     - Request forwarder for gateway.
+ - nidtnproc.py        - DTN send and receive threads for gateway.
+ - nidtnevtmsg.py      - Encapsulator for incoming messages and responses.
+
+DTN support components (also needed by nigetalt and nipubalt):
+ - dtnapi.py           - DTN2 Python interface (form DTN2 package)
+ - dtn_api_const.py    - DTN2 extra interface constants
+ - nidtnbpq.py         - Bundle Protocol BPQ block encapsulation
+ - nidtnmetadata.py    - Bundle Protocol Metadata block encapsulation
+ - nistruct.py         - SDNV-enhanced Python struct module
+ - _nistruct.so        - C extesnison library for nistruct.py
+
 WSGI Test Server
 ================
 The same NetInf functionality as with the server based on BaseHTTPServer can
@@ -150,7 +494,7 @@ variables rather than a configuration file.  As such it is more useful for
 testing improvements to the handler rather than a production system.  The 
 server is also easier to start and stop than the BaseHTTPServer version.
 
-By default logging gies to stderr, but can be configured to go to a file or
+By default logging goes to stderr, but can be configured to go to a file or
 a syslog stream by setting the NETINF_SYSLOG_FACILITY environment variable.
 The values 'local0' to 'local9' select syslog streams, the empty string 
 gets you stderr (as the default) and other strings are treated as file names.
@@ -166,11 +510,16 @@ Uses the following files:
                          nihandler to the WSGI interface needed by 
 			 niswsgierver.py
  - metadata.py         - encapsulation for NDO metadata
- - cache_single.py     - encapsulation for NDO cache (metadata and contents)
-                         in a filesystem (with enhancements for multi-process, 
-		         multithreaded server)
  - ni_exception.py     - exceptions generated by code in this library
  - netinf_ver.py       - version strings
+One of the following cache managers and associated dummy controller:
+ - file_store.py       - triggers loading of cache_single.py
+ - cache_multi.py      - encapsulation for NDO cache (metadata and contents)
+                         in a filesystem (suitable for a multiprocess server
+                         but only used in a single process here)
+ - redis_store.py      - triggers loading of cache_redis.py
+ - cache_redis.py      - encapsulation for NDO cache using file system for
+                         content and Redis database for metadata.
 
 Support modules:
 - ni.py                - library of ni: and nih: URL processing and digest
@@ -196,12 +545,18 @@ Uses the following files:
                          nihandler to the WSGI interface needed by 
 			 niswsgierver.py
  - metadata.py         - encapsulation for NDO metadata
- - cache_single.py     - encapsulation for NDO cache (metadata and contents)
-                         in a filesystem (with enhancements for multi-process, 
-		         multithreaded server)
  - ni_exception.py     - exceptions generated by code in this library
  - netinf_ver.py       - version strings
-
+One of the following cache managers and associated dummy controller and
+mod_wsgi application modules:
+ - file_store.py       - triggers loading of cache_single.py
+ - netinf_file.wsgi    - mod_wsgi application function file for file cache
+ - cache_multi.py      - encapsulation for NDO cache (metadata and contents)
+                         in a filesystem (suitable for a multiprocess server)
+ - redis_store.py      - triggers loading of cache_redis.py
+ - netinf_redis.wsgi   - mod_wsgi application function file for Redis cache
+ - cache_redis.py      - encapsulation for NDO cache using file system for
+                         content and Redis database for metadata.
 
 Support modules:
 - ni.py                - library of ni: and nih: URL processing and digest
@@ -210,7 +565,9 @@ Support modules:
                          supporting ni and nih schemes.
 
 Installation script and support files (in nilib/scripts):
- - install_netinf_wsgi - sets up the Apache 2 with mod_wsgi to run the niserver
+ - install_netinf_wsgi - creates an Apache 2 virtual host file suitable for
+                         a mod_wsgi NetInf HTTP convergence layer server and
+                         sets up the Apache 2 with mod_wsgi to run the server
  - test.wsgi           - "Hello World" WSGI application for checking mod_wsgi 
                          installation.
  - showenv.wsgi        - Simple WSGI application to show the environ dictionary 
@@ -244,46 +601,43 @@ This requires the Python distribute system to be installed. See
 http://packages.python.org/distribute/setuptools.html
 
 It is quite likely that this is installed as standard.  Note that it is not the
-original distutils package, but the enhanced package.  Extra facilities are
-used to create the scripts that invoke the command line tools automatically
-while leaving the source code in .py files in the nilib distribution.
+original distutils package, but the enhanced package.  Extra facilities are used
+to create the scripts that invoke the command line tools automatically while
+leaving the source code in .py files in the nilib distribution.
 
-The installation script ensures that a number of Python packages needed
-by nilib are installed.  As described earlier in this file the packages can 
-also be installed individually either from their original web sites or
-from the PyPi archives using 'pip'.
+The installation script ensures that a number of Python packages needed by nilib
+are installed.  As described earlier in this file the packages can also be
+installed individually either from their original web sites or from the PyPi
+archives using 'pip'.
 
-Run the script 'python/nilib/scripts/install_netinf_wsgi.sh' to setup 
-an Apache 2 web server to use the code to server an NDO cache through an
-Apache 2 virtual host.  You need to have 'root' privileges to run the 
-acript and the Apache 2 server and the WSGI module mod_wsgi need to be 
-pre-installed.  On Ubuntu there are apt packages available for both of 
-these. The steps required are described in the file APACHE in the 
-python/nilib/doc directory.
+Run the script 'python/nilib/scripts/install_netinf_wsgi.sh' to setup an Apache
+2 web server to use the code to server an NDO cache through an Apache 2 virtual
+host.  You need to have 'root' privileges to run the acript and the Apache 2
+server and the WSGI module mod_wsgi need to be pre-installed.  On Ubuntu there
+are apt packages available for both of these. The steps required are described
+in the file APACHE in the python/nilib/doc directory.
 
-There are two test apps installed by default - accessed from 
-http://<netloc>/testapp and http://<netloc>/showenv.  These are intended
-to be helpful in checking out a new mod_wsgi installation.  They are not
-dependent on the rest of the nilib code in any way. One is a 'Hello World'
-displayer and the other prints the environ dictionary passed to the app
-by mod_wsgi.  This allows you to check you have the NETINF environment 
-variables set correctly.
+There are two test apps installed by default - accessed from
+http://<netloc>/testapp and http://<netloc>/showenv.  These are intended to be
+helpful in checking out a new mod_wsgi installation.  They are not dependent on
+the rest of the nilib code in any way. One is a 'Hello World' displayer and the
+other prints the environ dictionary passed to the app by mod_wsgi.  This allows
+you to check you have the NETINF environment variables set correctly.
 
-The default installation is optimized so that the fixed forms etc are 
-delivered as static files although the netinf.wsgi application would
-also deliver them.
+The default installation is optimized so that the fixed forms etc are delivered
+as static files although the netinf.wsgi application would also deliver them.
 
-The first thing to do once you are happy the installation is correct
-is to access the URL http://<netloc>/checkcache.  This checks that 
-the cache directory structure used has been correctly setup (and tries to
-set it up if it hasn't already been done.) It can be run again at any time 
-to check the cache is still as expected.  It ought to check all the entries
-are compatible with the current code, but that is for another day. If the
-check reports a problem, more information can be found in the log file.
-The most usual problem is that the directory at the root of the storage 
-tree has not been created before starting the server or maybe is not
-writeable by the server (for Apache this probably means that it has
-to be owned by the Apache user typically www-data).
+The first thing to do once you are happy the installation is correct is to
+access the URL http://<netloc>/netinfprotoc/checkcache.  This checks that the
+cache directory structure used has been correctly setup (and tries to set it up
+if it hasn't already been done.) It can be run again at any time to check the
+cache is still as expected.  It ought to check all the entries are compatible
+with the current code, but that is for another day. If the check reports a
+problem, more information can be found in the log file. The most usual problem
+is that the directory at the root of the storage tree has not been created
+before starting the server or maybe is not writeable by the server (for Apache
+this probably means that it has to be owned by the Apache user typically
+www-data).
 
 NOTES
 =====
@@ -325,13 +679,20 @@ Features
 
 Limitations
  - niget should generate digest as it reads the content if possible rather
-   than reading it into a buffer (problem with very large objects)
+   than reading it into a buffer (problem with very large objects).  Note
+   this deficiency has been reemedied in nigetalt and will be back ported
+   in due course.
  - (more difficult) generate digest on the fly in server when uploading
    file on publishing - may conflict with generating ni name on the fly at
    client end (there is a solution by adding algorithm name to
    content-disposition header for form data item with file).
                
 CHANGES
+  2013-03-14
+        - Major update after implementing DTN convergence layer and building
+          HTTP<->DTN gateway and Redis cache management.  Added descriptive
+          document to describe whole of implementation
+          (netinf-python-00.odg/.pdf).
   2012-12-07
         - Encapsulated the cache handling code to simplify providing 
 	  alternative storage mechanisms.  Separated out the metadata class
