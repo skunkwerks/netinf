@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
 @package nilib
-@file nigetlist.py
+@file nihttpaction.py
 @brief Multiprocess handler for forwarding requests via HTTP convergence layer.
 @version $Revision: 0.05 $ $Author: elwynd $
 @version Copyright (C) 2012 Trinity College Dublin and Folly Consulting Ltd
@@ -29,15 +29,32 @@ limitations under the License.
 @details
 Multiprocess handler for forwarding requests via HTTP convergence layer.
 
+This module contains two pieces:
+- a class, HTTPAction, an instance of which is used to manage a thread that
+  forwards incoming NetInf requests to one or more locators found from
+  various sources:
+  - the locator originally in the ni name
+  - any http scheme or unspecified scheme URLs in the loclist in the affiliated
+    data of the request
+  - any http or unnspecified scheme locators found in the NRS datnbase
+  Duplicates ane the current node are removed from the list and the request
+  forwarded to each remaining locator (if any).
+
 
 @code
 Revision History
 ================
 Version   Date       Author         Notes
-1.0	  14/01/2012 Elwyn Davies   Created using niget.py as template.
-                                    Incorporate use of feedparser to
+1.2	  16/03/2012 Elwyn Davies   Completed documentation comments.
+1.1	  13/02/2012 Elwyn Davies   Running version for demo tests.
+1.0	  10/02/2012 Elwyn Davies   Prepared for demo tests.
+0.2	  06/02/2012 Elwyn Davies   Added publish functionality.
+0.1	  03/02/2012 Elwyn Davies   Debugged ready for integration.
+0.0	  01/02/2012 Elwyn Davies   Created with get functionality only.
 @endcode
 """
+#==============================================================================#
+#=== Standard modules for Python 2.[567].x distributions ===
 import sys
 from types import *
 import os.path
@@ -61,7 +78,10 @@ import logging
 import Queue
 import StringIO
 
+#=== Modules needing special downloading
 from redis import StrictRedis
+
+#=== Local package modules ===
 
 from ni import ni_errs, ni_errs_txt, NIname, NIproc, NIdigester
 from nifeedparser import DigestFile, FeedParser
@@ -72,42 +92,89 @@ from nidtnbpq import BPQ
 from encode import *
 import streaminghttp
 
-timeout_test = False 
 #============================================================================#
 # === Routines Executed in Asynchronous Multiprocess
 
 # === GLOBAL VARIABLES ===
 
 ##@var process_logger
-# instance of logger object used for logging in synchronous processes 
+# instance of logger object used for logging in asynchronous processes 
 process_logger= None
 
-#===============================================================================#
-verbose = True
-def debug(string):
-    """
-    @brief Print out debugging information string
-    @param string to be printed (in)
-    """
-    if verbose:
-        process_logger.debug(string)
-    return
+# --- The following three variables are used by logging in spawned processes ---
+##@var curr_req_id
+# integer identifier for request being processed in asynchronous process
+curr_req_id = -1
 
-#------------------------------------------------------------------------------#
-def nilog(string):
+##@var curr_req_index
+# integer index of host for request being processed in asynchronous process
+curr_req_index = -1
+
+##@var curr_req_type
+# string type of request (GET, PUBLISH, SEARCH) being processed in async process
+curr_req_type = "unknown"
+
+#===============================================================================#
+#=== Logging Functions for spawned processes ===
+#-------------------------------------------------------------------------------#
+def splog(logfn, logstr):
 	"""
-	@brief Log the node, time, and the string
-	@param string to be printed (in)
+	@brief Log the node, request id, request index, request type, time, and
+	       the logstr using logger function provided in logfn
+	@param logfn callable unbound logging function (info, warn, error, etc)
+	@param logstr string to be printed
 	"""
 	node=platform.node()
 	now=time.time() 
-	nano= "%.10f" %now
+	nano= "%.10f" % now
 	utct = time.strftime("%Y-%m-%dT%H:%M:%S")
 	
-	process_logger.info('NILOG: ' + node + ',' + nano + ',' + utct + ',' + string)
+	logfn('HTTPActionProc: ' +
+              ','.join([node, nano, str(curr_req_id), str(curr_req_index),
+                        curr_req_type, utct, logstr]))
 	
 	return
 
+#------------------------------------------------------------------------------#
+def sploginfo(logstr):
+	"""
+	@brief Log the node, request id, request index, request type, time, and
+	       the logstr as an info level message
+	@param logstr string to be printed
+	"""
+	splog(logger.info, logstr)
+	return
+    
+#------------------------------------------------------------------------------#
+def splogwarn(logstr):
+	"""
+	@brief Log the node, request id, request index, request type, time, and
+	       the logstr as a warning level message
+	@param logstr string to be printed
+	"""
+	splog(logger.warn, logstr)
+	return
+    
+#------------------------------------------------------------------------------#
+def splogdebug(logstr):
+	"""
+	@brief Log the node, request id, request index, request type, time, and
+	       the logstr as a debug level message
+	@param logstr string to be printed
+	"""
+	splog(logger.debug, logstr)
+	return
+    
+#------------------------------------------------------------------------------#
+def splogerror(logstr):
+	"""
+	@brief Log the node, request id, request index, request type, time, and
+	       the logstr as an error level message
+	@param logstr string to be printed
+	"""
+	splog(logger.error, logstr)
+	return
+    
 #------------------------------------------------------------------------------#
 def get_req(req_id, ni_url, http_host, http_index, form_params,
             file_name, tempdir):
@@ -138,7 +205,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     # Must be a complete ni: URL with non-empty params field
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
-            nilog("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
+            splogdebug("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
             return(False, req_id, http_index, None, None)
 
     # Generate NetInf form access URL
@@ -157,7 +224,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     try:
         http_object = urllib2.urlopen(http_url, form_data)
     except Exception, e:
-        nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
+        sploginfo("Info: Unable to access http URL %s: %s" % (http_url, str(e)))
         return(False, req_id, http_index, None, None)
 
     # Get HTTP result code
@@ -165,13 +232,13 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
 
     # Get message headers - an instance of email.Message
     http_info = http_object.info()
-    debug("Response type: %s" % http_info.gettype())
-    debug("Response info:\n%s" % http_info)
+    splogdebug("Response type: %s" % http_info.gettype())
+    splogdebug("Response info:\n%s" % http_info)
 
     if (http_result != 200):
-        nilog("Get request returned HTTP code %d" % http_result)
+        splogdebug("Get request returned HTTP code %d" % http_result)
         buf = http_object.read()
-        debug("HTTP Response: %s" % buf)
+        splogdebug("HTTP Response: %s" % buf)
         http_object.close()
         return (False, ni_url_str)
 
@@ -189,7 +256,7 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     primer = "Content-Type: %s\r\n\r\n" % http_object.headers["content-type"]
     fd, digested_file = tempfile.mkstemp(dir=tempdir)
     fo = os.fdopen(fd, "w")
-    debug("Writng content to %s" % digested_file)
+    splogdebug("Writng content to %s" % digested_file)
 
     digester = DigestFile(digested_file, fo, ni_url.get_hash_function())
 
@@ -217,37 +284,39 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     http_object.close()
 
     if len(msg.defects) > 0:
-        nilog("Response was not a correctly formed MIME object")
+        splogwarn("Warning: Response was not a correctly formed MIME object")
         os.remove(digested_file)
         return(False, req_id, http_index, None, None)
     # Verify length 
     if ((obj_length != None) and (payload_len != obj_length)):
-        nilog("Warning: retrieved contents length (%d) does not match Content-Length header value (%d)" % (len(buf), obj_length))
+        splogwarn("Warning: Retrieved contents length (%d) does not match"
+                  "Content-Length header value (%d)" % (len(buf), obj_length))
         os.remove(digested_file)
         return(False, req_id, http_index, None, None)
         
-    debug( msg.__dict__)
+    splogdebug( msg.__dict__)
     # If the msg is multipart this is a list of the sub messages
     parts = msg.get_payload()
-    debug("Multipart: %s" % str(msg.is_multipart()))
+    splogdebug("Multipart: %s" % str(msg.is_multipart()))
     if msg.is_multipart():
-        debug("Number of parts: %d" % len(parts))
+        splogdebug("Number of parts: %d" % len(parts))
         if len(parts) != 2:
-            nilog("Error: Response from server does not have two parts.")
+            splogwarn("Warning: Response from server does not have two parts.")
             os.remove(digested_file)
             return(False, req_id, http_index, None, None)
         json_msg = parts[0]
         ct_msg = parts[1]
     else:
-        debug("Return is single part")
+        splogdebug("Return is single part")
         json_msg = msg
         ct_msg = None
 
     # Extract JSON values from message
     # Check the message is a application/json
-    debug(json_msg.__dict__)
+    splogdebug(json_msg.__dict__)
     if json_msg.get("Content-type") != "application/json":
-        nilog("First or only component (metadata) of result is not of type application/json")
+        splogwarn("Warning: First or only component (metadata) of result "
+                  "is not of type application/json")
         os.remove(digested_file)
         return(False, req_id, http_index, None, None)
 
@@ -255,37 +324,38 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     try:
         json_report = json.loads(json_msg.get_payload())
     except Exception, e:
-        nilog("Error: Could not decode JSON report '%s': %s" % (json_msg.get_payload(),
-                                                                    str(e)))
+        splogwarn("Warning: Could not decode JSON report '%s': %s" %
+                  (json_msg.get_payload(),
+                   str(e)))
         os.remove(digested_file)
         return(False, req_id, http_index, None, None)
     
-    debug("Returned metadata for %s:" % ni_url_str)
-    debug(json.dumps(json_report, indent = 4))
+    splogdebug("Returned metadata for %s:" % ni_url_str)
+    splogdebug(json.dumps(json_report, indent = 4))
 
     msgid = json_report["msgid"]
     if msgid != form_params["msgid"]:
-        nilog("Returned msgid (%s) does not match request msgid (%s)" %
-              (msgid, form_params["msgid"]))
+        splogwarn("Returned msgid (%s) does not match request msgid (%s)" %
+                  (msgid, form_params["msgid"]))
         os.remove(digested_file)
         return(False, req_id, http_index, None, None)
 
     # If the content was also returned..
     if ct_msg != None:
-        debug(ct_msg.__dict__)
+        splogdebug(ct_msg.__dict__)
         digest= digester.get_digest()[:ni_url.get_truncated_length()]
         digest = NIproc.make_b64_urldigest(digest)
                                           
         # Check the digest
         #print digest, ni_url.get_digest()
         if (digest != ni_url.get_digest()):
-            nilog("Digest of %s did not verify" % ni_url.get_url())
+            splogwarn("Digest of %s did not verify" % ni_url.get_url())
             os.remove(digested_file)
             return(False, req_id, http_index, None, None)
         etime = time.time()
         duration = etime - stime
-        nilog("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
-              (msgid, ni_url_str, obj_length, duration*1000))
+        sploginfo("%s,GET rx fine,ni,%s,size,%d,time,%10.10f" %
+                  (msgid, ni_url_str, obj_length, duration*1000))
     else:
         # Clean up unused temporary file
         os.remove(digested_file)
@@ -319,7 +389,7 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
 
     # Where to send the publish request.
     http_url = "http://%s/netinfproto/publish" % http_host
-    debug("Publishing via: %s" % http_url)
+    splogdebug("Publishing via: %s" % http_url)
 
     # Handle full_put = True cases - we have a file with the octets in it
     full_put = (file_name is not None)
@@ -333,15 +403,15 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
         hash_alg = ni_url.get_alg_name()
         rv = ni_digester.set_url((scheme, http_host, "/%s" % hash_alg))
         if rv != ni_errs.niSUCCESS:
-            nilog("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
+            splogerror("Cannot construct valid ni URL: %s" % ni_errs_txt[rv])
             return(False, req_id, http_index, None, None)
-        debug(ni_digester.get_url())
+        splogdebug(ni_digester.get_url())
 
         # Open the file if possible
         try:
             f = open(file_name, "rb")
         except Exception, e :
-            nilog("Unable to open file %s: Error: %s" % (file_name, str(e)))
+            splogwarn("Unable to open file %s: Error: %s" % (file_name, str(e)))
             return(False, req_id, http_index, None, None)
 
         # If we don't know content type, guess it
@@ -351,7 +421,7 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
             # Guess the mimetype of the file
             m = magic.Magic(mime=True)
             ctype = m.from_file(file_name)
-            debug("Content-Type: %s" % ctype)
+            splogdebug("Content-Type: %s" % ctype)
             if ctype is None:
                 # Guessing didn't work - default
                 ctype = "application/octet-stream"
@@ -391,8 +461,8 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     # Construct data generator and header strings
     datagen, headers = multipart_encode(param_list)
 
-    #debug("Parameters prepared: %s"% "".join(datagen))
-    debug("Parameters prepared")
+    #splogdebug("Parameters prepared: %s"% "".join(datagen))
+    splogdebug("Parameters prepared")
 
     # Set up streaming HTTP mechanism - register handlers with urllib2
     opener = streaminghttp.register_openers()
@@ -401,8 +471,8 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     try:
         req = urllib2.Request(http_url, datagen, headers)
     except Exception, e:
-        nilog("Error: Unable to create request for http URL %s: %s" %
-              (http_url, str(e)))
+        splogerror("Error: Unable to create request for http URL %s: %s" %
+                   (http_url, str(e)))
         if full_put:
             f.close()
         return(False, req_id, http_index, None, None)
@@ -411,7 +481,8 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     try:
         http_object = urllib2.urlopen(req)
     except Exception, e:
-        nilog("Error: Unable to access http URL %s: %s" % (http_url, str(e)))
+        sploginfo("Warning: Unable to access http URL %s: %s" % (http_url,
+                                                                 str(e)))
         if full_put:
             f.close()
         return(False, req_id, http_index, None, None)
@@ -421,24 +492,24 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
         target = octet_param.get_url()
     else:
         target = ni_name.get_url()
-    debug("Sent request: URL: %s" % target)
+    splogdebug("Sent request: URL: %s" % target)
 
 
     # Get message headers
     http_info = http_object.info()
     http_result = http_object.getcode()
-    nilog("HTTP result: %d" % http_result)
-    debug("Response info: %s" % http_info)
-    debug("Response type: %s" % http_info.gettype())
+    splogdebug("HTTP result: %d" % http_result)
+    splogdebug("Response info: %s" % http_info)
+    splogdebug("Response type: %s" % http_info.gettype())
 
     # Read results into buffer
     payload = http_object.read()
     http_object.close()
-    debug(payload)
+    splogdebug(payload)
 
     # Report outcome
     if (http_result != 200):
-        nilog("Unsuccessful publish request returned HTTP code %d" %
+        sploginfo("Unsuccessful publish request returned HTTP code %d" %
               http_result) 
         return(False, req_id, http_index, None, None)
 
@@ -446,30 +517,18 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     ct = http_object.headers["content-type"]
     if rform == "plain":
         if ct != "text/plain":
-            nilog("Error: Expecting plain text (text/plain) response "
-                  "but received Content-Type: %s" % ct)
+            sploginfo("Error: Expecting plain text (text/plain) response "
+                      "but received Content-Type: %s" % ct)
         return(False, req_id, http_index, None, None)
     elif rform == "html":
         if ct != "text/html":
-            nilog("Error: Expecting HTML document (text/html) response "
+            sploginfo("Error: Expecting HTML document (text/html) response "
                   "but received Content-Type: %s" % ct)
     else:
         if ct != "application/json":
-            nilog("Error: Expecting JSON coded (application/json) "
-                  "response but received Content-Type: %s" % ct)
+            sploginfo("Error: Expecting JSON coded (application/json) "
+                      "response but received Content-Type: %s" % ct)
             return(False, req_id, http_index, None, None)
-    """
-    try:
-        fd, response_file = tempfile.mkstemp(dir=tempdir)
-        fo = os.fdopen(fd, "wb")
-        fo.write(payload)
-        fo.close()
-    except Exception, e:
-        nilog("Writing response to temp file %s failed: %s" %
-              (response_file, str(e)))
-        return(False, req_id, http_index, None, None)
-    debug("Written response to %s" % response_file)
-    """
     return(True, req_id, http_index, payload, None)
 
 #------------------------------------------------------------------------------#
@@ -502,7 +561,7 @@ def search_req(req_id, ni_url, http_host, http_index, form_params,
 def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
                file_name, tempdir):
     """
-    @brief Switch to correct proceeing routine for req_type
+    @brief Switch to correct processing routine for req_type
     @param req_type string HTTP_GET, HTTP_PUBLISH or HTTP_SEARCH from HTTPRequest
     @param req_id integer sequence number of message containing request
     @param ni_url NIname object instance with ni URI to be retrieved or
@@ -525,28 +584,32 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
     multiprocessing implementation allowing the result to be linked to the
     original request.
     """
-    nilog("Entering action_req %s: id %s http index %d" %
+    global curr_req_id, curr_req_index, curr_req_type
+    curr_req_id =req_id
+    curr_req_index = http_index
+    curr_req_type = req_type
+    splogdebug("Entering action_req %s: id %s http index %d" %
           (req_type, req_id, http_index))
     try:
-        req_rtn = {HTTPRequest.HTTP_GET: get_req,
+        req_rtn = {HTTPRequest.HTTP_GET:     get_req,
                    HTTPRequest.HTTP_PUBLISH: publish_req,
-                   HTTPRequest.HTTP_SEARCH: search_req}[req_type]
+                   HTTPRequest.HTTP_SEARCH:  search_req}[req_type]
     except:
-        nilog("Bad req_type (%s) supplied to action_req" % req_type)
+        splogerror("Bad req_type (%s) supplied to action_req" % req_type)
         return(False, req_id, http_index, None, None)
 
     try:
         rv = req_rtn(req_id, ni_url, http_host, http_index,
                        form_params, file_name, tempdir)
-        print rv
+        splogdebug("Sending back " + str(rv))
         return rv
     except Exception, e:
-        nilog("Exception occurred while processing (%s, %s, %d): %s" %
-              (req_type, req_id, http_index, str(e)))
+        splogerror("Exception occurred while processing (%s, %s, %d): %s" %
+                   (req_type, req_id, http_index, str(e)))
         return(False, req_id, http_index, None, None)
 
 #===============================================================================#
-
+#=== Request Manager Thread Class ===
 class HTTPAction(Thread):
     """
     @brief Manager for sending requests over HTTP CL originated from DTN
@@ -587,7 +650,33 @@ class HTTPAction(Thread):
                  mprocs=1, per_req_limit=1):
         """
         @brief Constructor - set up logging and squirrel parameters
+        @param resp_q Queue instance for feeding responses back to DTN
+        @param tempdir string pathname for directory for temporary files
+        @param logger logging instance for thread
+        @param redis_conn StrictRedis instance for Redis NRS database
+        @param ndo_cache NetInfCache instance with local NDO cache
+        @param mprocs integer number of async processes in pool
+        @param per_req_limit integer max number parallel processes per request
+
+        @detail
+        Set up HTTP request processing thread.
+
+        Initialize logging convenience functions
+
+        Save parameters.
+
+        If mprocs > 1 set up a pool of asynchronous worker processes to
+        process requests in parallel, otherwise requests will be processed
+        serially in this thread.
+
+        Set up request queue and initialize a lock for the queue so it can
+        be fed from other threads.
+
+        Set up Event object so that thread can be informed when there is
+        - a new request to process
+        - a free asynchronous process to use
         """
+        
         Thread.__init__(self, name="http-action")
         # Logging functions
         global process_logger
@@ -642,14 +731,63 @@ class HTTPAction(Thread):
 
     #--------------------------------------------------------------------------#
     def add_new_req(self, req_msg):
-        # Create the set of next hops to try
-        # If there is a http_auth in the json_in, put it first
-        # This will have been derived from original ni URI specified
+        """
+        @brief Record a new request to be forwarded
+        @param req_msg HTTPRequest object instance containing request
+        @return boolean True if request queued successfully
+
+        @detail
+        Create the set of next hops to try with HTTP CL
+        - If there is a http_auth in the json_in, put it first
+             This will have been derived from original ni URI specified
+        - Add any possibilities from loclist
+        - Add any possibilities looked up via NS Redis database
+
+        Combine the three lists, removing any duplicates and check this results
+        in at least one location to try.  If not return False
+
+        Record the list in the req_msg.
+        Create an index of locations to try as the results will not
+        necessarily be returned in the order requests are sent out.
+
+        Set up a timer to limit the lengthg of time to wait for respponses
+        but don't start it yet as the first request may be held back
+        due to others in the queue - the timer is started when the
+        first request is sent.
+
+        Lock the request queue while adding the new request to the
+        queue, recording the request's presence in the dictionary of active
+        requests using its req_msg number (this allows the req_msg to be found
+        easily when a response comes back without having the entire req_msg
+        in the response or needing to search the queue), and set the
+        action_needed semaphore so run loop knows there is something new to do.
+        """
+        # Short circuit the forwarding if the NDO is in the cache and a GET
+        if req.req_type == HTTPRequest.HTTP_GET:
+            try:
+                metadata, cfn = self.ndo_cache.cache_get(req.ni_name)
+                req.content = cfn
+                req.metadata = NetInfMetaData()
+                req.metadata. set_json_val(metadata.summary())
+            except NoCacheEntry,e:
+                # It's not in the local cache
+                self.logdebug("Not found in local cache")
+                pass
+            except Exception, e:
+                self.logerror("Cache failure for %s: %s" %
+                              (req.ni_name.get_url(), str(e)))
+        # Put the NDO in the cache if its a PUBLISH request
+
+
+        # Build lists from each source and then chain them together
+        # Look for http_auth key in affiliated data
         if req_msg.json_in.has_key("http_auth"):
             ll0 = [ req_msg.json_in["http_auth"] ]
         else:
             ll0 = []
+            
         # See if there is a locliat in the json_in field
+        # Could either be a single string or a list already
         if req_msg.json_in.has_key("loclist"):
             ll1 = req_msg.json_in["loclist"]
             # Worry about unicode
@@ -659,7 +797,7 @@ class HTTPAction(Thread):
                 ll1 = []
         else:
             ll1 = []
-        print ll1
+
         # Add next hops from Redis database
         try:
             ll2 = self.redis_conn.hvals(self.nexthop_key)
@@ -670,7 +808,7 @@ class HTTPAction(Thread):
                           str(e))
             return False
 
-        self.logdebug("Retrieving from %s" % str(" ".join(chain(ll0, ll1, ll2))))
+        self.logdebug("Raw location list is %s" % str(" ".join(chain(ll0, ll1, ll2))))
 
         # Remove duplicates and select only HTTP URLs if specified
         # (remove explicitly DTN URLs)
@@ -691,6 +829,7 @@ class HTTPAction(Thread):
             return False
 
         # Create the set of host indices not yet completed
+        # but don't start it yet - wait till first request is sent
         req_msg.http_hosts_not_completed = \
                                         set(range(len(req_msg.http_host_list)))
 
@@ -708,6 +847,38 @@ class HTTPAction(Thread):
     
     #--------------------------------------------------------------------------#
     def run(self):
+        """
+        @brief Request managememt thread loop.
+
+        @detail
+        Loop until keep_running is set False by shutdown routine.
+
+        The loop initially hangs up waiting on the action_needed semaphore.
+        This can be set either when a new request arrives or, when using
+        multiple asynchronous processes, when a process terminates so that
+        there is a spare process to give the next request to.
+
+        The semaphore wait also has a timeout so that the wait can terminate
+        even if there is no work to do.  For versions of Python after 2.7
+        the return value from wait is a boolean that is True if the semaphore
+        was really set and False if the timeout triggered the return. In Python
+        2.6 and earlier the wait always returns None and so this is not very
+        useful.   We don't rely on this return value.
+
+        Clear the semaphore and look to see what has to be done.
+
+        With the request queue locked, scan the queue of current requests
+        looking for the next request with a location to send to.
+        (this is somewhat inefficient if we are running a large number of
+        processes in parallel as there might be quite a few requests that are
+        pending so that there may be lots of requests that have been completed
+        and so really need not be scanned aagin.  For the time being we'll
+        assume that we aren't dealing with lots of requests and start at the
+        beginning every time.)  Because of the potential limit on the number
+        of parallel processes in progress for any one request, you can't
+        just start where you left off because there might be earlier requests
+        that still have locations to be processed.
+        """
         count = 0
 
         while (self.keep_running):
@@ -723,7 +894,7 @@ class HTTPAction(Thread):
             # If so start the next request running
             # Need to have the lock on the requests data for this
             with self.reqs_lock:
-                # Need this flag because may need to 'continue' from nexted loop
+                # Need this flag because may need to 'continue' from nested loop
                 wait_for_event = False
 
                 # Find the request to process next
@@ -733,21 +904,6 @@ class HTTPAction(Thread):
                 for req in self.curr_reqs:
                     # Check if this is first look at this request
                     if not req.proc_started:
-                        # If it is first pass, check local cache first if a GET
-                        if req.req_type == HTTPRequest.HTTP_GET:
-                            try:
-                                metadata, cfn = self.ndo_cache.cache_get(req.ni_name)
-                                req.content = cfn
-                                req.metadata = NetInfMetaData()
-                                req.metadata. set_json_val(metadata.summary())
-                            except NoCacheEntry,e:
-                                # It's not in the local cache
-                                self.logdebug("Not found in local cache")
-                                pass
-                            except Exception, e:
-                                self.logerror("Cache failure for %s: %s" %
-                                              (req.ni_name.get_url(), str(e)))
-                                pass
                         req.proc_started = True
                         # Start timeout for processing request
                         req.timeout.start()
@@ -946,6 +1102,14 @@ class HTTPAction(Thread):
                               req_msg.req_seqno)
                 # Move concatentated PUBLISH and SEARCH response to disk file
                 if req_msg.req_type != HTTPRequest.HTTP_GET:
+                    if req_msg.result is None:
+                        # No useful results have been received
+                        req_msg.result = StringIO.StringIO()
+                        if req_msg.json_in.get("rform") == "json":
+                            req_msg.result.write('{ "(NULL)" : '
+                                                 '"No results received"')
+                        else:
+                            req_msg.result.write("No results received\n")
                     if req_msg.json_in.get("rform") == "json":
                         req_msg.result.write("}")
                     try:
@@ -955,12 +1119,12 @@ class HTTPAction(Thread):
                         fo.close()
                         req_msg.result = response_file
                     except Exception, e:
-                        nilog("Writing responses to temp file %s failed: %s" %
-                              (response_file, str(e)))
+                        splogerror("Writing responses to temp file %s failed: %s" %
+                                   (response_file, str(e)))
                         req_msg.result.close()
                         req_msg.result = None
 
-                    debug("Written response to %s" % response_file)
+                    self.logdebug("Written response to %s" % response_file)
                     
 
                 # Warning: send_result also requires the reqs_lock!
@@ -1052,7 +1216,7 @@ if __name__ == "__main__":
     
     ndo_cache = TestCache()
     http_action = HTTPAction(dtn_send_q, tempdir, logger, redis_conn, ndo_cache,
-                             mprocs=1, parallel_limit=1, per_req_limit=1)
+                             mprocs=1, per_req_limit=1)
     http_action.setDaemon(True)
 
     # With timeout_test True, the last despatch to a host for a request is
@@ -1103,7 +1267,7 @@ if __name__ == "__main__":
                       content=None)
     #req.metadata = { "d": "e" }
     rv =True
-    #rv = http_action.add_new_req(req)
+    rv = http_action.add_new_req(req)
     if not rv:
         logger.info("Adding request failed correctly on account of nowhere to get from")
 
