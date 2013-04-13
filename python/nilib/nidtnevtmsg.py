@@ -27,13 +27,16 @@ limitations under the License.
 ===============================================================================#
 
 @detail
-Class encapsulating messages sent between DTN threads and cache manager.
+Classes encapsulating messages sent between DTN threads and cache manager.
 
 @code
 Revision History
 ================
 Version   Date	     Author	    Notes
-1.0	  01/01/2013 ElwynDavies    Created.
+1.1	  26/03/2013 Elwyn Davies   Added flag indicating if local cache lookup
+                                    should be included in processing.  Added
+                                    HTTP_PUBLISH_LOCAL and HTTP_SEARCH_LOCAL.
+1.0	  01/01/2013 Elwyn Davies   Created.
 
 @endcode
 """
@@ -66,9 +69,15 @@ class HTTPRequest:
     ##@var HTTP_PUBLISH
     # string indicating that HTTP should send a NetInf PUBLISH message
     HTTP_PUBLISH = "http_publish"
+    ##@var HTTP_PUBLISH_LOCAL
+    # string indicating that the request should be executed on the current node
+    HTTP_PUBLISH_LOCAL = "http_publish_local"
     ##@var HTTP_SEARCH
     # string indicating that HTTP should send a NetInf SEARCH message
     HTTP_SEARCH = "http_search"
+    ##@var HTTP_SEARCH_LOCAL
+    # string indicating that the request should be executed on the current node
+    HTTP_SEARCH_LOCAL = "http_search_local"
     ##@var HTTP_RESPONSE
     # string indicating thet HTTP should send a response message according
     #        proeviously received request message
@@ -106,6 +115,9 @@ class HTTPRequest:
     ##@var ni_name
     # NIname object instance for HTTP_GET and HTTP_PUBLISH requests
     #                       extracted from bpq_data.query_val
+    ##@var check_local_cache
+    # boolean True if the local NDO cache should be checked first before
+    #         trying to forward the request.
     ##@var proc_started
     # boolean True once processing of this request has started
     #         On first pass, when False, the local cache is consulted
@@ -161,7 +173,7 @@ class HTTPRequest:
     def __init__(self, req_type, bundle, bpq_data, json_in,
                  has_payload=False, ni_name = None,
                  make_response=False, response_destn=None,
-                 content= None):
+                 content= None, check_local_cache = True):
         """
         @brief Constructor - saves parameters and initializes others
         @param req_type string one of HTTP_GET, HTTP_PUBLISH,
@@ -175,6 +187,8 @@ class HTTPRequest:
         @param make_response boolean True if the DTN sender if to generate a
                                      response; otherwise will generate a request
         @param content string name of content file (PUBLISH) or None
+        @param check_local_cache boolean True if local cache should be checked
+                                              before forwarding
         """
         if not ((req_type == self.HTTP_GET) or
                 (req_type == self.HTTP_PUBLISH) or
@@ -204,6 +218,7 @@ class HTTPRequest:
         self.json_in = json_in
         self.has_payload = has_payload
         self.ni_name = ni_name
+        self.check_local_cache = check_local_cache
         self.proc_started = False
         self.paused = False
         self.http_host_list = []

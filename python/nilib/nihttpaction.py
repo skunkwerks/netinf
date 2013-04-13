@@ -45,12 +45,14 @@ This module contains two pieces:
 Revision History
 ================
 Version   Date       Author         Notes
-1.2	  16/03/2012 Elwyn Davies   Completed documentation comments.
-1.1	  13/02/2012 Elwyn Davies   Running version for demo tests.
-1.0	  10/02/2012 Elwyn Davies   Prepared for demo tests.
-0.2	  06/02/2012 Elwyn Davies   Added publish functionality.
-0.1	  03/02/2012 Elwyn Davies   Debugged ready for integration.
-0.0	  01/02/2012 Elwyn Davies   Created with get functionality only.
+1.3   28/03/2012 Elwyn Davies   Clean up and adding local operations using
+                                local cache for GET and PUBLISH.
+1.2   16/03/2012 Elwyn Davies   Completed documentation comments.
+1.1   13/02/2012 Elwyn Davies   Running version for demo tests.
+1.0   10/02/2012 Elwyn Davies   Prepared for demo tests.
+0.2   06/02/2012 Elwyn Davies   Added publish functionality.
+0.1   03/02/2012 Elwyn Davies   Debugged ready for integration.
+0.0   01/02/2012 Elwyn Davies   Created with get functionality only.
 @endcode
 """
 #==============================================================================#
@@ -60,8 +62,8 @@ from types import *
 import os.path
 import  random
 from optparse import OptionParser
-import urllib
-import urllib2
+from urllib import urlencode
+from urllib2 import Request, urlopen, URLError, HTTPError
 import magic
 import json
 import email.parser
@@ -90,7 +92,7 @@ from metadata import NetInfMetaData
 from ni_exception import NoCacheEntry
 from nidtnbpq import BPQ
 from encode import *
-import streaminghttp
+from streaminghttp import register_openers
 
 #============================================================================#
 # === Routines Executed in Asynchronous Multiprocess
@@ -118,62 +120,62 @@ curr_req_type = "unknown"
 #=== Logging Functions for spawned processes ===
 #-------------------------------------------------------------------------------#
 def splog(logfn, logstr):
-	"""
-	@brief Log the node, request id, request index, request type, time, and
-	       the logstr using logger function provided in logfn
-	@param logfn callable unbound logging function (info, warn, error, etc)
-	@param logstr string to be printed
-	"""
-	node=platform.node()
-	now=time.time() 
-	nano= "%.10f" % now
-	utct = time.strftime("%Y-%m-%dT%H:%M:%S")
-	
-	logfn('HTTPActionProc: ' +
+    """
+    @brief Log the node, request id, request index, request type, time, and
+           the logstr using logger function provided in logfn
+    @param logfn callable unbound logging function (info, warn, error, etc)
+    @param logstr string to be printed
+    """
+    node=platform.node()
+    now=time.time() 
+    nano= "%.10f" % now
+    utct = time.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    logfn('HTTPActionProc: ' +
               ','.join([node, nano, str(curr_req_id), str(curr_req_index),
                         curr_req_type, utct, logstr]))
-	
-	return
+    
+    return
 
 #------------------------------------------------------------------------------#
 def sploginfo(logstr):
-	"""
-	@brief Log the node, request id, request index, request type, time, and
-	       the logstr as an info level message
-	@param logstr string to be printed
-	"""
-	splog(logger.info, logstr)
-	return
+    """
+    @brief Log the node, request id, request index, request type, time, and
+           the logstr as an info level message
+    @param logstr string to be printed
+    """
+    splog(logger.info, logstr)
+    return
     
 #------------------------------------------------------------------------------#
 def splogwarn(logstr):
-	"""
-	@brief Log the node, request id, request index, request type, time, and
-	       the logstr as a warning level message
-	@param logstr string to be printed
-	"""
-	splog(logger.warn, logstr)
-	return
+    """
+    @brief Log the node, request id, request index, request type, time, and
+           the logstr as a warning level message
+    @param logstr string to be printed
+    """
+    splog(logger.warn, logstr)
+    return
     
 #------------------------------------------------------------------------------#
 def splogdebug(logstr):
-	"""
-	@brief Log the node, request id, request index, request type, time, and
-	       the logstr as a debug level message
-	@param logstr string to be printed
-	"""
-	splog(logger.debug, logstr)
-	return
+    """
+    @brief Log the node, request id, request index, request type, time, and
+           the logstr as a debug level message
+    @param logstr string to be printed
+    """
+    splog(logger.debug, logstr)
+    return
     
 #------------------------------------------------------------------------------#
 def splogerror(logstr):
-	"""
-	@brief Log the node, request id, request index, request type, time, and
-	       the logstr as an error level message
-	@param logstr string to be printed
-	"""
-	splog(logger.error, logstr)
-	return
+    """
+    @brief Log the node, request id, request index, request type, time, and
+           the logstr as an error level message
+    @param logstr string to be printed
+    """
+    splog(logger.error, logstr)
+    return
     
 #------------------------------------------------------------------------------#
 def get_req(req_id, ni_url, http_host, http_index, form_params,
@@ -206,7 +208,8 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     rv = ni_url.validate_ni_url(has_params = True)
     if (rv != ni_errs.niSUCCESS):
             splogdebug("Error: %s is not a complete, valid ni scheme URL: %s" % (ni_url.get_url(), ni_errs_txt[rv]))
-            return(False, req_id, http_index, None, None)
+            return(False, req_id, http_index, 500,
+                   "Invalid ni name object", None)
 
     # Generate NetInf form access URL
     ni_url_str = ni_url.get_canonical_ni_url()
@@ -215,17 +218,21 @@ def get_req(req_id, ni_url, http_host, http_index, form_params,
     http_url = "http://%s/netinfproto/get" % http_host
     
     # Set up HTTP form data for get request
-    form_data = urllib.urlencode({ "URI":   ni_url_str,
-                                   "msgid": form_params["msgid"],
-                                   "ext": "" if not form_params.has_key("ext") else
-                                          form_params["ext"]})
+    form_data = urlencode({ "URI":   ni_url_str,
+                            "msgid": form_params["msgid"],
+                            "ext": "" if not form_params.has_key("ext") else
+                                        form_params["ext"]})
 
     # Send POST request to destination server
     try:
-        http_object = urllib2.urlopen(http_url, form_data)
-    except Exception, e:
+        http_object = urlopen(http_url, form_data)
+    except URLErrror, e:
         sploginfo("Info: Unable to access http URL %s: %s" % (http_url, str(e)))
-        return(False, req_id, http_index, None, None)
+        return(False, req_id, http_index, 404,
+               ("Unable to access server %s: %s" % (http_url, str(e))),
+               None, None)
+    except HTTPError, e:
+        
 
     # Get HTTP result code
     http_result = http_object.getcode()
@@ -465,11 +472,11 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     splogdebug("Parameters prepared")
 
     # Set up streaming HTTP mechanism - register handlers with urllib2
-    opener = streaminghttp.register_openers()
+    opener = register_openers()
                                          
     # Send POST request to destination server
     try:
-        req = urllib2.Request(http_url, datagen, headers)
+        req = Request(http_url, datagen, headers)
     except Exception, e:
         splogerror("Error: Unable to create request for http URL %s: %s" %
                    (http_url, str(e)))
@@ -479,7 +486,7 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
 
     # Get HTTP results
     try:
-        http_object = urllib2.urlopen(req)
+        http_object = urlopen(req)
     except Exception, e:
         sploginfo("Warning: Unable to access http URL %s: %s" % (http_url,
                                                                  str(e)))
@@ -532,6 +539,210 @@ def publish_req(req_id, ni_url, http_host, http_index, form_params,
     return(True, req_id, http_index, payload, None)
 
 #------------------------------------------------------------------------------#
+def publish_local(req_id, ni_url, http_host, http_index, form_params,
+                  file_name, tempdir):
+    """
+    @brief Perform a NetInf 'publish' towards the http_host for the ni_url.
+    @param req_id integer sequence number of message containing request
+    @param ni_url object instance of NIname with ni name to be retrieved
+    @param http_host string HTTP host name for this node 
+                            (only used for building response strings)
+    @param http_index integer index of host name being processed within request
+    @param form_params dictionary of paramter values to pass to HTTP
+    @param file_name string file name of content to be published or None
+    @param tempdir string ditrectory where to place retrieved content if any
+    @return 5-tuple with:
+                boolean - True if succeeds, False if fails
+                string req_id as supplied as parameter
+                integer http_index as supplied as parameter
+                string actual response or None is no response etc
+                dictionary returned JSON metadata if any, decoded
+                
+    Assume that ni_url has a valid ni URI
+    Assume that tempdir provides a directory path into which file can be written
+    """
+    # Record timestamp for this operation
+    timestamp = NetInfMetaData.metadata_timestamp_for_now()
+    
+    full_put = (file_name is not None)
+    splogdebug("NetInf publish for "
+               "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
+               "loc1 %s, loc2 %s at %s" % (ni_url.get_canonical_ni_url(),
+                                           full_put,
+                                           file_name,
+                                           form_params["msgid"],
+                                           form_params["rform"],
+                                           form_params["ext"],
+                                           form_params,get("loc1", ""),
+                                           form_params.get"loc2", ""),
+                                           timestamp))
+
+
+    # Extract extra metadata if present
+    # The metadata is to be held in a JSON object labelled "meta" in the "ext"
+    # form field.  The following code extracts this object which is represented
+    # by a Python dictionary, checking that it is a dictionary (object) in case
+    # the user has supplied a garbled piece of JSON.
+    extrameta = {}
+    try:
+        ext_json = json.loads(form_params["ext"])
+        if "meta" in ext_json.keys():
+            extrameta = ext_json["meta"]
+            if type(extrameta) is not dict:
+                self.loginfo("Value of 'meta' item in JSON form field "
+                             "'ext' '%s' is not a JSON object." % str(extrameta))
+                self.send_error(412, "'meta' item in form field 'ext' "
+                                     "is not a JSON object")
+                return                        
+            self.logdebug("Metadata: %s" % json.dumps(extrameta))
+    except Exception, e:
+        splogerror("Value of form field 'ext' '%s' is not a valid JSON string." %
+                   form_params["ext"])
+        return(False, req_id, http_index, None, None)
+
+    extrameta["publish"] = "dtn-http-gateway"
+
+    # Check that the response type is one we expect - default is JSON if not explicitly requested
+    rform = form_params["rform"].lower()
+    if not((rform == "json") or (rform == "html") or (rform == "plain")):
+        sploginfo("Unhandled publish response format requested '%s'." % rform)
+        return(False, req_id, http_index, None, None)
+    
+    # Extract the locators from the form_params
+    loc1 = form_params.get("loc1", "")
+    loc2 = form_params.get("loc2", "")
+    
+    # Generate NIname and validate it (it should have a Params field).
+    rv = ni_url.validate_ni_url(has_params=True)
+    if rv is not ni_errs.niSUCCESS:
+        sploginfo("URI format of %s inappropriate: %s" % (self.path,
+                                                          ni_errs_txt[rv]))
+        return(False, req_id, http_index, None, None)
+
+    # Retrieve query string (if any) 
+    qs = ni_name.get_query_string()
+
+    # We don't know what the content type or the length are yet
+    ctype = None
+    file_len = -1
+
+    # If the form data contains an uploaded file...
+    temp_name = None
+    if file_name is not None:
+        # Copy the file from the network to a temporary name in the right
+        # subdirectory of the storage_root.  This makes it trivial to rename it
+        # once the digest has been verified.
+        temp_fd, temp_name = tempfile.mkstemp(dir=tempdir)
+
+        # Convert file descriptor to file object
+        f = os.fdopen(temp_fd, "w")
+
+        splogdebug("Copying and digesting to temporary file %s" %
+                   temp_name)
+
+        # Prepare hashing mechanisms
+        hash_function = ni_name.get_hash_function()()
+
+        # Copy file from incoming file and generate digest
+        file_len = 0
+        try:
+            g = open(file_name, "rb")
+        except Exception, e:
+            splogwarn("Unable to open payload file %s: %s" %
+                      (file_name, str(e)))
+            f.close()
+            os.remove(temp_name)
+            return(False, req_id, http_index, None, None)
+        
+        while True:
+            buf = g.read(16 * 1024)
+            if not buf:
+                break
+            f.write(buf)
+            hash_function.update(buf)
+            file_len += len(buf)
+        f.close()
+        g.close()
+
+        splogdebug("Finished copying")
+
+        # Get binary digest and convert to urlsafe base64 or hex
+        # encoding depending on URI scheme
+        bin_dgst = hash_function.digest()
+        if (len(bin_dgst) != ni_name.get_digest_length()):
+            splogerror("Binary digest has unexpected length")
+            self.send_error(500, "Calculated binary digest has wrong length")
+            os.remove(temp_name)
+            return(False, req_id, http_index, None, None)
+        if ni_name.get_scheme() == "ni":
+            digest = NIproc.make_b64_urldigest(bin_dgst[:ni_name.get_truncated_length()])
+            if digest is None:
+                splogerror("Failed to create urlsafe base64 encoded digest")
+                os.remove(temp_name)
+                return(False, req_id, http_index, None, None)
+        else:
+            digest = NIproc.make_human_digest(bin_dgst[:ni_name.get_truncated_length()])
+            if digest is None:
+                splogerror("Failed to create human readable encoded digest")
+                os.remove(temp_name)
+                return(False, req_id, http_index, None, None)
+
+        # Check digest matches with digest in ni name in URI field
+        if (digest != ni_name.get_digest()):
+            self.logwarn("Digest calculated from incoming file does not match digest in URI: %s" % form["URI"].value)
+            self.send_error(401, "Digest of incoming file does not match digest in URI: %s" % form["URI"].value)
+            os.remove(temp_name)
+            return
+
+        # Work out content type for received file
+        ctype = form["octets"].type
+
+        if ((ctype is None) or (ctype == self.DFLT_MIME_TYPE)):
+            ctype = magic.from_file(temp_name, mime=True)
+            self.logdebug("Guessed content type from file is %s" % ctype)
+        else:
+            self.logdebug("Supplied content type from form is %s" % ctype)
+
+    # If ct= query string supplied in URL field..
+    #   Override type got via received file if there was one but log warning if different
+    if not (qs == ""):
+        ct = re.search(r'ct=([^&]+)', qs)
+        if not (ct is  None or ct.group(1) == ""):
+            if not (ctype is None or ctype == ct.group(1)):
+                self.logwarn("Inconsistent content types detected: %s and %s" % \
+                             (ctype, ct.group(1)))
+            ctype = ct.group(1)
+
+    # Set the default content type if we haven't been able to set it so far but have got a file
+    # If we haven't got a file then we just leave it unassigned
+    if ctype is None and file_uploaded:
+        # Default..
+        ctype = self.DFLT_MIME_TYPE
+    
+        
+    # Do initial store or update of metadata and add content file if
+    # available and needed
+    canonical_url = ni_name.get_canonical_ni_url()
+    # Create metadata instance for current information
+    md = NetInfMetaData(canonical_url, timestamp, ctype, file_len,
+                        loc1, loc2, extrameta)
+
+    try:
+        md_out, cfn, new_entry, ignore_upload = \
+                        self.cache.cache_put(ni_name, md, temp_name)
+    except Exception, e:
+        self.send_error(500, str(e))
+        return
+    ndo_in_cache = (cfn is not None)
+
+    # Generate publish report
+    self.send_publish_report(rform, ndo_in_cache, ignore_upload,
+                             new_entry, form, md_out, ni_name.get_url())
+
+    return
+
+
+#------------------------------------------------------------------------------#
 def search_req(req_id, ni_url, http_host, http_index, form_params,
                file_name, tempdir):
     """
@@ -571,10 +782,11 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
     @param form_params dictionary of paramter values to pass to HTTP
     @param file_name string file name of content to be published or None
     @param tempdir string where to place retrieved data
-    @return 5-tuple with:
+    @return 6-tuple with:
                 boolean - True if succeeds, False if fails
                 string req_id as supplied as parameter
                 integer http_index as supplied as parameter
+                integer (HTTP) status code for response
                 string pathname for content file or response or None is no content etc
                 dictionary returned JSON metadata if any, decoded
                 
@@ -591,12 +803,14 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
     splogdebug("Entering action_req %s: id %s http index %d" %
           (req_type, req_id, http_index))
     try:
-        req_rtn = {HTTPRequest.HTTP_GET:     get_req,
-                   HTTPRequest.HTTP_PUBLISH: publish_req,
-                   HTTPRequest.HTTP_SEARCH:  search_req}[req_type]
+        req_rtn = {HTTPRequest.HTTP_GET:           get_req,
+                   HTTPRequest.HTTP_PUBLISH:       publish_req,
+                   HTTPRequest.HTTP_PUBLISH_LOCAL: publish_local,
+                   HTTPRequest.HTTP_SEARCH:        search_req,
+                   HTTPRequest.HTTP_SEARCH_LOCAL:  search_local}[req_type]
     except:
         splogerror("Bad req_type (%s) supplied to action_req" % req_type)
-        return(False, req_id, http_index, None, None)
+        return(False, req_id, http_index, 500, "Bad request type", None)
 
     try:
         rv = req_rtn(req_id, ni_url, http_host, http_index,
@@ -606,7 +820,8 @@ def action_req(req_type, req_id, ni_url, http_host, http_index, form_params,
     except Exception, e:
         splogerror("Exception occurred while processing (%s, %s, %d): %s" %
                    (req_type, req_id, http_index, str(e)))
-        return(False, req_id, http_index, None, None)
+        return(False, req_id, http_index, 500,
+               ("Uncaught exception in server: %s" % str(e)), None)
 
 #===============================================================================#
 #=== Request Manager Thread Class ===
@@ -647,7 +862,7 @@ class HTTPAction(Thread):
     
     #--------------------------------------------------------------------------#
     def __init__(self, resp_q, tempdir, logger, redis_conn, ndo_cache,
-                 mprocs=1, per_req_limit=1):
+                 authority, mprocs=1, per_req_limit=1):
         """
         @brief Constructor - set up logging and squirrel parameters
         @param resp_q Queue instance for feeding responses back to DTN
@@ -655,6 +870,7 @@ class HTTPAction(Thread):
         @param logger logging instance for thread
         @param redis_conn StrictRedis instance for Redis NRS database
         @param ndo_cache NetInfCache instance with local NDO cache
+        @param authority string authority for local HTTP server
         @param mprocs integer number of async processes in pool
         @param per_req_limit integer max number parallel processes per request
 
@@ -690,6 +906,7 @@ class HTTPAction(Thread):
         self.resp_q = resp_q
         self.tempdir = tempdir
         self.ndo_cache = ndo_cache
+        self.authority = authority
         self.mprocs = mprocs
         self.parallel_limit = mprocs
         self.per_req_limit = per_req_limit
@@ -762,29 +979,58 @@ class HTTPAction(Thread):
         in the response or needing to search the queue), and set the
         action_needed semaphore so run loop knows there is something new to do.
         """
-        # Short circuit the forwarding if the NDO is in the cache and a GET
-        if req.req_type == HTTPRequest.HTTP_GET:
-            try:
-                metadata, cfn = self.ndo_cache.cache_get(req.ni_name)
-                req.content = cfn
-                req.metadata = NetInfMetaData()
-                req.metadata. set_json_val(metadata.summary())
-            except NoCacheEntry,e:
-                # It's not in the local cache
-                self.logdebug("Not found in local cache")
-                pass
-            except Exception, e:
-                self.logerror("Cache failure for %s: %s" %
-                              (req.ni_name.get_url(), str(e)))
-        # Put the NDO in the cache if its a PUBLISH request
+
+        # Consider local cache if requested
+        do_local = False
+        if req.check_local_cache:
+            if req.req_type == HTTPRequest.HTTP_GET:
+                # For GET:
+                #     Short circuit the forwarding if the NDO is in the
+                #     local cache but also forward if only metadata
+                try:
+                    req.metadata, req.result = \
+                                  self.ndo_cache.cache_get(req.ni_name)
+                    if req.result is not None:
+                        # Got a complete result
+                        evt_msg = MsgDtnEvt(MsgDtnEvt.MSG_TO_DTN, req_msg)
+                        self.resp_q.put(evt_msg)
+                        return True
+
+                    # Still need to forward the request to see if can
+                    # find content if there was only metadata
+                    pass
+
+                except NoCacheEntry,e:
+                    # It's not in the local cache
+                    self.logdebug("Not found in local cache")
+                    pass
+                except Exception, e:
+                    self.logerror("Cache failure for %s: %s" %
+                                  (req.ni_name.get_url(), str(e)))
+                    return False
+                
+            # Put the NDO in the cache if its a PUBLISH request
+            elif req.req_type == HTTPRequest.HTTP_PUBLISH:
+                # Add local publish if requested
+                do_local = True
+
+            # Do a local search if its a SEARCH request
+            elif req.req_type == HTTPRequest.HTTP_SEARCH:
+                # Probably call the Lucene search process
+                # To be done later - skip for now
+                return True
 
 
         # Build lists from each source and then chain them together
-        # Look for http_auth key in affiliated data
-        if req_msg.json_in.has_key("http_auth"):
-            ll0 = [ req_msg.json_in["http_auth"] ]
+        # For Publish or Search do operation locally if requested
+        if do_local:
+            ll0 = [ self.authority ]
         else:
             ll0 = []
+
+        # Look for http_auth key in affiliated data
+        if req_msg.json_in.has_key("http_auth"):
+            ll0.append(req_msg.json_in["http_auth"])
             
         # See if there is a locliat in the json_in field
         # Could either be a single string or a list already
@@ -948,6 +1194,7 @@ class HTTPAction(Thread):
             # - fullPut, ct and meta (for PUBLISH only)
             # - rform (for PUBLISH and SEARCH)
             # - tokens (for SEARCH only)
+            # Check for local request (PUBLISH and SEARCH only)
             form_params = {}
 
             form_params["msgid"] = curr_req.bpq_data.bpq_id
@@ -960,8 +1207,11 @@ class HTTPAction(Thread):
                     if len(ll) > 1:
                         form_params["loc2"] = ll[1]            
 
+            local_req_type = curr_req.req_type
             if curr_req.req_type == HTTPRequest.HTTP_SEARCH:
                 form_params["tokens"] = curr_req.bpq_data.bpq_val
+                if http_host == self.authority:
+                    local_req_type = HTTPRequest.HTTP_SEARCH_LOCAL
 
             if curr_req.req_type == HTTPRequest.HTTP_PUBLISH:
                 form_params["fullPut"] = \
@@ -977,6 +1227,9 @@ class HTTPAction(Thread):
                 if curr_req.json_in.has_key("ct"):
                     form_params["ct"] = curr_req.json_in["ct"]
 
+                if http_host == self.authority:
+                    local_req_type = HTTPRequest.HTTP_PUBLISH_LOCAL
+
             if ((curr_req.req_type == HTTPRequest.HTTP_SEARCH) or
                 (curr_req.req_type == HTTPRequest.HTTP_PUBLISH)):
                 if curr_req.json_in.has_key("rform"):
@@ -988,7 +1241,7 @@ class HTTPAction(Thread):
                 if self.multi:
                     self.logdebug("Starting async request")
                     self.pool.apply_async(action_req,
-                                          args=(curr_req.req_type,
+                                          args=(local_req_type,
                                                 curr_req.req_seqno,
                                                 curr_req.ni_name,
                                                 http_host,
@@ -1009,7 +1262,7 @@ class HTTPAction(Thread):
 
                 else:
                     self.logdebug("Starting synchronous request")
-                    self.handle_result(action_req(curr_req.req_type,
+                    self.handle_result(action_req(local_req_type,
                                                   curr_req.req_seqno,
                                                   curr_req.ni_name,
                                                   http_host,
@@ -1041,9 +1294,10 @@ class HTTPAction(Thread):
 
     #--------------------------------------------------------------------------#
     def handle_result(self, result_tuple):
-        rv, req_id, http_index, response, metadata = result_tuple
-        self.logdebug("Received result for request #%d for request id %s" %
-                      (http_index, req_id))
+        rv, req_id, http_index, status, response, metadata = result_tuple
+        self.logdebug("Received result status %d for request #%d "
+                      "for request id %s" %
+                      (status, http_index, req_id))
         #time.sleep(2)
         old_content = None
         with self.reqs_lock:
@@ -1216,7 +1470,7 @@ if __name__ == "__main__":
     
     ndo_cache = TestCache()
     http_action = HTTPAction(dtn_send_q, tempdir, logger, redis_conn, ndo_cache,
-                             mprocs=1, per_req_limit=1)
+                             "localhost", mprocs=1, per_req_limit=1)
     http_action.setDaemon(True)
 
     # With timeout_test True, the last despatch to a host for a request is

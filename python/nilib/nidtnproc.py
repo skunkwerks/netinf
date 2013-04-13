@@ -47,14 +47,14 @@ import time
 import json
 import socket
 from select import select
-from copy import copy # Shallow copy operation
 
 import pprint
 
+#=== DTN2 modules ===
 import dtnapi
 from dtn_api_const import QUERY_EXTENSION_BLOCK, METADATA_BLOCK
 
-# Nilib modules
+#=== Local package modules ===
 from ni import NIname, ni_errs
 from nidtnbpq import BPQ
 from nidtnmetadata import Metadata
@@ -594,8 +594,6 @@ class DtnSend(Thread):
             # Report EID is always (our) report_eid
 
             # Create the BPQ block to send with the response
-            # Start with a (shallow) copy of the request BPQ block
-            #bpq_data = copy(req.bpq_data)
             bpq_data = BPQ()
 
             # BPQ kind is PUBLISH if req_type is PUBLISH
@@ -658,7 +656,7 @@ class DtnSend(Thread):
             if req.metadata is not None:
                 md = Metadata()
                 md.set_ontology(Metadata.ONTOLOGY_JSON)
-                md.set_ontology_data(json.dumps(req.metadata.summary("http://example.com")))
+                md.set_ontology_data(json.dumps(req.metadata.summary(local_eid)))
                 json_block = dtnapi.dtn_extension_block()
                 json_block.type = METADATA_BLOCK
                 json_block.flags = 0

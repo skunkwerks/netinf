@@ -150,6 +150,7 @@ import types
 import time
 import random
 
+#=== Modules needing special downloading
 try:
     import redis
     redis_loaded = True
