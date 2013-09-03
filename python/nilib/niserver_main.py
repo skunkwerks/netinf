@@ -510,7 +510,7 @@ def py_niserver_start(default_config_file):
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port,
-                               niserver_logger, getputform, nrsform,
+                               niserver_logger, config, getputform, nrsform,
                                provide_nrs, favicon, redis_db, run_gateway)
 
     # Start a thread with the server -- that thread will then start one
