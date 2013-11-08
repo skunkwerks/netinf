@@ -89,6 +89,9 @@ def py_niget():
     parser.add_option("-q", "--quiet", default=False,
                       action="store_true", dest="quiet",
                       help="Suppress textual output")
+    parser.add_option("-s", "--server", dest="server",
+                      type="string",
+                      help="hostname:port of server to send the NetInf GET to")
     parser.add_option("-l", "--lax", default=False,
                       action="store_true", dest="lax",
                       help="Store returned content even if digest doesn't validate")
@@ -125,7 +128,12 @@ def py_niget():
         options.file_name = ni_url.get_digest()
         
     # Generate NetInf form access URL
-    http_url = "http://%s/netinfproto/get" % ni_url.get_netloc()
+    if (options.server != None):
+        server = options.server
+    else:
+        server = ni_url.get_netloc()
+
+    http_url = "http://%s/netinfproto/get" % server
     """
     if (http_url == None):
         if verbose:
