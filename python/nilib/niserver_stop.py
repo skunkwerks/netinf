@@ -49,14 +49,19 @@ Version   Date       Author         Notes
 """
 
 import socket
-def stop_niserver():
+import sys
+
+def stop_niserver(port=2114):
     print "Stopping niserver HTTP daemon..."
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.sendto("stop",("localhost",2114))
+    s.sendto("stop",("localhost",port))
     s.close()
-    print "... stop sent."
+    print "... stop sent to port {}.".format(port)
     return(0)
 
 #-------------------------------------------------------------------------------
 if __name__ == "__main__":
-    stop_niserver()
+    if len(sys.argv) > 1:
+        stop_niserver(int(sys.argv[1]))
+    else:
+        stop_niserver()

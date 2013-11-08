@@ -533,7 +533,7 @@ def py_niserver_start(default_config_file):
     # Shutdown control is restricted to local machine.
     HOST = "localhost"
     ctrl_skt = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,0)
-    ctrl_skt.bind((HOST, CTRL_PORT))
+    ctrl_skt.bind((HOST, ctrl_port))
     read_fds = [ctrl_skt]
     write_fds = []
     exc_fds = []
