@@ -178,6 +178,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.8       08/11/2013 Bengt Ahlgren  Add code for using new router module
 1.7       07/03/2013 Elwyn Davies   Corrected some comments.
 1.6       14/12/2012 Elwyn Davies   Cope with module selection in installed case.
 1.5       10/12/2012 Elwyn Davies   Allow for Redis cache implementation.
@@ -1485,6 +1486,37 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                         self.loginfo("NetInf Fowarding failure: %d" % fwdres)
                         self.send_error(404, "Named Data Object forwarding failed")
                         return None
+
+            # Bengts new forwarding stuff
+            elif hasattr(self, "router"): # This is set in niserver.py
+                self.loginfo("Trying niforward.")
+                # call forwarding, returns object in temp file content_file
+                status, metadata, content_file = self.router.do_forward_nexthop(
+                    self.msgid, self.uri, self.ext)
+
+                if not status:
+                    self.loginfo("NetInfRouterCore Forwarding failure")
+                    self.send_error(404, "Named Data Object forwarding failed")
+                    return None
+
+                # store it in cache - do we really have to do a cache lookup too???
+                try:
+                    self.loginfo("doing put cache")
+                    md_out, cfn, new_entry, ignore_upload = self.cache.cache_put(ni_name,
+                                                                                 metadata,
+                                                                                 content_file)
+                    self.loginfo("fwd put cache succeeded")
+
+                    # This is slooow I bet, but let's see if it works for now
+                    # and fix up content_file later more quickly
+                    metadata, content_file = self.cache.cache_get(ni_name)
+
+                except Exception, e:
+                    self.loginfo("NetInf put/get_cache after forward failed %s" %
+                                 str(e))
+                    self.send_error(500, str(e))
+                    return None
+
             else:
                 self.loginfo("Named Data Object not in cache: %s" % self.path)
                 self.send_error(404, "Named Data Object not in cache")

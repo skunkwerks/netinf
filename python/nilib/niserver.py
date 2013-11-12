@@ -141,6 +141,7 @@ Uses:
 Revision History
 ================
 Version   Date       Author         Notes
+1.12      08/11/2013 Bengt Ahlgren  Add initialisation of new router module
 1.11      26/01/2013 Elwyn Davies   Add HTTP<->DTN gateway functionality..
 1.10      26/01/2013 Elwyn Davies   Allow for Redis database selection.
 1.9       13/12/2012 Elwyn Davies   Allow for Redis storage_root check.
@@ -227,6 +228,7 @@ except ImportError:
 import netinf_ver
 import ni
 from nihandler import NIHTTPRequestHandler
+import niforward
 
 # NOTE: nidtnhttpgateway is imported if gateway is to be run - see below
 
@@ -356,7 +358,7 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority_name, server_port,
                  config, logger, getputform, nrsform, provide_nrs, favicon,
-                 redis_db=0, run_gateway=False):
+                 redis_db=0, run_gateway=False, ni_router=False, default_route=None):
         """
         @brief Constructor for the NI HTTP threaded server.
         @param addr tuple two elements (<IP address>, <TCP port>) where server listens
@@ -470,6 +472,18 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
                 logger.info("HTTP<->DTN gateway started")
                 self.dtn_gateway_enabled = True
         
+        if (ni_router and not (default_route is None)):
+            # Create instance of router core with message forwarding logic
+            self.router = niforward.NetInfRouterCore(config, logger,
+                                                     features =
+                                                     { niforward.NIFWDDEFAULT })
+
+            nh = niforward.NextHop(niforward.NICLHTTP, default_route)
+            self.router.nh_table[0] = nh
+            self.router.nh_default = 0
+            logger.info("NI router initialised with " +
+                        "default next-hop '{}'".format(default_route))
+
         self.running_threads = set()
         self.next_handler_num = 1
         # Lock for serializing access to running_threads and next_handler_num
@@ -552,7 +566,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 #------------------------------------------------------------------------------#
 def ni_http_server(storage_root, authority, server_port, logger, config,
                    getputform, nrsform, provide_nrs, favicon,
-                   redis_db=0, run_gateway = False):
+                   redis_db=0, run_gateway = False, ni_router = False,
+                   default_route=None):
     """
     @brief Set up the NI HTTP threaded server.
     @param storage_root string pathname for root of cache directory tree
@@ -610,7 +625,7 @@ def ni_http_server(storage_root, authority, server_port, logger, config,
                         authority, server_port,
                         config, logger, getputform, nrsform,
                         provide_nrs, favicon,
-                        redis_db, run_gateway)
+                        redis_db, run_gateway, ni_router, default_route)
 
 #==============================================================================#
 

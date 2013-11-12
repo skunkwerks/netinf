@@ -110,6 +110,7 @@ The handler expects the following standard methods in BaseHTTPRequestHandler to 
 Revision History
 ================
 Version   Date       Author         Notes
+1.2       08/11/2013 Bengt Ahlgren  Add initialisation for new router module
 1.1       10/12/2012 Elwyn Davies   Removed cache import - not needed here
 1.0       04/12/2012 Elwyn Davies   Added cache module: Instance copied from
                                     server.  Removed duplicate unique_id setup.  
@@ -296,6 +297,8 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.server_port = self.server.server_port
         self.nrs_redis = self.server.nrs_redis
         self.cache = self.server.cache
+        if hasattr(self.server, "router"):
+            self.router = self.server.router
 
         # For logging
         self.stime = time.time()

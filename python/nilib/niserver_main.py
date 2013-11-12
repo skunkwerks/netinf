@@ -35,6 +35,7 @@ Waits for shutdown comands or signals; shutsdown server on request.
 Revision History
 ================
 Version   Date       Author         Notes
+1.4       08/11/2013 Bengt Ahlgren  Add config for new router module
 1.3       26/01/2013 Elwyn Davies   Add DTN->HTTP gateway functionality.
 1.2       25/01/2013 Elwyn Davies   Add option to specify Redis DB number.
 1.1       10/12/2012 Elwyn Davies   Add options for Redis cache storage.
@@ -199,6 +200,8 @@ def py_niserver_start(default_config_file):
     cache_mode = options.cache
     redis_db = options.redis_db
     run_gateway = None if (options.run_gateway == 0) else True
+    ni_router = None            # No command line argument
+    default_route = None        # No command line argument
 
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
@@ -379,6 +382,20 @@ def py_niserver_start(default_config_file):
                                      "acceptable boolean representation" %
                                      conf_option)
 
+            conf_option = "ni_router"
+            if config.has_option(conf_section, conf_option):
+                try:
+                    ni_router = config.getboolean(conf_section,
+                                                  conf_option)
+                except ValueError:
+                    parser.error("Value supplied for %s is not an "
+                                 "acceptable boolean representation" %
+                                 conf_option)
+
+            conf_option = "default_route"
+            if config.has_option(conf_section, conf_option):
+                default_route = config.get(conf_section, conf_option)
+
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Check we have all the configuration we need and apply fallback
     # defaults for others
@@ -434,6 +451,10 @@ def py_niserver_start(default_config_file):
     # Default to not running HTTP<->DTN gateway
     if (run_gateway is None):
         run_gateway = False
+
+    # Default to not run NI routing service
+    if (ni_router is None):
+        ni_router = False
         
     # Now load the main server module so that it gets the right cache module loaded            
     from niserver import ni_http_server
@@ -511,7 +532,8 @@ def py_niserver_start(default_config_file):
     # Create server to handle HTTP requests
     ni_server = ni_http_server(storage_root, authority, server_port,
                                niserver_logger, config, getputform, nrsform,
-                               provide_nrs, favicon, redis_db, run_gateway)
+                               provide_nrs, favicon, redis_db, run_gateway,
+                               ni_router=ni_router, default_route=default_route)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request
