@@ -1390,6 +1390,93 @@ class NIHTTPRequestHandler(HTTPRequestShim):
 
         return
 
+
+
+
+    # The object is not in the cache. If forwarding is turned on, use it
+    # to fetch the object. If forwarding is not turned on, or if forwarding
+    # didn't find it, report it as not found.
+    def try_forwarding(self, ni_name):
+        # SF check forwarding things for GETs here
+        if hasattr(self, "fwd"):
+            self.loginfo("Named Data Object not in cache: checking forwarding for %s" % ni_name)
+            try_fwd,nexthops=self.fwd.check_fwd(nifwd.GET_FWD,ni_name,self.ext)
+            if try_fwd is False:
+                self.loginfo("Named Data Object not in cache: %s" % self.path)
+                self.send_error(404, "Named Data Object not in cache")
+                return None
+            else:
+                fwdres, metadata, content_file = self.fwd.do_get_fwd(
+                        nexthops,self.uri,self.ext,self.msgid)
+                if fwdres == nifwd.FWDSUCCESS:
+                    self.loginfo("NetInf Fowarding success!: %d" % fwdres)
+                    try:
+                        self.loginfo("doing put cache")
+                        try:
+                            md_out, cfn, new_entry, ignore_upload = \
+                                            self.cache.cache_put(ni_name, metadata, content_file)
+                        except Exception, e:
+                            self.logdebug("put failed %s" % str(e))
+                        self.loginfo("fwd put cache succeeded")
+                        # This is slooow I bet, but let's see if it works for now
+                        # and fix up content_file later more quickly
+                        metadata, content_file = self.cache.cache_get(ni_name)
+                        self.loginfo("NetInf put_cache after fwd success1")
+                    except Exception, e:
+                        print e
+                        self.loginfo("NetInf crap put_cache after fwd fail1 %s" % str(e))
+                        self.send_error(500, str(e))
+                        return None
+                elif fwdres == nifwd.FWDTIMEOUT:
+                    self.loginfo("NetInf Fowarding timeout: %d" % fwdres)
+                    self.send_error(404, "Named Data Object forwarding timeout")
+                    return None
+                elif fwdres == nifwd.FWDNOTFOUND:
+                    self.loginfo("NetInf Forwarding did not find object at any location tried")
+                    self.send_error(404, "Named data Object forwarding could not find object")
+                    return None
+                else:
+                    self.loginfo("NetInf Fowarding failure: %d" % fwdres)
+                    self.send_error(404, "Named Data Object forwarding failed")
+                    return None
+
+        # Bengts new forwarding stuff
+        elif hasattr(self, "router"): # This is set in niserver.py
+            self.loginfo("Trying niforward.")
+            # call forwarding, returns object in temp file content_file
+            status, metadata, content_file = self.router.do_forward_nexthop(
+                self.msgid, self.uri, self.ext)
+
+            if not status:
+                self.loginfo("NetInfRouterCore Forwarding failure 1")
+                self.send_error(404, "Named Data Object forwarding failed")
+                return None
+
+            # store it in cache - do we really have to do a cache lookup too???
+            try:
+                self.loginfo("doing put cache")
+                md_out, cfn, new_entry, ignore_upload = self.cache.cache_put(ni_name,
+                                                                             metadata,
+                                                                             content_file)
+                self.loginfo("fwd put cache succeeded")
+
+                # This is slooow I bet, but let's see if it works for now
+                # and fix up content_file later more quickly
+                metadata, content_file = self.cache.cache_get(ni_name)
+
+            except Exception, e:
+                self.loginfo("NetInf put/get_cache after forward failed %s" %
+                             str(e))
+                self.send_error(500, str(e))
+                return None
+
+        else:
+            self.loginfo("Named Data Object not in cache: %s" % self.path)
+            self.send_error(404, "Named Data Object not in cache")
+            return None
+
+        return (metadata, content_file)
+
     #--------------------------------------------------------------------------#
     def netinf_get(self, form):
         """
@@ -1440,96 +1527,106 @@ class NIHTTPRequestHandler(HTTPRequestShim):
             self.send_error(406, "ni: scheme URI not in appropriate format: %s" % ni_errs_txt[rv])
             return
 
-        # Get the cache entry for this ni_name (if any)
-        try:
-            metadata, content_file = self.cache.cache_get(ni_name)
-        except NoCacheEntry:
-            # SF check forwarding things for GETs here
-            if hasattr(self, "fwd"):
-                self.loginfo("Named Data Object not in cache: checking forwarding for %s" % ni_name)
-                try_fwd,nexthops=self.fwd.check_fwd(nifwd.GET_FWD,ni_name,self.ext)
-                if try_fwd is False:
-                    self.loginfo("Named Data Object not in cache: %s" % self.path)
-                    self.send_error(404, "Named Data Object not in cache")
-                    return None
+        #print (ni_name.get_alg_name(), ni_name.get_digest())
+        # We should use alg_name too, but the cache currently doesn't do
+        # this either.
+        ni_name_s = ni_name.get_digest()
+
+        do_aggregation = hasattr(self, "request_aggregation")
+
+        # Request aggregation: if this is the first request for the object,
+        # create a lock and associate it with the object's name (in the
+        # dict 'requestlist') while the object is being fetched.
+        # If there instead is such a lock present, wait for it and then
+        # expect to find the object in the cache.
+        # The operations on 'requestlist' are guarded with a global lock
+        # 'requestlock'.
+        # When request aggregation is not used, all requests behave as if
+        # they were the only ones fetching the object.
+
+        thr = None
+        if do_aggregation:
+            with self.requestlock:
+                if ni_name_s in self.requestlist:
+                    # The object is being fetched - wait until it has arrived.
+                    thr = self.requestlist[ni_name_s]
                 else:
-                    fwdres, metadata, content_file = self.fwd.do_get_fwd(
-                            nexthops,self.uri,self.ext,self.msgid)
-                    if fwdres == nifwd.FWDSUCCESS:
-                        self.loginfo("NetInf Fowarding success!: %d" % fwdres)
-                        try:
-                            self.loginfo("doing put cache")
-                            try:
-                                md_out, cfn, new_entry, ignore_upload = \
-                                                self.cache.cache_put(ni_name, metadata, content_file)
-                            except Exception, e:
-                                self.logdebug("put failed %s" % str(e))
-                            self.loginfo("fwd put cache succeeded")
-                            # This is slooow I bet, but let's see if it works for now
-                            # and fix up content_file later more quickly
-                            metadata, content_file = self.cache.cache_get(ni_name)
-                            self.loginfo("NetInf put_cache after fwd success1")
-                        except Exception, e:
-                            print e
-                            self.loginfo("NetInf crap put_cache after fwd fail1 %s" % str(e))
-                            self.send_error(500, str(e))
-                            return None
-                    elif fwdres == nifwd.FWDTIMEOUT:
-                        self.loginfo("NetInf Fowarding timeout: %d" % fwdres)
-                        self.send_error(404, "Named Data Object forwarding timeout")
-                        return None
-                    elif fwdres == nifwd.FWDNOTFOUND:
-                        self.loginfo("NetInf Forwarding did not find object at any location tried")
-                        self.send_error(404, "Named data Object forwarding could not find object")
-                        return None
-                    else:
-                        self.loginfo("NetInf Fowarding failure: %d" % fwdres)
-                        self.send_error(404, "Named Data Object forwarding failed")
-                        return None
+                    # The object is not being fetched. We will either fetch it
+                    # or get it from the cache. Create a lock so that only
+                    # this thread fetches the object.
+                    lck = threading.Lock()
+                    lck.acquire()
+                    self.requestlist[ni_name_s] = lck
 
-            # Bengts new forwarding stuff
-            elif hasattr(self, "router"): # This is set in niserver.py
-                self.loginfo("Trying niforward.")
-                # call forwarding, returns object in temp file content_file
-                status, metadata, content_file = self.router.do_forward_nexthop(
-                    self.msgid, self.uri, self.ext)
+        if thr:
+            # The object is being fetched by another thread - wait until
+            # this is finished, then try to get it from the cache.
+            self.loginfo("waiting for %s" % str(thr))
+            with thr:
+                pass
+            self.loginfo("waited for %s" % str(thr))
 
-                if not status:
-                    self.loginfo("NetInfRouterCore Forwarding failure")
-                    self.send_error(404, "Named Data Object forwarding failed")
-                    return None
+            try:
+                self.loginfo("in cache 2?")
+                metadata, content_file = self.cache.cache_get(ni_name)
+                self.loginfo("in cache 2")
 
-                # store it in cache - do we really have to do a cache lookup too???
-                try:
-                    self.loginfo("doing put cache")
-                    md_out, cfn, new_entry, ignore_upload = self.cache.cache_put(ni_name,
-                                                                                 metadata,
-                                                                                 content_file)
-                    self.loginfo("fwd put cache succeeded")
+            except NoCacheEntry:
+                self.loginfo("NetInfRouterCore Forwarding failure 2")
+                self.send_error(404, "Named Data Object forwarding failed")
+                return
 
-                    # This is slooow I bet, but let's see if it works for now
-                    # and fix up content_file later more quickly
-                    metadata, content_file = self.cache.cache_get(ni_name)
+        else:
+            try:
+                self.loginfo("in cache?")
+                metadata, content_file = self.cache.cache_get(ni_name)
+                self.loginfo("in cache")
+            except NoCacheEntry:
+                self.loginfo("not in cache")
 
-                except Exception, e:
-                    self.loginfo("NetInf put/get_cache after forward failed %s" %
-                                 str(e))
-                    self.send_error(500, str(e))
-                    return None
+                if do_aggregation:
+                    self.loginfo("alg_name %s" % str(ni_name.get_alg_name()))
 
-            else:
-                self.loginfo("Named Data Object not in cache: %s" % self.path)
-                self.send_error(404, "Named Data Object not in cache")
-                return None
-                
-        except Exception, e:
-            self.logerror(str(e))
-            self.send_error(500, str(e))
-            return None
-            
+                res = self.try_forwarding(ni_name)
+
+                if res == None:
+                    if do_aggregation:
+                        # If we created a lock to prevent other threads from
+                        # fetching the same object, release that lock now.
+                        with self.requestlock:
+                            lck = self.requestlist[ni_name_s]
+                            lck.release()
+                            self.loginfo("released %s" % str(lck))
+                            del self.requestlist[ni_name_s]
+                    return
+
+                (metadata, content_file) = res
+
+            except Exception, e:
+                if do_aggregation:
+                    # If we created a lock to prevent other threads from
+                    # fetching the same object, release that lock now.
+                    with self.requestlock:
+                        lck = self.requestlist[ni_name_s]
+                        lck.release()
+                        self.loginfo("released %s" % str(lck))
+                        del self.requestlist[ni_name_s]
+                self.logerror(str(e))
+                self.send_error(500, str(e))
+                return
+
         self.loginfo("form_get,uri,%s,ctype,%s,size,%s" % (ni_name.get_canonical_ni_url(),
                                                            metadata.get_ctype(),
                                                            metadata.get_size()))
+        if do_aggregation:
+            # If we created a lock to prevent other threads from
+            # fetching the same object, release that lock now.
+            with self.requestlock:
+                lck = self.requestlist[ni_name_s]
+                lck.release()
+                self.loginfo("released %s" % str(lck))
+                del self.requestlist[ni_name_s]
+
 
         # Record size for higher level logging
         self.req_size = int(metadata.get_size())
@@ -1540,6 +1637,7 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                                  form["msgid"].value)
         if f:
             self.send_file(f)
+
         return
 
     #--------------------------------------------------------------------------#
@@ -1602,7 +1700,8 @@ class NIHTTPRequestHandler(HTTPRequestShim):
                       "URI %s, fullPut %s octets %s, msgid %s, rform %s, ext %s,"
                       "loc1 %s, loc2 %s at %s" % (form["URI"].value,
                                                   fov["fullPut"],
-                                                  fov["octets"],
+                                                  #fov["octets"],
+                                                  "octets",
                                                   form["msgid"].value,
                                                   fov["rform"],
                                                   fov["ext"],

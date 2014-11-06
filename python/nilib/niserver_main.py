@@ -202,6 +202,7 @@ def py_niserver_start(default_config_file):
     run_gateway = None if (options.run_gateway == 0) else True
     ni_router = None            # No command line argument
     default_route = None        # No command line argument
+    request_aggregation = None
 
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -#
     # Can do without config file if -l, -n, -s, -g and -r are specified
@@ -392,6 +393,16 @@ def py_niserver_start(default_config_file):
                                  "acceptable boolean representation" %
                                  conf_option)
 
+            conf_option = "request_aggregation"
+            if config.has_option(conf_section, conf_option):
+                try:
+                    request_aggregation = config.getboolean(conf_section,
+                                                            conf_option)
+                except ValueError:
+                    parser.error("Value supplied for %s is not an "
+                                 "acceptable boolean representation" %
+                                 conf_option)
+
             conf_option = "default_route"
             if config.has_option(conf_section, conf_option):
                 default_route = config.get(conf_section, conf_option)
@@ -455,6 +466,9 @@ def py_niserver_start(default_config_file):
     # Default to not run NI routing service
     if (ni_router is None):
         ni_router = False
+
+    if (request_aggregation is None):
+        request_aggregation = False
         
     # Now load the main server module so that it gets the right cache module loaded            
     from niserver import ni_http_server
@@ -533,7 +547,8 @@ def py_niserver_start(default_config_file):
     ni_server = ni_http_server(storage_root, authority, server_port,
                                niserver_logger, config, getputform, nrsform,
                                provide_nrs, favicon, redis_db, run_gateway,
-                               ni_router=ni_router, default_route=default_route)
+                               ni_router=ni_router, default_route=default_route,
+                               request_aggregation=request_aggregation)
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request

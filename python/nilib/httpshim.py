@@ -299,6 +299,10 @@ class directHTTPRequestShim(BaseHTTPRequestHandler):
         self.cache = self.server.cache
         if hasattr(self.server, "router"):
             self.router = self.server.router
+        if hasattr(self.server, "request_aggregation"):
+            self.request_aggregation = self.server.request_aggregation
+            self.requestlist = self.server.requestlist
+            self.requestlock = self.server.requestlock
 
         # For logging
         self.stime = time.time()

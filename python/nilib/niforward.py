@@ -301,7 +301,7 @@ def do_get_fwd(logger,nexthops,uri,ext):
         # Send POST request to destination server
         try:
             # Set up HTTP form data for netinf fwd'd get request
-            http_object = urllib2.urlopen(http_url, form_data, 1)
+            http_object = urllib2.urlopen(http_url, form_data, 30)
         except Exception, e:
             logger.info("do_fwd: to %s http POST exception: %s" %
                         (nexthop.cl_address,str(e)));

@@ -358,7 +358,9 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
     #--------------------------------------------------------------------------#
     def __init__(self, addr, storage_root, authority_name, server_port,
                  config, logger, getputform, nrsform, provide_nrs, favicon,
-                 redis_db=0, run_gateway=False, ni_router=False, default_route=None):
+                 redis_db=0, run_gateway=False,
+                 ni_router=False, default_route=None,
+                 request_aggregation=False):
         """
         @brief Constructor for the NI HTTP threaded server.
         @param addr tuple two elements (<IP address>, <TCP port>) where server listens
@@ -484,6 +486,11 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
             logger.info("NI router initialised with " +
                         "default next-hop '{}'".format(default_route))
 
+        if request_aggregation:
+            self.request_aggregation=True
+            self.requestlist = dict()
+            self.requestlock = threading.Lock()
+
         self.running_threads = set()
         self.next_handler_num = 1
         # Lock for serializing access to running_threads and next_handler_num
@@ -567,7 +574,8 @@ class NIHTTPServer(ThreadingMixIn, HTTPServer):
 def ni_http_server(storage_root, authority, server_port, logger, config,
                    getputform, nrsform, provide_nrs, favicon,
                    redis_db=0, run_gateway = False, ni_router = False,
-                   default_route=None):
+                   default_route=None,
+                   request_aggregation=False):
     """
     @brief Set up the NI HTTP threaded server.
     @param storage_root string pathname for root of cache directory tree
@@ -625,7 +633,8 @@ def ni_http_server(storage_root, authority, server_port, logger, config,
                         authority, server_port,
                         config, logger, getputform, nrsform,
                         provide_nrs, favicon,
-                        redis_db, run_gateway, ni_router, default_route)
+                        redis_db, run_gateway, ni_router, default_route,
+                        request_aggregation)
 
 #==============================================================================#
 
